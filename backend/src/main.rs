@@ -17,5 +17,4 @@ async fn main() {
         .serve(app().await.into_make_service())
         .await
         .expect("Failed to run axum server");
-    
 }
