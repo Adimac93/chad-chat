@@ -1,6 +1,7 @@
 use axum::{extract, Extension, Json, http::StatusCode, response::{Response, Html}};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Serialize, Deserialize};
+use serde_json::{Value, json};
 use sqlx::{pool::PoolConnection, query, query_as, PgPool, Pool, Postgres};
 use tracing::info;
 use uuid::Uuid;
@@ -8,9 +9,14 @@ use argon2::{hash_encoded, verify_encoded};
 use thiserror::Error;
 use anyhow::{self, Context};
 use zxcvbn;
+use jsonwebtoken::{encode, Header, EncodingKey, DecodingKey};
 
 #[derive(Error, Debug)]
 pub enum AuthError {
+    #[error("User already exists")]
+    UserAlreadyExists,
+    #[error("Missing credential")]
+    MissingCredential,
     #[error("User not found")]
     UserNotFound,
     #[error("Password is too weak")]
@@ -25,6 +31,11 @@ pub enum AuthError {
 pub struct AuthUser {
     pub login: String,
     pub password: String,
+}
+
+pub fn get_token_secret() -> String {
+    dotenv::dotenv().ok();
+    std::env::var("TOKEN_SECRET").expect("Cannot find token secret")
 }
 
 pub async fn get_database_pool() -> PgPool {
@@ -47,8 +58,23 @@ pub async fn try_register_user(
     login: &str,
     password: &str,
 ) -> Result<(), AuthError> {
+    if login.trim().is_empty() || password.trim().is_empty() {
+        return Err(AuthError::MissingCredential);
+    }
+
     if !is_strong(password, &[&login]) {
         return Err(AuthError::WeakPassword)
+    }
+
+    let user = query!("
+        select * from users where login = $1
+    ", login)
+    .fetch_optional(&mut *conn)
+    .await
+    .context("Query failed")?;
+
+    if let Some(_) = user {
+        return Err(AuthError::UserAlreadyExists);
     }
 
     let hashed_pass = hash_pass(&password).context("Failed to hash pass")?;
@@ -69,14 +95,44 @@ pub async fn try_register_user(
     Ok(())
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct Claims {
+    pub id: Uuid,
+    pub exp: u64,
+}
+
+pub struct Keys {
+    pub encoding: EncodingKey,
+    pub decoding: DecodingKey,
+}
+
+impl Keys {
+    pub fn new(secret: &[u8]) -> Self {
+        Self {
+            encoding: EncodingKey::from_secret(secret),
+            decoding: DecodingKey::from_secret(secret),
+        }
+    }
+}
 
 pub async fn post_login_user(
     pool: Extension<PgPool>,
     user: extract::Json<AuthUser>,
-) -> Result<(), StatusCode> {
+) -> Result<Json<Value>, StatusCode> {
+    const ONE_HOUR_IN_SECONDS: u64 = 3600;
+
     let mut conn = pool.acquire().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    login_user(&mut conn, &user.login, &user.password).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(())
+    let user_id = login_user(&mut conn, &user.login, &user.password).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let claims = Claims {
+        id: user_id,
+        exp: jsonwebtoken::get_current_timestamp() + ONE_HOUR_IN_SECONDS,
+    };
+
+    let token = encode(&Header::default(), &claims, &Keys::new(get_token_secret().as_bytes()).encoding)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({ "access_token": token, "type": "Bearer" })))
 }
 
 pub async fn login_user(
@@ -84,10 +140,13 @@ pub async fn login_user(
     login: &str,
     password: &str,
 ) -> Result<Uuid, AuthError> {
+    if login.trim().is_empty() || password.trim().is_empty() {
+        return Err(AuthError::MissingCredential);
+    }
+
     let res = query!("
-    select * from users where login = $1
-    ",
-    login)
+        select * from users where login = $1
+    ", login)
     .fetch_optional(conn)
     .await
     .context("User query failed")?
