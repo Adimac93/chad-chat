@@ -11,6 +11,7 @@ pub async fn app() -> Router {
         .route("/", get(handler))
         .route("/test", post(queries::post_register_user))
         .route("/login-test", post(queries::post_login_user))
+        .route("/user-validation", post(queries::protected_zone))
         .layer(Extension(queries::get_database_pool().await))
 }
 

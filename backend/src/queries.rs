@@ -1,15 +1,23 @@
-use axum::{extract, Extension, Json, http::StatusCode, response::{Response, Html}};
+use axum::{
+    extract::{self, FromRequest},
+    Extension,
+    Json,
+    http::StatusCode,
+    async_trait,
+    TypedHeader,
+    headers::{authorization::Bearer, Authorization},
+};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Serialize, Deserialize};
 use serde_json::{Value, json};
-use sqlx::{pool::PoolConnection, query, query_as, PgPool, Pool, Postgres};
+use sqlx::{pool::PoolConnection, query, PgPool, Postgres};
 use tracing::info;
 use uuid::Uuid;
 use argon2::{hash_encoded, verify_encoded};
 use thiserror::Error;
 use anyhow::{self, Context};
 use zxcvbn;
-use jsonwebtoken::{encode, Header, EncodingKey, DecodingKey};
+use jsonwebtoken::{encode, Header, EncodingKey, DecodingKey, decode, Validation};
 
 #[derive(Error, Debug)]
 pub enum AuthError {
@@ -95,7 +103,7 @@ pub async fn try_register_user(
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
     pub id: Uuid,
     pub exp: u64,
@@ -175,4 +183,24 @@ fn is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
         Ok(s) => s.score() >= 3,
         Err(_) => false,
     }
+}
+
+#[async_trait]
+impl<B> FromRequest<B> for Claims
+where B: Send,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let TypedHeader(Authorization(bearer)) = 
+            TypedHeader::<Authorization<Bearer>>::from_request(req).await.map_err(|_| StatusCode::UNAUTHORIZED)?;
+        let data = decode::<Claims>(bearer.token(), &Keys::new(get_token_secret().as_bytes()).decoding, &Validation::default());
+        dbg!(&data);
+        let new_data = data.map_err(|_| StatusCode::UNAUTHORIZED)?;
+        Ok(new_data.claims)
+    }
+}
+
+pub async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
+    Ok(Json(json!({ "user id": claims.id })))
 }
