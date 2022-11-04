@@ -1,4 +1,7 @@
-mod queries;
+pub mod routes;
+pub mod auth;
+pub mod models;
+pub mod database;
 
 use axum::{
     response::Html,
@@ -9,10 +12,10 @@ use axum::{
 pub async fn app() -> Router {
     Router::new()
         .route("/", get(handler))
-        .route("/test", post(queries::post_register_user))
-        .route("/login-test", post(queries::post_login_user))
-        .route("/user-validation", post(queries::protected_zone))
-        .layer(Extension(queries::get_database_pool().await))
+        .route("/test", post(routes::auth::post_register_user))
+        .route("/login-test", post(routes::auth::post_login_user))
+        .route("/user-validation", post(routes::auth::protected_zone))
+        .layer(Extension(database::get_database_pool().await))
 }
 
 async fn handler() -> Html<&'static str> {

@@ -1,0 +1,7 @@
+﻿use sqlx::PgPool;
+
+pub async fn get_database_pool() -> PgPool {
+    dotenv::dotenv().ok();
+    let url = &std::env::var("DATABASE_URL").expect("Cannot find database url");
+    PgPool::connect(url).await.unwrap()
+}
