@@ -31,3 +31,8 @@ pub struct AuthUser {
     pub login: String,
     pub password: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct NewGroup {
+    pub name: String,
+}

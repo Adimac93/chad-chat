@@ -1,12 +1,11 @@
 ﻿use anyhow::Context;
-use axum::{debug_handler, Extension, extract, http::StatusCode, Json};
+use axum::{Extension, extract, http::StatusCode, Json};
 use jsonwebtoken::{encode, Header, EncodingKey};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use crate::models::{AuthUser, Claims};
 use crate::auth::{try_register_user, login_user, get_token_secret, AuthError};
 
-#[debug_handler]
 pub async fn post_register_user(
     pool: Extension<PgPool>,
     user: extract::Json<AuthUser>,
