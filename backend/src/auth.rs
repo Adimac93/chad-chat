@@ -123,6 +123,5 @@ fn is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
 }
 
 pub fn get_token_secret() -> String {
-    dotenv::dotenv().ok();
     std::env::var("TOKEN_SECRET").expect("Cannot find token secret")
 }
