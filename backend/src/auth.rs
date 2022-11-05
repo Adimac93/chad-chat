@@ -26,17 +26,23 @@ pub enum AuthError {
 
 impl IntoResponse for AuthError {
     fn into_response(self) -> axum::response::Response {
-        let (status_code, info) = match self {
-            AuthError::UserAlreadyExists => (StatusCode::BAD_REQUEST, "User already exists"),
-            AuthError::MissingCredential => (StatusCode::BAD_REQUEST, "Missing credential"),
-            AuthError::WeakPassword => (StatusCode::BAD_REQUEST, "Password is too weak"),
-            AuthError::WrongUserOrPassword => (StatusCode::UNAUTHORIZED, "Wrong login credential"),
-            AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
+        let status_code = match &self {
+            AuthError::UserAlreadyExists => StatusCode::BAD_REQUEST,
+            AuthError::MissingCredential => StatusCode::BAD_REQUEST,
+            AuthError::WeakPassword => StatusCode::BAD_REQUEST,
+            AuthError::WrongUserOrPassword => StatusCode::UNAUTHORIZED,
+            AuthError::InvalidToken => StatusCode::UNAUTHORIZED,
             AuthError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+                StatusCode::INTERNAL_SERVER_ERROR
             },
         };
+        
+        let info = match self {
+            AuthError::Unexpected(_) => "Unexpected server error".into(),
+            _ => format!("{self:?}")
+        };
+
         (status_code, Json(json!({ "error_info": info }))).into_response()
     }
 }
