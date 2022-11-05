@@ -32,7 +32,10 @@ impl IntoResponse for AuthError {
             AuthError::WeakPassword => (StatusCode::BAD_REQUEST, "Password is too weak"),
             AuthError::WrongUserOrPassword => (StatusCode::UNAUTHORIZED, "Wrong login credential"),
             AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
-            AuthError::Unexpected(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+            AuthError::Unexpected(e) => {
+                tracing::error!("Internal server error: {e:?}");
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+            },
         };
         (status_code, Json(json!({ "error_info": info }))).into_response()
     }
@@ -59,9 +62,9 @@ pub async fn try_register_user(
     )
     .fetch_optional(&mut conn)
     .await
-    .context("Query failed")?;
+    .context("Failed to query user by login")?;
 
-    if let Some(_) = user {
+    if user.is_some() {
         return Err(AuthError::UserAlreadyExists);
     }
 
@@ -77,7 +80,7 @@ pub async fn try_register_user(
     )
     .execute(&mut conn)
     .await
-    .context("Query failed");
+    .context("Failed to create a new user");
 
     info!("{res:?}");
     Ok(())
@@ -97,7 +100,7 @@ pub async fn login_user(
     ", login)
     .fetch_optional(&mut conn)
     .await
-    .context("User query failed")?
+    .context("Failed to select user by login")?
     .ok_or(AuthError::WrongUserOrPassword)?;
 
     info!("{res:?}");
