@@ -113,7 +113,6 @@ pub async fn login_user(
     .context("Failed to select user by login")?
     .ok_or(AuthError::WrongUserOrPassword)?;
 
-    info!("{res:?}");
     if verify_encoded(&res.password, password.expose_secret().as_bytes()).context("Failed to verify password")? {
         Ok(res.id)
     } else {

@@ -1,14 +1,19 @@
-﻿use anyhow::Context;
-use axum::{Extension, extract};
+﻿use crate::models::{Claims, NewGroup};
+use crate::queries::{create_group, AppError};
+use anyhow::Context;
+use axum::{extract, Extension};
 use sqlx::PgPool;
-use crate::queries::{AppError, create_group};
-use crate::models::NewGroup;
 
 pub async fn post_create_group(
+    claims: Claims,
     pool: Extension<PgPool>,
     group: extract::Json<NewGroup>,
 ) -> Result<(), AppError> {
-    let conn = pool.acquire().await.context("Failed to establish connection")?;
+    tracing::trace!("JWT: {:#?}", claims);
+    let conn = pool
+        .acquire()
+        .await
+        .context("Failed to establish connection")?;
     create_group(conn, group.name.trim()).await?;
     Ok(())
 }
