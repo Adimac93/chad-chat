@@ -1,6 +1,7 @@
 ﻿use anyhow::Context;
 use axum::{Extension, extract, http::StatusCode, Json};
 use jsonwebtoken::{encode, Header, EncodingKey};
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use crate::models::{AuthUser, Claims};
@@ -11,7 +12,7 @@ pub async fn post_register_user(
     user: extract::Json<AuthUser>,
 ) -> Result<(), AuthError> {
     let conn = pool.acquire().await.context("Failed to establish connection")?;
-    try_register_user(conn, user.login.trim(), user.password.trim()).await?;
+    try_register_user(conn, user.login.trim(), SecretString::new(user.password.trim().to_string())).await?;
     Ok(())
 }
 
@@ -22,14 +23,14 @@ pub async fn post_login_user(
     const ONE_HOUR_IN_SECONDS: u64 = 3600;
 
     let conn = pool.acquire().await.context("Failed to establish connection")?;
-    let user_id = login_user(conn, &user.login, &user.password).await?;
+    let user_id = login_user(conn, &user.login, SecretString::new(user.password.trim().to_string())).await?;
 
     let claims = Claims {
         id: user_id,
         exp: jsonwebtoken::get_current_timestamp() + ONE_HOUR_IN_SECONDS,
     };
 
-    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(get_token_secret().as_bytes()))
+    let token = encode(&Header::default(), &claims, &EncodingKey::from_secret(get_token_secret().expose_secret().as_bytes()))
         .context("Failed to encrypt token")?;
 
     Ok(Json(json!({ "access_token": token, "type": "Bearer" })))

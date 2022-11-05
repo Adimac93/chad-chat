@@ -8,9 +8,10 @@ use axum::{
     routing::{post},
     Extension, Router,
 };
+use sqlx::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 
-pub async fn app() -> Router {
+pub async fn app(pool: PgPool) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_headers(Any);
 
     let auth_routes = Router::new()
@@ -23,6 +24,6 @@ pub async fn app() -> Router {
     Router::new()
         .nest("/auth", auth_routes)
         .nest("/api", group_routes)
-        .layer(Extension(database::get_database_pool().await))
+        .layer(Extension(pool))
         .layer(cors)
 }

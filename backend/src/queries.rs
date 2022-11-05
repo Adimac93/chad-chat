@@ -7,7 +7,7 @@ use tracing::info;
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("Name is empty")]
+    #[error("Missing one or more fields")]
     MissingField,
     #[error(transparent)]
     Unexpected(#[from] anyhow::Error),
@@ -29,10 +29,13 @@ pub async fn create_group(mut conn: PoolConnection<Postgres>, name: &str) -> Res
         return Err(AppError::MissingField);
     }
 
-    let res = query!("
-        insert into groups (name)
-        values ($1)
-    ", name)
+    let res = query!(
+        "
+            insert into groups (name)
+            values ($1)
+        ",
+        name
+    )
     .execute(&mut conn)
     .await
     .context("Query failed")?;

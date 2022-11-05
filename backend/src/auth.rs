@@ -7,6 +7,7 @@ use sqlx::{query, pool::PoolConnection, Postgres};
 use thiserror::Error;
 use tracing::info;
 use uuid::Uuid;
+use secrecy::{SecretString, ExposeSecret};
 
 #[derive(Error, Debug)]
 pub enum AuthError {
@@ -50,13 +51,13 @@ impl IntoResponse for AuthError {
 pub async fn try_register_user(
     mut conn: PoolConnection<Postgres>,
     login: &str,
-    password: &str,
+    password: SecretString,
 ) -> Result<(), AuthError> {
-    if login.is_empty() || password.is_empty() {
+    if login.is_empty() || password.expose_secret().is_empty() {
         return Err(AuthError::MissingCredential);
     }
 
-    if !pass_is_strong(password, &[&login]) {
+    if !pass_is_strong(password.expose_secret(), &[&login]) {
         return Err(AuthError::WeakPassword)
     }
 
@@ -74,7 +75,7 @@ pub async fn try_register_user(
         return Err(AuthError::UserAlreadyExists);
     }
 
-    let hashed_pass = hash_pass(&password).context("Failed to hash pass")?;
+    let hashed_pass = hash_pass(password).context("Failed to hash pass")?;
 
     let res = query!(
         r#"
@@ -95,30 +96,33 @@ pub async fn try_register_user(
 pub async fn login_user(
     mut conn: PoolConnection<Postgres>,
     login: &str,
-    password: &str,
+    password: SecretString,
 ) -> Result<Uuid, AuthError> {
-    if login.trim().is_empty() || password.trim().is_empty() {
+    if login.is_empty() || password.expose_secret().is_empty() {
         return Err(AuthError::MissingCredential);
     }
 
-    let res = query!("
-        select * from users where login = $1
-    ", login)
+    let res = query!(
+        "
+            select * from users where login = $1
+        ",
+        login
+    )
     .fetch_optional(&mut conn)
     .await
     .context("Failed to select user by login")?
     .ok_or(AuthError::WrongUserOrPassword)?;
 
     info!("{res:?}");
-    if verify_encoded(&res.password, password.as_bytes()).context("Failed to verify password")? {
+    if verify_encoded(&res.password, password.expose_secret().as_bytes()).context("Failed to verify password")? {
         Ok(res.id)
     } else {
         Err(AuthError::WrongUserOrPassword)
     }
 }
 
-fn hash_pass(pass: &str) -> Result<String, AuthError> {
-    Ok(hash_encoded(pass.as_bytes(), random_salt().as_bytes(), &argon2::Config::default()).context("Failed to hash pass")?)
+fn hash_pass(pass: SecretString) -> Result<String, AuthError> {
+    Ok(hash_encoded(pass.expose_secret().as_bytes(), random_salt().as_bytes(), &argon2::Config::default()).context("Failed to hash pass")?)
 }
 
 fn random_salt() -> String {
@@ -134,6 +138,6 @@ fn pass_is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
     }
 }
 
-pub fn get_token_secret() -> String {
-    std::env::var("TOKEN_SECRET").expect("Cannot find token secret")
+pub fn get_token_secret() -> SecretString {
+    SecretString::new(std::env::var("TOKEN_SECRET").expect("Cannot find token secret"))
 }
