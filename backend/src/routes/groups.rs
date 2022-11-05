@@ -8,7 +8,7 @@ pub async fn post_create_group(
     pool: Extension<PgPool>,
     group: extract::Json<NewGroup>,
 ) -> Result<(), AppError> {
-    let mut conn = pool.acquire().await.context("Failed to establish connection")?;
-    create_group(&mut conn, &group.name).await?;
+    let conn = pool.acquire().await.context("Failed to establish connection")?;
+    create_group(conn, group.name.trim()).await?;
     Ok(())
 }

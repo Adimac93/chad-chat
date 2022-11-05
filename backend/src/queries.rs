@@ -24,8 +24,8 @@ impl IntoResponse for AppError {
     }
 }
 
-pub async fn create_group(conn: &mut PoolConnection<Postgres>, name: &str) -> Result<(), AppError> {
-    if name.trim().is_empty() {
+pub async fn create_group(mut conn: PoolConnection<Postgres>, name: &str) -> Result<(), AppError> {
+    if name.is_empty() {
         return Err(AppError::MissingField);
     }
 
@@ -33,7 +33,7 @@ pub async fn create_group(conn: &mut PoolConnection<Postgres>, name: &str) -> Re
         insert into groups (name)
         values ($1)
     ", name)
-    .execute(conn)
+    .execute(&mut conn)
     .await
     .context("Query failed")?;
 

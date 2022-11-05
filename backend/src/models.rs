@@ -20,7 +20,6 @@ where B: Send,
         let TypedHeader(Authorization(bearer)) = 
             TypedHeader::<Authorization<Bearer>>::from_request(req).await.map_err(|_| AuthError::InvalidToken)?;
         let data = decode::<Claims>(bearer.token(), &DecodingKey::from_secret(get_token_secret().as_bytes()), &Validation::default());
-        dbg!(&data);
         let new_data = data.map_err(|_| AuthError::InvalidToken)?;
         Ok(new_data.claims)
     }

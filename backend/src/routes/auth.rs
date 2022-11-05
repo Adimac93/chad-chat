@@ -10,8 +10,8 @@ pub async fn post_register_user(
     pool: Extension<PgPool>,
     user: extract::Json<AuthUser>,
 ) -> Result<(), AuthError> {
-    let mut conn = pool.acquire().await.context("Failed to establish connection")?;
-    try_register_user(&mut conn, &user.login, &user.password).await?;
+    let conn = pool.acquire().await.context("Failed to establish connection")?;
+    try_register_user(conn, user.login.trim(), user.password.trim()).await?;
     Ok(())
 }
 
@@ -21,8 +21,8 @@ pub async fn post_login_user(
 ) -> Result<Json<Value>, AuthError> {
     const ONE_HOUR_IN_SECONDS: u64 = 3600;
 
-    let mut conn = pool.acquire().await.context("Failed to establish connection")?;
-    let user_id = login_user(&mut conn, &user.login, &user.password).await?;
+    let conn = pool.acquire().await.context("Failed to establish connection")?;
+    let user_id = login_user(conn, &user.login, &user.password).await?;
 
     let claims = Claims {
         id: user_id,

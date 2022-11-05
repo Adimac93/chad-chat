@@ -39,22 +39,25 @@ impl IntoResponse for AuthError {
 }
 
 pub async fn try_register_user(
-    conn: &mut PoolConnection<Postgres>,
+    mut conn: PoolConnection<Postgres>,
     login: &str,
     password: &str,
 ) -> Result<(), AuthError> {
-    if login.trim().is_empty() || password.trim().is_empty() {
+    if login.is_empty() || password.is_empty() {
         return Err(AuthError::MissingCredential);
     }
 
-    if !is_strong(password, &[&login]) {
+    if !pass_is_strong(password, &[&login]) {
         return Err(AuthError::WeakPassword)
     }
 
-    let user = query!("
-        select * from users where login = $1
-    ", login)
-    .fetch_optional(&mut *conn)
+    let user = query!(
+        r#"
+            select * from users where login = $1
+        "#,
+        login
+    )
+    .fetch_optional(&mut conn)
     .await
     .context("Query failed")?;
 
@@ -72,7 +75,7 @@ pub async fn try_register_user(
         login,
         hashed_pass
     )
-    .execute(conn)
+    .execute(&mut conn)
     .await
     .context("Query failed");
 
@@ -81,7 +84,7 @@ pub async fn try_register_user(
 }
 
 pub async fn login_user(
-    conn: &mut PoolConnection<Postgres>,
+    mut conn: PoolConnection<Postgres>,
     login: &str,
     password: &str,
 ) -> Result<Uuid, AuthError> {
@@ -92,7 +95,7 @@ pub async fn login_user(
     let res = query!("
         select * from users where login = $1
     ", login)
-    .fetch_optional(conn)
+    .fetch_optional(&mut conn)
     .await
     .context("User query failed")?
     .ok_or(AuthError::WrongUserOrPassword)?;
@@ -114,7 +117,7 @@ fn random_salt() -> String {
     (0..8).map(|_| rng.sample(Alphanumeric) as char).collect()
 }
 
-fn is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
+fn pass_is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
     let score = zxcvbn::zxcvbn(user_password, user_inputs);
     match score {
         Ok(s) => s.score() >= 3,
