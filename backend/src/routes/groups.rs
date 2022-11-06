@@ -14,6 +14,7 @@ pub async fn post_create_group(
         .acquire()
         .await
         .context("Failed to establish connection")?;
-    create_group(conn, group.name.trim()).await?;
+    
+    create_group(conn, group.name.trim(),claims.id).await?;
     Ok(())
 }

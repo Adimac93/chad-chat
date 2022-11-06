@@ -7,7 +7,7 @@ create table users(
 
 create table groups(
     id uuid not null default gen_random_uuid() primary key,
-    name varchar
+    name varchar not null
 );
 
 create table group_users(

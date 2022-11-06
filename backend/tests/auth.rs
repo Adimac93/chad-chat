@@ -18,7 +18,7 @@ mod tests {
         dotenv().ok();
 
         let addr = tools::spawn_app().await;
-        let client = reqwest::Client::new();
+        let client = tools::client();
 
         let payload = json!({
             "login": format!("User{}", Uuid::new_v4()),
@@ -43,11 +43,8 @@ mod tests {
         
         assert_eq!(res.status(), StatusCode::OK);
 
-        let token = res.json::<TokenData>().await.unwrap().access_token;
-
         let res = client
             .post(format!("http://{}/auth/user-validation", addr))
-            .bearer_auth(token)
             .send()
             .await
             .unwrap();
@@ -60,7 +57,7 @@ mod tests {
         dotenv().ok();
 
         let addr = tools::spawn_app().await;
-        let client = reqwest::Client::new();
+        let client = tools::client();
 
         let user_id = Uuid::new_v4();
 
@@ -96,7 +93,7 @@ mod tests {
         dotenv().ok();
 
         let addr = tools::spawn_app().await;
-        let client = reqwest::Client::new();
+        let client = tools::client();
 
         let user_id = Uuid::new_v4();
 

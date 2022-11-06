@@ -1,13 +1,16 @@
 ﻿use crate::auth::{get_token_secret, AuthError};
+use anyhow::Context;
 use axum::{
     async_trait,
     extract::{self, FromRequest},
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
+use axum_extra::extract::{cookie::Cookie, CookieJar};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -24,16 +27,15 @@ where
     type Rejection = AuthError;
 
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let TypedHeader(Authorization(bearer)) =
-            TypedHeader::<Authorization<Bearer>>::from_request(req)
-                .await
-                .map_err(|_| AuthError::InvalidToken)?;
+        let jar = CookieJar::from_request(req).await.context("Failed to fetch cookie jar")?;
+        let cookie = jar.get("jwt").ok_or(AuthError::InvalidToken)?;
+        trace!("JWT: {:?}",cookie.value());
         
         let mut validation = Validation::default();
         validation.leeway = 5;
 
         let data = decode::<Claims>(
-            bearer.token(),
+            cookie.value(),
             &DecodingKey::from_secret(get_token_secret().expose_secret().as_bytes()),
            &validation
         );

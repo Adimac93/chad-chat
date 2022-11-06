@@ -1,4 +1,5 @@
 ﻿use backend::app;
+use reqwest::Client;
 use sqlx::{PgPool, PgConnection, Connection, Executor};
 use uuid::Uuid;
 use std::net::{TcpListener, SocketAddr};
@@ -25,6 +26,10 @@ pub async fn spawn_app() -> SocketAddr {
     });
 
     addr
+}
+
+pub fn client() -> Client {
+    Client::builder().cookie_store(true).build().expect("Failed to build reqwest client")
 }
 
 pub async fn config_db(config: DatabaseConfig) -> PgPool {
