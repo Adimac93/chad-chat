@@ -103,9 +103,9 @@ pub async fn login_user(
     }
 
     let res = query!(
-        "
+        r#"
             select * from users where login = $1
-        ",
+        "#,
         login
     )
     .fetch_optional(&mut conn)

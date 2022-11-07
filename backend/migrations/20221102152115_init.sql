@@ -11,6 +11,7 @@ create table groups(
 );
 
 create table group_users(
+    primary key (user_id, group_id)
     user_id uuid not null,
     group_id uuid not null,
     foreign key (user_id) references users(id),

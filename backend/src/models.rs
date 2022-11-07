@@ -6,11 +6,10 @@ use axum::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
-use axum_extra::extract::{cookie::Cookie, CookieJar};
+use axum_extra::extract::CookieJar;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use tracing::trace;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -29,7 +28,6 @@ where
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_request(req).await.context("Failed to fetch cookie jar")?;
         let cookie = jar.get("jwt").ok_or(AuthError::InvalidToken)?;
-        trace!("JWT: {:?}",cookie.value());
         
         let mut validation = Validation::default();
         validation.leeway = 5;
