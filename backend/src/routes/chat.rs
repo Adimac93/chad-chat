@@ -5,8 +5,9 @@
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use sqlx::{query, PgPool};
+use uuid::Uuid;
 use std::{
-    sync::{Arc},
+    sync::{Arc, Mutex}, str::FromStr, collections::{HashMap, HashSet},
 };
 use tokio::sync::broadcast;
 use tracing::{error,debug};
@@ -15,14 +16,28 @@ use crate::models::Claims;
 
 // Our shared state
 pub struct AppState {
+    groups: Mutex<HashMap<Uuid, GroupTransmitter>>,
+}
+
+struct GroupTransmitter {
     tx: broadcast::Sender<String>,
+    users: HashSet<Uuid>,
+}
+
+impl GroupTransmitter {
+    fn new() -> Self {
+        let (tx, _rx) = broadcast::channel(100);
+        Self {
+            tx,
+            users: HashSet::new(),
+        }
+    }
 }
 
 impl AppState {
     pub fn new() -> Self {
-        let (tx, _rx) = broadcast::channel(100);
         Self {
-            tx,
+            groups: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -38,14 +53,13 @@ pub async fn chat_handler(
 
 async fn chat_socket(
     stream: WebSocket,
-    state: Extension<Arc<AppState>>,
+    Extension(state): Extension<Arc<AppState>>,
     claims: Claims,
     pool: Extension<PgPool>,
 ) {
     // By splitting we can send and receive at the same time.
     let (mut sender, mut receiver) = stream.split();
 
-    // Username gets set in the receive loop, if it's valid.
     let mut conn = match pool.acquire().await {
         Ok(conn) => conn,
         Err(e) => {
@@ -53,6 +67,45 @@ async fn chat_socket(
             return
         },
     };
+
+    // Loop until a text message is found.
+    let mut group_id = String::new();
+    while let Some(Ok(message)) = receiver.next().await {
+        if let Message::Text(id) = message {
+            group_id = id;
+            break
+        }
+    }
+
+    let Ok(group_id) = Uuid::from_str(&group_id) else {
+        return
+    };
+
+    if query!(
+    r#"
+        select * from groups
+        where id = $1
+    "#,
+    group_id)
+    .fetch_one(&mut conn)
+    .await.is_err() {
+        return
+    };
+
+    if query!(
+    r#"
+        select * from group_users
+        where group_id = $1
+        and user_id = $2
+    "#,
+    group_id,
+    claims.id
+    )
+    .fetch_one(&mut conn)
+    .await.is_err() {
+        return
+    };
+
     let Ok(res) = query!(
         r#"
             select login from users where id = $1
@@ -68,12 +121,23 @@ async fn chat_socket(
     let username = res.login;
 
     // Subscribe before sending joined message.
-    let mut rx = state.tx.subscribe();
+    let (tx, mut rx) =
+    {
+        let mut groups = state.groups.lock().unwrap();
+        
+        let group = groups.entry(group_id).and_modify(|val| {
+            val.users.insert(claims.id);
+        }).or_insert(GroupTransmitter::new());
 
-    // Send joined message to all subscribers.
-    let msg = format!("{} joined.", username);
-    debug!("{}", msg);
-    let _ = state.tx.send(msg);
+        let rx = group.tx.subscribe();
+
+        // Send joined message to all subscribers.
+        let msg = format!("{} joined.", username);
+        debug!("{}", msg);
+        let _ = group.tx.send(msg);
+
+        (group.tx.clone(), rx)
+    };
 
     // This task will receive broadcast messages and send text message to our client.
     let mut send_task = tokio::spawn(async move {
@@ -86,14 +150,14 @@ async fn chat_socket(
     });
 
     // Clone things we want to pass to the receiving task.
-    let tx = state.tx.clone();
     let name = username.clone();
+    let cloned_tx = tx.clone();
 
     // This task will receive messages from client and send them to broadcast subscribers.
     let mut recv_task = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
             // Add username before message.
-            let _ = tx.send(format!("{}: {}", name, text));
+            let _ = cloned_tx.send(format!("{}: {}", name, text));
         }
     });
 
@@ -106,8 +170,7 @@ async fn chat_socket(
     // Send user left message.
     let msg = format!("{} left.", username);
     debug!("{}", msg);
-    let _ = state.tx.send(msg);
-    // Remove username from map so new clients can take it.
+    let _ = tx.send(msg);
 }
 
 // Include utf-8 file at **compile** time.
