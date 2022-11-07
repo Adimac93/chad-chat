@@ -5,11 +5,6 @@ use uuid::Uuid;
 use dotenv::dotenv;
 mod tools;
 
-#[derive(Deserialize)]
-struct TokenData {
-    access_token: String,
-}
-
 mod tests {
     use super::*;
 

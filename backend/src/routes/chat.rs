@@ -4,11 +4,13 @@ use axum::{
     Extension,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
+use sqlx::{query, query_as, PgPool};
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
 };
 use tokio::sync::broadcast;
+use uuid::Uuid;
 
 use crate::models::Claims;
 
@@ -28,37 +30,41 @@ impl AppState {
     }
 }
 
-pub async fn chat_handler(ws: WebSocketUpgrade, state: Extension<Arc<AppState>>, claims: Claims) -> Response {
-    ws.on_upgrade(|socket| chat_socket(socket, state, claims))
+pub async fn chat_handler(
+    ws: WebSocketUpgrade,
+    state: Extension<Arc<AppState>>,
+    claims: Claims,
+    pool: Extension<PgPool>,
+) -> Response {
+    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool))
 }
 
-async fn chat_socket(stream: WebSocket, state: Extension<Arc<AppState>>, claims: Claims) {
+async fn chat_socket(
+    stream: WebSocket,
+    state: Extension<Arc<AppState>>,
+    claims: Claims,
+    pool: Extension<PgPool>,
+) {
     // By splitting we can send and receive at the same time.
     let (mut sender, mut receiver) = stream.split();
 
     // Username gets set in the receive loop, if it's valid.
-    let mut username = claims.id.to_string();
+    let mut conn = match pool.acquire().await {
+        Ok(conn) => conn,
+        Err(e) => return,
+    };
+    let Ok(res) = query!(
+        r#"
+            select login from users where id = $1
+        "#,
+        claims.id
+    )
+    .fetch_one(&mut conn)
+    .await else {
+        return;
+    };
 
-    // // Loop until a text message is found.
-    // // Listen untill username provided
-    // while let Some(Ok(message)) = receiver.next().await {
-    //     if let Message::Text(name) = message {
-    //         // If username that is sent by client is not taken, fill username string.
-    //         check_username(&state, &mut username, &name);
-
-    //         // If not empty we want to quit the loop else we want to quit function.
-    //         if !username.is_empty() {
-    //             break;
-    //         } else {
-    //             // Only send our client that username is taken.
-    //             let _ = sender
-    //                 .send(Message::Text(String::from("Username already taken.")))
-    //                 .await;
-
-    //             return;
-    //         }
-    //     }
-    // }
+    let username = res.login;
 
     // Subscribe before sending joined message.
     let mut rx = state.tx.subscribe();
