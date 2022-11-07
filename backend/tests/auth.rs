@@ -1,5 +1,4 @@
 ﻿use reqwest::StatusCode;
-use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
 use dotenv::dotenv;

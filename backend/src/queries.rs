@@ -7,6 +7,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum AppError {
+    #[error("This user is already in this group")]
+    GroupUserAlreadyExists,
     #[error("Missing one or more fields")]
     MissingField,
     #[error(transparent)]
@@ -16,6 +18,7 @@ pub enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
         let status = match &self {
+            AppError::GroupUserAlreadyExists => StatusCode::BAD_REQUEST,
             AppError::MissingField => StatusCode::BAD_REQUEST,
             AppError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
@@ -71,12 +74,45 @@ pub async fn create_group(
     )
     .execute(&mut transaction)
     .await
-    .context("Failed to add user to group")?;
+    .map_err(|_| AppError::GroupUserAlreadyExists)?;
 
     transaction
         .commit()
         .await
         .context("Failed to commit transaction")?;
 
+    Ok(())
+}
+
+pub async fn try_add_user_to_group(mut conn: PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
+    // cannot tell a difference between finding an already existing user and any other kind of error
+    // if (user_id, group_id) was a composite primary key
+    query!(
+        r#"
+            insert into group_users (user_id, group_id)
+            values ($1, $2)
+        "#,
+        user_id,
+        group_id
+    )
+    .execute(&mut conn)
+    .await
+    .map_err(|_| AppError::GroupUserAlreadyExists)?;
+    Ok(())
+}
+
+pub async fn create_message(mut conn: PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid, content: &str) -> Result<(), AppError> {
+    query!(
+        r#"
+            insert into messages (content, user_id, group_id)
+            values ($1, $2, $3)
+        "#,
+        content,
+        user_id,
+        group_id
+    )
+    .execute(&mut conn)
+    .await
+    .context("Failed to add message")?;
     Ok(())
 }

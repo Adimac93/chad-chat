@@ -1,10 +1,10 @@
-use axum::{
+﻿use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::{Html, Response},
     Extension,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
-use sqlx::{query, query_as, PgPool};
+use sqlx::{query, PgPool};
 use std::{
     sync::{Arc},
 };

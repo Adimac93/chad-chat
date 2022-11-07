@@ -3,8 +3,6 @@ use anyhow::Context;
 use axum::{
     async_trait,
     extract::{self, FromRequest},
-    headers::{authorization::Bearer, Authorization},
-    TypedHeader,
 };
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::{decode, DecodingKey, Validation};
@@ -51,4 +49,17 @@ pub struct AuthUser {
 #[derive(Serialize, Deserialize)]
 pub struct NewGroup {
     pub name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GroupUser {
+    pub user_id: Uuid,
+    pub group_id: Uuid,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct NewMessage {
+    pub content: String,
+    pub user_id: Uuid,
+    pub group_id: Uuid,
 }

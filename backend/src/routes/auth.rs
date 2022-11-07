@@ -1,6 +1,4 @@
-﻿use std::future::Future;
-
-use crate::auth::{get_token_secret, login_user, try_register_user, AuthError};
+﻿use crate::auth::{get_token_secret, login_user, try_register_user, AuthError};
 use crate::models::{AuthUser, Claims};
 use anyhow::Context;
 use axum::{extract, http::StatusCode, Extension, Json};
@@ -9,8 +7,7 @@ use axum_extra::extract::CookieJar;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
-use sqlx::pool::PoolConnection;
-use sqlx::{PgPool, Postgres};
+use sqlx::PgPool;
 
 pub async fn post_register_user(
     pool: Extension<PgPool>,
@@ -25,8 +22,7 @@ pub async fn post_register_user(
         user.login.trim(),
         SecretString::new(user.password.trim().to_string()),
     )
-    .await?;
-    Ok(())
+    .await
 }
 
 pub async fn post_login_user(
