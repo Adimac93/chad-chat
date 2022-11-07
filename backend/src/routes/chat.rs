@@ -6,17 +6,15 @@ use axum::{
 use futures::{sink::SinkExt, stream::StreamExt};
 use sqlx::{query, query_as, PgPool};
 use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex},
+    sync::{Arc},
 };
 use tokio::sync::broadcast;
-use uuid::Uuid;
+use tracing::{error,debug};
 
 use crate::models::Claims;
 
 // Our shared state
 pub struct AppState {
-    user_set: Mutex<HashSet<String>>,
     tx: broadcast::Sender<String>,
 }
 
@@ -24,7 +22,6 @@ impl AppState {
     pub fn new() -> Self {
         let (tx, _rx) = broadcast::channel(100);
         Self {
-            user_set: Mutex::new(HashSet::new()),
             tx,
         }
     }
@@ -51,7 +48,10 @@ async fn chat_socket(
     // Username gets set in the receive loop, if it's valid.
     let mut conn = match pool.acquire().await {
         Ok(conn) => conn,
-        Err(e) => return,
+        Err(e) => {
+            error!("{e:?}");
+            return
+        },
     };
     let Ok(res) = query!(
         r#"
@@ -61,6 +61,7 @@ async fn chat_socket(
     )
     .fetch_one(&mut conn)
     .await else {
+        error!("Cannot fetch user login from database");
         return;
     };
 
@@ -71,7 +72,7 @@ async fn chat_socket(
 
     // Send joined message to all subscribers.
     let msg = format!("{} joined.", username);
-    tracing::debug!("{}", msg);
+    debug!("{}", msg);
     let _ = state.tx.send(msg);
 
     // This task will receive broadcast messages and send text message to our client.
@@ -104,20 +105,9 @@ async fn chat_socket(
 
     // Send user left message.
     let msg = format!("{} left.", username);
-    tracing::debug!("{}", msg);
+    debug!("{}", msg);
     let _ = state.tx.send(msg);
     // Remove username from map so new clients can take it.
-    state.user_set.lock().unwrap().remove(&username);
-}
-
-fn check_username(state: &AppState, string: &mut String, name: &str) {
-    let mut user_set = state.user_set.lock().unwrap();
-
-    if !user_set.contains(name) {
-        user_set.insert(name.to_owned());
-
-        string.push_str(name);
-    }
 }
 
 // Include utf-8 file at **compile** time.
