@@ -1,12 +1,12 @@
 ﻿use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::{Html, Response},
     Extension, Json,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::{json, Value};
-use sqlx::{query, PgPool};
+use sqlx::{query, PgPool, query_as};
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
@@ -15,8 +15,9 @@ use std::{
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 use uuid::Uuid;
+use crate::models::MessageModel;
 
-use crate::models::Claims;
+use crate::{models::Claims, queries::create_message};
 
 // Our shared state
 pub struct AppState {
@@ -130,6 +131,27 @@ async fn chat_socket(
 
     let username = res.login;
 
+    let Ok(res) = query_as!(
+        MessageModel,
+        r#"
+            select * from messages
+            where group_id = $1
+        "#,
+        group_id
+    )
+    .fetch_all(&mut conn)
+    .await else {
+        error!("Cannot fetch messages from database");
+        return;
+    };
+
+    for record in res.iter() {
+        if sender.send(Message::Text(format!("{}", record.content))).await.is_err() {
+            error!("Failed to load messages");
+            break;
+        }
+    }
+
     // Subscribe before sending joined message.
     let (tx, mut rx) = {
         let mut groups = state.groups.lock().unwrap();
@@ -152,7 +174,7 @@ async fn chat_socket(
     };
 
     // This task will receive broadcast messages and send text message to our client.
-    let mut send_task = tokio::spawn(async move {
+    let mut send_task_to_client = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             // In any websocket error, break loop.
             if sender.send(Message::Text(msg)).await.is_err() {
@@ -166,17 +188,22 @@ async fn chat_socket(
     let cloned_tx = tx.clone();
 
     // This task will receive messages from client and send them to broadcast subscribers.
-    let mut recv_task = tokio::spawn(async move {
+    let mut recv_task_from_client = tokio::spawn(async move {
         while let Some(Ok(Message::Text(text))) = receiver.next().await {
             // Add username before message.
-            let _ = cloned_tx.send(format!("{}: {}", name, text));
+            let msg = format!("{}: {}", name, text);
+            let _ = cloned_tx.send(msg.clone());
+
+            if create_message(&mut conn, claims.id, group_id, &msg).await.is_err() {
+                error!("Failed to add the message to the database")
+            }
         }
     });
 
     // If any one of the tasks exit, abort the other.
     tokio::select! {
-        _ = (&mut send_task) => recv_task.abort(),
-        _ = (&mut recv_task) => send_task.abort(),
+        _ = (&mut send_task_to_client) => recv_task_from_client.abort(),
+        _ = (&mut recv_task_from_client) => send_task_to_client.abort(),
     };
 
     // Send user left message.
@@ -186,7 +213,7 @@ async fn chat_socket(
     {
         let mut groups = state.groups.lock().unwrap();
         groups.entry(group_id).and_modify(|group| {
-            let is_present = group.users.remove(&claims.id);
+            let _is_present = group.users.remove(&claims.id);
         });
     }
 }

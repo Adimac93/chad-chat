@@ -57,7 +57,15 @@ pub struct GroupUser {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct NewMessage {
+pub struct Message {
+    pub content: String,
+    pub user_id: Uuid,
+    pub group_id: Uuid,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MessageModel {
+    pub id: Uuid,
     pub content: String,
     pub user_id: Uuid,
     pub group_id: Uuid,

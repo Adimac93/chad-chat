@@ -101,7 +101,7 @@ pub async fn try_add_user_to_group(mut conn: PoolConnection<Postgres>, user_id: 
     Ok(())
 }
 
-pub async fn create_message(mut conn: PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid, content: &str) -> Result<(), AppError> {
+pub async fn create_message(conn: &mut PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid, content: &str) -> Result<(), AppError> {
     query!(
         r#"
             insert into messages (content, user_id, group_id)
@@ -111,7 +111,7 @@ pub async fn create_message(mut conn: PoolConnection<Postgres>, user_id: Uuid, g
         user_id,
         group_id
     )
-    .execute(&mut conn)
+    .execute(conn)
     .await
     .context("Failed to add message")?;
     Ok(())

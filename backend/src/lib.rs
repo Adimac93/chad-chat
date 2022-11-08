@@ -22,7 +22,9 @@ pub async fn app(pool: PgPool) -> Router {
         .route("/login", get(login_index).post(routes::auth::post_login_user))
         .route("/user-validation", post(routes::auth::protected_zone));
 
-    let group_routes = Router::new().route("/groups", post(routes::groups::post_create_group));
+    let group_routes = Router::new()
+        .route("/groups", post(routes::groups::post_create_group))
+        .route("/add-user", post(routes::groups::post_add_user_to_group));
 
     let socket_routes = Router::new()
         .route("/", get(chat_index))
