@@ -1,16 +1,20 @@
 ﻿use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    response::{Html, Response},
-    Extension,
+    http::StatusCode,
+    response::{Html, IntoResponse, Response},
+    Extension, Json,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
+use serde_json::{json, Value};
 use sqlx::{query, PgPool};
-use uuid::Uuid;
 use std::{
-    sync::{Arc, Mutex}, str::FromStr, collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::{Arc, Mutex},
 };
 use tokio::sync::broadcast;
-use tracing::{error,debug};
+use tracing::{debug, error, info};
+use uuid::Uuid;
 
 use crate::models::Claims;
 
@@ -64,16 +68,17 @@ async fn chat_socket(
         Ok(conn) => conn,
         Err(e) => {
             error!("{e:?}");
-            return
-        },
+            return;
+        }
     };
 
     // Loop until a text message is found.
     let mut group_id = String::new();
     while let Some(Ok(message)) = receiver.next().await {
         if let Message::Text(id) = message {
+            info!("Valid group id: {}", id);
             group_id = id;
-            break
+            break;
         }
     }
 
@@ -82,28 +87,33 @@ async fn chat_socket(
     };
 
     if query!(
-    r#"
+        r#"
         select * from groups
         where id = $1
     "#,
-    group_id)
+        group_id
+    )
     .fetch_one(&mut conn)
-    .await.is_err() {
-        return
+    .await
+    .is_err()
+    {
+        return;
     };
 
     if query!(
-    r#"
+        r#"
         select * from group_users
         where group_id = $1
         and user_id = $2
     "#,
-    group_id,
-    claims.id
+        group_id,
+        claims.id
     )
     .fetch_one(&mut conn)
-    .await.is_err() {
-        return
+    .await
+    .is_err()
+    {
+        return;
     };
 
     let Ok(res) = query!(
@@ -121,13 +131,15 @@ async fn chat_socket(
     let username = res.login;
 
     // Subscribe before sending joined message.
-    let (tx, mut rx) =
-    {
+    let (tx, mut rx) = {
         let mut groups = state.groups.lock().unwrap();
-        
-        let group = groups.entry(group_id).and_modify(|val| {
-            val.users.insert(claims.id);
-        }).or_insert(GroupTransmitter::new());
+
+        let group = groups
+            .entry(group_id)
+            .and_modify(|val| {
+                val.users.insert(claims.id);
+            })
+            .or_insert(GroupTransmitter::new());
 
         let rx = group.tx.subscribe();
 
@@ -171,9 +183,52 @@ async fn chat_socket(
     let msg = format!("{} left.", username);
     debug!("{}", msg);
     let _ = tx.send(msg);
+    {
+        let mut groups = state.groups.lock().unwrap();
+        groups.entry(group_id).and_modify(|group| {
+            let is_present = group.users.remove(&claims.id);
+        });
+    }
 }
 
+pub async fn get_user_groups(
+    claims: Claims,
+    pool: Extension<PgPool>,
+) -> Result<Json<Value>, StatusCode> {
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let res = query!(
+        r#"
+        select groups.id, groups.name from group_users
+        join groups on groups.id = group_users.group_id
+        where user_id = $1
+        "#,
+        claims.id
+    )
+    .fetch_all(&mut conn)
+    .await;
+
+    match res {
+        Ok(groups) => {
+            debug!("{groups:#?}");
+            let groups = groups
+                .into_iter()
+                .map(|group| (group.name, group.id))
+                .collect::<Vec<(String, Uuid)>>();
+            debug!("{groups:#?}");
+            Ok(Json(json!({ "groups": groups })))
+        }
+        Err(e) => {
+            match e {
+                sqlx::Error::RowNotFound => return Ok(Json(json!({"groups": []}))),
+                _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+            };
+        }
+    }
+}
 // Include utf-8 file at **compile** time.
-pub async fn chat() -> Html<&'static str> {
-    Html(std::include_str!("../../index.html"))
+pub async fn chat_index() -> Html<&'static str> {
+    Html(std::include_str!("../../chat.html"))
 }

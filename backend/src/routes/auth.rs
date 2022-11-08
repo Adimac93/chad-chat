@@ -1,6 +1,7 @@
 ﻿use crate::auth::{get_token_secret, login_user, try_register_user, AuthError};
 use crate::models::{AuthUser, Claims};
 use anyhow::Context;
+use axum::response::Html;
 use axum::{extract, http::StatusCode, Extension, Json};
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
@@ -57,8 +58,9 @@ pub async fn post_login_user(
 
     let cookie = Cookie::build("jwt", token)
         .http_only(true)
-        .secure(false)
+        .secure(true)
         .same_site(SameSite::Strict)
+        .path("/")
         .finish();
 
     Ok(jar.add(cookie))
@@ -66,4 +68,12 @@ pub async fn post_login_user(
 
 pub async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
     Ok(Json(json!({ "user id": claims.id })))
+}
+
+pub async fn login_index() -> Html<&'static str> {
+    Html(std::include_str!("../../login.html"))
+}
+
+pub async fn register_index() -> Html<&'static str> {
+    Html(std::include_str!("../../register.html"))
 }

@@ -26,7 +26,6 @@ where
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_request(req).await.context("Failed to fetch cookie jar")?;
         let cookie = jar.get("jwt").ok_or(AuthError::InvalidToken)?;
-        
         let mut validation = Validation::default();
         validation.leeway = 5;
 

@@ -20,7 +20,6 @@ dotenv = "0.15.0"
 futures = "0.3.25"
 jsonwebtoken = "8.1.1"
 rand = "0.8.5"
-reqwest = { version = "0.11.12", features = ["json", "cookies"] }
 rust-argon2 = "1.0.0"
 secrecy = "0.8.0"
 serde = { version = "1.0.147", features = ["derive"] }
@@ -34,3 +33,6 @@ tracing = "0.1.36"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
 zxcvbn = "2.2.1"
+
+[dev-dependencies]
+reqwest = { version = "0.11.12", features = ["json", "cookies"] }

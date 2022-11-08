@@ -8,25 +8,26 @@ use std::sync::Arc;
 
 use axum::{
     routing::{get, post},
-    Extension, Router,
+    Extension, Router, http::HeaderValue,
 };
-use routes::chat::{chat, AppState, chat_handler};
+use routes::{chat::{chat_index, AppState, chat_handler, get_user_groups}, auth::{login_index, register_index}};
 use sqlx::PgPool;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{CorsLayer};
 
 pub async fn app(pool: PgPool) -> Router {
-    let cors = CorsLayer::new().allow_origin(Any).allow_headers(Any);
+    let cors = CorsLayer::new().allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap()).allow_credentials(true); // allow_credentials "http://localhost:3000".parse::<HeaderValue>().unwrap()
 
     let auth_routes = Router::new()
-        .route("/register", post(routes::auth::post_register_user))
-        .route("/login", post(routes::auth::post_login_user))
+        .route("/register", get(register_index).post(routes::auth::post_register_user))
+        .route("/login", get(login_index).post(routes::auth::post_login_user))
         .route("/user-validation", post(routes::auth::protected_zone));
 
     let group_routes = Router::new().route("/groups", post(routes::groups::post_create_group));
 
     let socket_routes = Router::new()
-        .route("/", get(chat))
+        .route("/", get(chat_index))
         .route("/websocket",get(chat_handler))
+        .route("/groups", get(get_user_groups))
         .layer(Extension(Arc::new(AppState::new())));
 
     Router::new()

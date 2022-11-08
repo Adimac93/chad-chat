@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>ChadChat</title>
+</head>
+
+<body>
+    <h1>Chat</h1>
+    <h2>Connection status:</h2>
+    <h2 id="status">disconnected</h2>
+    <select name="groups" id="groups">
+        <textarea id="chat" style="display:block; width:600px; height:400px; box-sizing: border-box" cols="30" rows="10"
+            disabled="true"></textarea>
+        <input id="input" style="display:block; width:600px; box-sizing: border-box" type="text" placeholder="chat">
+
+
+    </select>
+
+    <script>
+        const textarea = document.querySelector("#chat");
+        const input = document.querySelector("#input");
+        const status = document.querySelector("#status");
+        const groups = document.querySelector("#groups")
+        async function main() {
+            fetch("http://localhost:3000/chat/groups", { method: "GET", mode: "cors", credentials: "include" }).then((res) => {
+                res.json().then((json) => {
+                    if (!json.groups[0]) {
+                        groups.disabled = true;
+                        groups.add(new Option("You aren't in any grop yet"))
+                        return
+                    }
+                    json.groups.forEach((group) => {
+                        console.log(`${group[0]} ${group[1]}`);
+                        let option = new Option(group[0], group[1])
+                        groups.add(option, undefined)
+                    })
+                })
+            })
+
+            let websocket = init_websocket()
+
+            groups.addEventListener("change", (e) => {
+                websocket.close();
+                websocket = init_websocket()
+            })
+
+            input.onkeydown = function (e) {
+                if (e.key == "Enter") {
+                    websocket.send(input.value);
+                    input.value = "";
+                }
+            }
+        };
+
+        function init_websocket() {
+            const websocket = new WebSocket("ws://localhost:3000/chat/websocket");
+
+            websocket.onopen = function () {
+                console.log(`Connection opened: ${groups.name}`);
+                websocket.send(groups.value);
+                status.innerHTML = "connected";
+                input.disabled = false;
+                textarea.value = null;
+            }
+
+            websocket.onclose = function () {
+                console.log("connection closed");
+                status.innerHTML = "disconnected";
+                input.disabled = true;
+            }
+
+            websocket.onmessage = function (e) {
+                console.log("received message: " + e.data);
+                textarea.value += e.data + "\r\n";
+            }
+
+
+
+
+
+            return websocket;
+        }
+        main();
+    </script>
+</body>
+
+</html>
