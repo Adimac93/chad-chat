@@ -1,7 +1,7 @@
 ﻿use anyhow::Context;
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
-use sqlx::{pool::PoolConnection, query, query_as, Acquire, Postgres};
+use sqlx::{pool::PoolConnection, query, query_as, Acquire, Postgres, Connection};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -115,4 +115,20 @@ pub async fn create_message(conn: &mut PoolConnection<Postgres>, user_id: Uuid, 
     .await
     .context("Failed to add message")?;
     Ok(())
+}
+
+pub async fn check_if_group_member(conn: &mut PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid) -> Result<bool, AppError> {
+    let res = query!(
+        r#"
+            select * from group_users
+            where user_id = $1 and group_id = $2
+        "#,
+        user_id,
+        group_id
+    )
+    .fetch_optional(conn)
+    .await
+    .context("Failed to check if user is in group")?;
+
+    Ok(res.is_some())
 }

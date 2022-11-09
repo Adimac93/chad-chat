@@ -1,8 +1,21 @@
-﻿use crate::models::{Claims, NewGroup, GroupUser};
-use crate::queries::{create_group, AppError, try_add_user_to_group};
+﻿use std::collections::{HashMap, HashSet};
+use std::sync::{Arc};
+
+use crate::groups::GroupError;
+use crate::models::{Claims, GroupUser, NewGroup};
+use crate::queries::{check_if_group_member, create_group, try_add_user_to_group, AppError};
 use anyhow::Context;
-use axum::{extract, Extension};
+use axum::extract::Path;
+use axum::http::status::StatusCode;
+use axum::response::{IntoResponse, Html};
+use axum::{extract, Extension, Json, debug_handler};
+use rand::distributions::Alphanumeric;
+use rand::Rng;
+use serde::{Serialize, Deserialize};
+use serde_json::{Value, json};
 use sqlx::PgPool;
+use tokio::sync::RwLock;
+use uuid::Uuid;
 
 pub async fn post_create_group(
     claims: Claims,
@@ -14,20 +27,85 @@ pub async fn post_create_group(
         .acquire()
         .await
         .context("Failed to establish connection")?;
-    
-    create_group(conn, group.name.trim(),claims.id).await
+
+    create_group(conn, group.name.trim(), claims.id).await
 }
 
 pub async fn post_add_user_to_group(
     claims: Claims,
     pool: Extension<PgPool>,
-    axum::Json(GroupUser{user_id, group_id}): extract::Json<GroupUser>,
+    Json(GroupUser { user_id, group_id }): Json<GroupUser>,
 ) -> Result<(), AppError> {
     tracing::trace!("JWT: {:#?}", claims);
     let conn = pool
         .acquire()
         .await
         .context("Failed to establish connection")?;
-    
+
     try_add_user_to_group(conn, user_id, group_id).await
 }
+
+pub struct InvitationState {
+    code: RwLock<HashMap<Uuid, Uuid>>,
+    // invitation : group
+}
+
+impl InvitationState {
+    pub fn new() -> Self {
+        InvitationState { code: RwLock::new(HashMap::new()) }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct NewGroupInvitation {
+    group_id: Uuid,
+}
+
+pub async fn post_create_group_invitation_link(
+    claims: Claims,
+    pool: Extension<PgPool>,
+    Json(NewGroupInvitation{group_id}): Json<NewGroupInvitation>,
+    state: Extension<Arc<InvitationState>>,
+) -> Result<Json<Value>,GroupError> {
+    let mut conn = pool
+    .acquire()
+    .await
+    .context("Failed to get connection pool")
+    .map_err(|e| GroupError::Unexpected(e))?;
+
+    let is_member = check_if_group_member(&mut conn, claims.id, group_id).await.map_err(|e| GroupError::Unexpected(e.into()))?;
+    let id = Uuid::new_v4();
+    if is_member {
+        let _ = state.code.write().await.insert(id, group_id);
+    }
+    
+    Ok(Json(json!({"url": format!("Your invitation link: 127.0.0.1:3000/groups/join/{id}")})))
+    
+}
+
+#[debug_handler]
+pub async fn get_join_group_by_link(
+    Path(invite_id): Path<Uuid>,
+    claims: Claims,
+    pool: Extension<PgPool>,
+    state: Extension<Arc<InvitationState>>,
+) -> Result<(),GroupError> {
+    let conn = pool
+            .acquire()
+            .await
+            .context("Failed to get connection pool")
+            .map_err(|e| GroupError::Unexpected(e))?;
+
+    
+    match state.code.read().await.get(&invite_id) {
+        Some(group_id) => {
+            
+            try_add_user_to_group(conn, claims.id, *group_id).await.unwrap();
+            Ok(())
+        },
+        None => Ok(()),
+    }
+      
+}
+
+fn random_invitation_code() -> String {
