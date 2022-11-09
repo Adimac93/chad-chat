@@ -8,6 +8,7 @@ use axum_extra::extract::CookieJar;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use time::{OffsetDateTime};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -65,8 +66,9 @@ pub struct Message {
 
 #[derive(Serialize, Deserialize)]
 pub struct MessageModel {
-    pub id: Uuid,
+    pub id: i32,
     pub content: String,
     pub user_id: Uuid,
     pub group_id: Uuid,
+    pub sent_at: OffsetDateTime
 }
