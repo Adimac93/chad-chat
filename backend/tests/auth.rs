@@ -1,7 +1,7 @@
-﻿use reqwest::StatusCode;
+﻿use dotenv::dotenv;
+use reqwest::StatusCode;
 use serde_json::json;
 use uuid::Uuid;
-use dotenv::dotenv;
 mod tools;
 
 mod tests {
@@ -34,7 +34,7 @@ mod tests {
             .send()
             .await
             .unwrap();
-        
+
         assert_eq!(res.status(), StatusCode::OK);
 
         let res = client
@@ -42,7 +42,7 @@ mod tests {
             .send()
             .await
             .unwrap();
-        
+
         assert_eq!(res.status(), StatusCode::OK);
     }
 
@@ -78,7 +78,7 @@ mod tests {
             .send()
             .await
             .unwrap();
-        
+
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 
@@ -114,7 +114,7 @@ mod tests {
             .send()
             .await
             .unwrap();
-        
+
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 }

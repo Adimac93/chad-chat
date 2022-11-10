@@ -3,7 +3,7 @@ use argon2::{verify_encoded, hash_encoded};
 use axum::{response::IntoResponse, http::StatusCode, Json};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde_json::json;
-use sqlx::{query, pool::PoolConnection, Postgres};
+use sqlx::{query, pool::PoolConnection, Postgres, Pool};
 use thiserror::Error;
 use tracing::info;
 use uuid::Uuid;
@@ -49,7 +49,7 @@ impl IntoResponse for AuthError {
 }
 
 pub async fn try_register_user(
-    mut conn: PoolConnection<Postgres>,
+    pool: &Pool<Postgres>,
     login: &str,
     password: SecretString,
 ) -> Result<(), AuthError> {
@@ -67,7 +67,7 @@ pub async fn try_register_user(
         "#,
         login
     )
-    .fetch_optional(&mut conn)
+    .fetch_optional(pool)
     .await
     .context("Failed to query user by login")?;
 
@@ -85,7 +85,7 @@ pub async fn try_register_user(
         login,
         hashed_pass
     )
-    .execute(&mut conn)
+    .execute(pool)
     .await
     .context("Failed to create a new user");
 
@@ -94,7 +94,7 @@ pub async fn try_register_user(
 }
 
 pub async fn login_user(
-    mut conn: PoolConnection<Postgres>,
+    pool: &Pool<Postgres>,
     login: &str,
     password: SecretString,
 ) -> Result<Uuid, AuthError> {
@@ -108,7 +108,7 @@ pub async fn login_user(
         "#,
         login
     )
-    .fetch_optional(&mut conn)
+    .fetch_optional(pool)
     .await
     .context("Failed to select user by login")?
     .ok_or(AuthError::WrongUserOrPassword)?;

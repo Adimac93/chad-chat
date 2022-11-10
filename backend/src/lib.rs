@@ -4,15 +4,16 @@ pub mod models;
 pub mod queries;
 pub mod routes;
 pub mod groups;
+pub mod chat;
 
 use std::sync::{Arc};
-
 use axum::{
     routing::{get, post},
     Extension, Router, http::HeaderValue,
     http::header::{CONTENT_TYPE,}
 };
-use routes::{chat::{chat_index, AppState, chat_handler, get_user_groups}, auth::{login_index, register_index}, groups::{get_join_group_by_link, InvitationState, post_create_group_invitation_link}};
+use chat::ChatState;
+use routes::{chat::{chat_index, chat_handler, get_user_groups}, auth::{login_index, register_index}, groups::{get_join_group_by_link, InvitationState, post_create_group_invitation_link}};
 use sqlx::PgPool;
 use tower_http::cors::{CorsLayer};
 
@@ -35,7 +36,7 @@ pub async fn app(pool: PgPool) -> Router {
         .route("/", get(chat_index))
         .route("/websocket",get(chat_handler))
         .route("/groups", get(get_user_groups))
-        .layer(Extension(Arc::new(AppState::new())));
+        .layer(Extension(Arc::new(ChatState::new())));
 
     Router::new()
         .nest("/auth", auth_routes)

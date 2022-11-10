@@ -1,9 +1,11 @@
 ﻿use anyhow::Context;
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
-use sqlx::{pool::PoolConnection, query, query_as, Acquire, Postgres, Connection};
+use sqlx::{pool::PoolConnection, query, query_as, Acquire, Postgres, Connection, Pool};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::groups::GroupError;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -41,7 +43,7 @@ struct Group {
 }
 
 pub async fn create_group(
-    mut conn: PoolConnection<Postgres>,
+    pool: &Pool<Postgres>,
     name: &str,
     user_id: Uuid,
 ) -> Result<(), AppError> {
@@ -49,7 +51,7 @@ pub async fn create_group(
         return Err(AppError::MissingField);
     }
 
-    let mut transaction = conn.begin().await.context("Failed to create transaction")?;
+    let mut transaction = pool.begin().await.context("Failed to create transaction")?;
 
     let group = query_as!(
         Group,
@@ -84,24 +86,8 @@ pub async fn create_group(
     Ok(())
 }
 
-pub async fn try_add_user_to_group(mut conn: PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid) -> Result<(), AppError> {
-    // cannot tell a difference between finding an already existing user and any other kind of error
-    // if (user_id, group_id) was a composite primary key
-    query!(
-        r#"
-            insert into group_users (user_id, group_id)
-            values ($1, $2)
-        "#,
-        user_id,
-        group_id
-    )
-    .execute(&mut conn)
-    .await
-    .map_err(|_| AppError::GroupUserAlreadyExists)?;
-    Ok(())
-}
 
-pub async fn create_message(conn: &mut PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid, content: &str) -> Result<(), AppError> {
+pub async fn create_message(pool: &Pool<Postgres>, user_id: &Uuid, group_id: &Uuid, content: &str) -> Result<(), AppError> {
     query!(
         r#"
             insert into messages (content, user_id, group_id)
@@ -111,13 +97,13 @@ pub async fn create_message(conn: &mut PoolConnection<Postgres>, user_id: Uuid, 
         user_id,
         group_id
     )
-    .execute(conn)
+    .execute(pool)
     .await
     .context("Failed to add message")?;
     Ok(())
 }
 
-pub async fn check_if_group_member(conn: &mut PoolConnection<Postgres>, user_id: Uuid, group_id: Uuid) -> Result<bool, AppError> {
+pub async fn check_if_group_member(pool: &Pool<Postgres>, user_id: &Uuid, group_id: &Uuid) -> Result<bool, AppError> {
     let res = query!(
         r#"
             select * from group_users
@@ -126,7 +112,7 @@ pub async fn check_if_group_member(conn: &mut PoolConnection<Postgres>, user_id:
         user_id,
         group_id
     )
-    .fetch_optional(conn)
+    .fetch_optional(pool)
     .await
     .context("Failed to check if user is in group")?;
 

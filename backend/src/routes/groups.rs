@@ -1,18 +1,13 @@
-﻿use std::collections::{HashMap, HashSet};
-use std::sync::{Arc};
+﻿use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::groups::GroupError;
+use crate::groups::{GroupError, try_add_user_to_group};
 use crate::models::{Claims, GroupUser, NewGroup};
-use crate::queries::{check_if_group_member, create_group, try_add_user_to_group, AppError};
-use anyhow::Context;
+use crate::queries::{check_if_group_member, create_group, AppError};
 use axum::extract::Path;
-use axum::http::status::StatusCode;
-use axum::response::{IntoResponse, Html};
-use axum::{extract, Extension, Json, debug_handler};
-use rand::distributions::Alphanumeric;
-use rand::Rng;
-use serde::{Serialize, Deserialize};
-use serde_json::{Value, json};
+use axum::{debug_handler, extract, Extension, Json};
+use serde::Deserialize;
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -23,26 +18,17 @@ pub async fn post_create_group(
     group: extract::Json<NewGroup>,
 ) -> Result<(), AppError> {
     tracing::trace!("JWT: {:#?}", claims);
-    let conn = pool
-        .acquire()
-        .await
-        .context("Failed to establish connection")?;
-
-    create_group(conn, group.name.trim(), claims.id).await
+    create_group(&pool, group.name.trim(), claims.id).await
 }
 
 pub async fn post_add_user_to_group(
     claims: Claims,
-    pool: Extension<PgPool>,
+    Extension(pool): Extension<PgPool>,
     Json(GroupUser { user_id, group_id }): Json<GroupUser>,
-) -> Result<(), AppError> {
+) -> Result<(), GroupError> {
     tracing::trace!("JWT: {:#?}", claims);
-    let conn = pool
-        .acquire()
-        .await
-        .context("Failed to establish connection")?;
-
-    try_add_user_to_group(conn, user_id, group_id).await
+    try_add_user_to_group(&pool, &user_id, &group_id).await?;
+    Ok(())
 }
 
 pub struct InvitationState {
@@ -52,7 +38,9 @@ pub struct InvitationState {
 
 impl InvitationState {
     pub fn new() -> Self {
-        InvitationState { code: RwLock::new(HashMap::new()) }
+        InvitationState {
+            code: RwLock::new(HashMap::new()),
+        }
     }
 }
 
@@ -63,49 +51,35 @@ pub struct NewGroupInvitation {
 
 pub async fn post_create_group_invitation_link(
     claims: Claims,
-    pool: Extension<PgPool>,
-    Json(NewGroupInvitation{group_id}): Json<NewGroupInvitation>,
+    Extension(pool): Extension<PgPool>,
+    Json(NewGroupInvitation { group_id }): Json<NewGroupInvitation>,
     state: Extension<Arc<InvitationState>>,
-) -> Result<Json<Value>,GroupError> {
-    let mut conn = pool
-    .acquire()
-    .await
-    .context("Failed to get connection pool")
-    .map_err(|e| GroupError::Unexpected(e))?;
-
-    let is_member = check_if_group_member(&mut conn, claims.id, group_id).await.map_err(|e| GroupError::Unexpected(e.into()))?;
+) -> Result<Json<Value>, GroupError> {
+    let is_member = check_if_group_member(&pool, &claims.id, &group_id)
+        .await
+        .map_err(|e| GroupError::Unexpected(e.into()))?;
     let id = Uuid::new_v4();
     if is_member {
         let _ = state.code.write().await.insert(id, group_id);
     }
-    
-    Ok(Json(json!({"url": format!("Your invitation link: 127.0.0.1:3000/groups/join/{id}")})))
-    
+
+    Ok(Json(json!({
+        "url": format!("Your invitation link: 127.0.0.1:3000/groups/join/{id}")
+    })))
 }
 
-#[debug_handler]
 pub async fn get_join_group_by_link(
     Path(invite_id): Path<Uuid>,
     claims: Claims,
-    pool: Extension<PgPool>,
+    Extension(pool): Extension<PgPool>,
     state: Extension<Arc<InvitationState>>,
-) -> Result<(),GroupError> {
-    let conn = pool
-            .acquire()
-            .await
-            .context("Failed to get connection pool")
-            .map_err(|e| GroupError::Unexpected(e))?;
-
-    
+) -> Result<(), GroupError> {
     match state.code.read().await.get(&invite_id) {
         Some(group_id) => {
-            
-            try_add_user_to_group(conn, claims.id, *group_id).await.unwrap();
+            try_add_user_to_group(&pool, &claims.id, group_id)
+                .await?;
             Ok(())
-        },
-        None => Ok(()),
+        }
+        None => Err(GroupError::BadInvitation),
     }
-      
 }
-
-fn random_invitation_code() -> String {

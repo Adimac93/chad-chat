@@ -1,8 +1,8 @@
 use backend::{app, database::get_database_pool};
-use tracing::warn;
-use std::net::SocketAddr;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use dotenv::dotenv;
+use std::net::SocketAddr;
+use tracing::warn;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
@@ -19,7 +19,7 @@ async fn main() {
     if std::env::var("TOKEN_SECRET").is_err() {
         warn!("No TOKEN_SECRET env var found");
     }
-    
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("listening on {}", addr);
     axum::Server::bind(&addr)

@@ -9,6 +9,7 @@ use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime};
+use tracing::debug;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -29,7 +30,7 @@ where
         let cookie = jar.get("jwt").ok_or(AuthError::InvalidToken)?;
         let mut validation = Validation::default();
         validation.leeway = 5;
-
+        debug!("{cookie:#?}");
         let data = decode::<Claims>(
             cookie.value(),
             &DecodingKey::from_secret(get_token_secret().expose_secret().as_bytes()),
@@ -48,6 +49,12 @@ pub struct AuthUser {
 
 #[derive(Serialize, Deserialize)]
 pub struct NewGroup {
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Group {
+    pub id: Uuid,
     pub name: String,
 }
 

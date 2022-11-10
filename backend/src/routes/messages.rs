@@ -6,14 +6,9 @@ use sqlx::PgPool;
 
 pub async fn post_create_message(
     claims: Claims,
-    pool: Extension<PgPool>,
+    Extension(pool): Extension<PgPool>,
     message: extract::Json<Message>,
 ) -> Result<(), AppError> {
     tracing::trace!("JWT: {:#?}", claims);
-    let mut conn = pool
-        .acquire()
-        .await
-        .context("Failed to establish connection")?;
-    
-    create_message(&mut conn, message.user_id, message.group_id, message.content.trim()).await
+    create_message(&pool, &message.user_id, &message.group_id, message.content.trim()).await
 }

@@ -1,77 +1,46 @@
-﻿use axum::{
+﻿use crate::{
+    chat::{
+        check_if_group_exists, check_if_is_group_member, fetch_chat_messages, get_user_login_by_id,
+        subscribe, ChatError, ChatState,
+    },
+    models::{Group},
+};
+use anyhow::Context;
+use axum::{
+    debug_handler,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    http::StatusCode,
     response::{Html, Response},
     Extension, Json,
 };
-use futures::{sink::SinkExt, stream::StreamExt};
+use futures::{StreamExt, SinkExt};
 use serde_json::{json, Value};
-use sqlx::{query, PgPool, query_as};
+use sqlx::{PgPool, query_as, Pool, Postgres};
 use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{Arc},
 };
-use tokio::sync::broadcast;
+use std::str::FromStr;
 use tracing::{debug, error, info};
 use uuid::Uuid;
-use crate::models::MessageModel;
 
 use crate::{models::Claims, queries::create_message};
 
-// Our shared state
-pub struct AppState {
-    groups: Mutex<HashMap<Uuid, GroupTransmitter>>,
-}
-
-struct GroupTransmitter {
-    tx: broadcast::Sender<String>,
-    users: HashSet<Uuid>,
-}
-
-impl GroupTransmitter {
-    fn new() -> Self {
-        let (tx, _rx) = broadcast::channel(100);
-        Self {
-            tx,
-            users: HashSet::new(),
-        }
-    }
-}
-
-impl AppState {
-    pub fn new() -> Self {
-        Self {
-            groups: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
 pub async fn chat_handler(
     ws: WebSocketUpgrade,
-    state: Extension<Arc<AppState>>,
     claims: Claims,
-    pool: Extension<PgPool>,
+    Extension(state): Extension<Arc<ChatState>>,
+    Extension(pool): Extension<PgPool>,
 ) -> Response {
     ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool))
 }
 
 async fn chat_socket(
     stream: WebSocket,
-    Extension(state): Extension<Arc<AppState>>,
+    state: Arc<ChatState>,
     claims: Claims,
-    pool: Extension<PgPool>,
+    pool: Pool<Postgres>,
 ) {
     // By splitting we can send and receive at the same time.
     let (mut sender, mut receiver) = stream.split();
-
-    let mut conn = match pool.acquire().await {
-        Ok(conn) => conn,
-        Err(e) => {
-            error!("{e:?}");
-            return;
-        }
-    };
 
     // Loop until a text message is found.
     let mut group_id = String::new();
@@ -84,69 +53,46 @@ async fn chat_socket(
     }
 
     let Ok(group_id) = Uuid::from_str(&group_id) else {
-        return
-    };
-
-    if query!(
-        r#"
-        select * from groups
-        where id = $1
-    "#,
-        group_id
-    )
-    .fetch_one(&mut conn)
-    .await
-    .is_err()
-    {
+        error!("Provided invalid UUID");
         return;
     };
 
-    if query!(
-        r#"
-        select * from group_users
-        where group_id = $1
-        and user_id = $2
-    "#,
-        group_id,
-        claims.id
-    )
-    .fetch_one(&mut conn)
-    .await
-    .is_err()
-    {
+    let Ok(is_group) = check_if_group_exists(&pool,&group_id).await else {
+        error!("Cannot check if group exists");
         return;
     };
 
-    let Ok(res) = query!(
-        r#"
-            select login from users where id = $1
-        "#,
-        claims.id
-    )
-    .fetch_one(&mut conn)
-    .await else {
-        error!("Cannot fetch user login from database");
+    if !is_group {
+        info!("Non existing group");
+        return;
+    }
+
+    let Ok(is_group_member) = check_if_is_group_member(&pool,&group_id,&claims.id).await else {
+        error!("Cannot check if user is a group member");
         return;
     };
 
-    let username = res.login;
+    if !is_group_member {
+        info!("User isn't a group member");
+        return;
+    }
 
-    let Ok(res) = query_as!(
-        MessageModel,
-        r#"
-            select * from messages
-            where group_id = $1
-        "#,
-        group_id
-    )
-    .fetch_all(&mut conn)
-    .await else {
-        error!("Cannot fetch messages from database");
+    let Ok(username) = get_user_login_by_id(&pool,&claims.id).await else {
+        error!("Cannot fetch user login by id");
         return;
     };
 
-    for record in res.iter() {
-        if sender.send(Message::Text(format!("{}", record.content))).await.is_err() {
+    let Ok(messages) = fetch_chat_messages(&pool,&group_id).await else {
+        error!("Cannot fetch group messages");
+        return;
+    };
+
+    for message in messages.iter() {
+        if sender
+            .send(Message::Text(format!("{}", message.content)))
+            .await
+            .is_err()
+        {
             error!("Failed to load messages");
             break;
         }
@@ -155,22 +101,7 @@ async fn chat_socket(
     // Subscribe before sending joined message.
     let (tx, mut rx) = {
         let mut groups = state.groups.lock().unwrap();
-
-        let group = groups
-            .entry(group_id)
-            .and_modify(|val| {
-                val.users.insert(claims.id);
-            })
-            .or_insert(GroupTransmitter::new());
-
-        let rx = group.tx.subscribe();
-
-        // Send joined message to all subscribers.
-        let msg = format!("{} joined.", username);
-        debug!("{}", msg);
-        let _ = group.tx.send(msg);
-
-        (group.tx.clone(), rx)
+        subscribe(&mut groups, group_id, claims.id, &username)
     };
 
     // This task will receive broadcast messages and send text message to our client.
@@ -194,7 +125,10 @@ async fn chat_socket(
             let msg = format!("{}: {}", name, text);
             let _ = cloned_tx.send(msg.clone());
 
-            if create_message(&mut conn, claims.id, group_id, &msg).await.is_err() {
+            if create_message(&pool, &claims.id, &group_id, &msg)
+                .await
+                .is_err()
+            {
                 error!("Failed to add the message to the database")
             }
         }
@@ -220,13 +154,10 @@ async fn chat_socket(
 
 pub async fn get_user_groups(
     claims: Claims,
-    pool: Extension<PgPool>,
-) -> Result<Json<Value>, StatusCode> {
-    let mut conn = pool
-        .acquire()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let res = query!(
+    Extension(pool): Extension<PgPool>,
+) -> Result<Json<Value>, ChatError> {
+    let groups = query_as!(
+        Group,
         r#"
         select groups.id, groups.name from group_users
         join groups on groups.id = group_users.group_id
@@ -234,26 +165,11 @@ pub async fn get_user_groups(
         "#,
         claims.id
     )
-    .fetch_all(&mut conn)
-    .await;
+    .fetch_all(&pool)
+    .await
+    .context("Failed to select groups with provided user id")?;
 
-    match res {
-        Ok(groups) => {
-            debug!("{groups:#?}");
-            let groups = groups
-                .into_iter()
-                .map(|group| (group.name, group.id))
-                .collect::<Vec<(String, Uuid)>>();
-            debug!("{groups:#?}");
-            Ok(Json(json!({ "groups": groups })))
-        }
-        Err(e) => {
-            match e {
-                sqlx::Error::RowNotFound => return Ok(Json(json!({"groups": []}))),
-                _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-            };
-        }
-    }
+    Ok(Json(json!({ "groups": groups })))
 }
 // Include utf-8 file at **compile** time.
 pub async fn chat_index() -> Html<&'static str> {

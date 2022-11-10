@@ -11,15 +11,11 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 
 pub async fn post_register_user(
-    pool: Extension<PgPool>,
+    Extension(pool): Extension<PgPool>,
     user: extract::Json<AuthUser>,
 ) -> Result<(), AuthError> {
-    let conn = pool
-        .acquire()
-        .await
-        .context("Failed to establish connection")?;
     try_register_user(
-        conn,
+        &pool,
         user.login.trim(),
         SecretString::new(user.password.trim().to_string()),
     )
@@ -27,18 +23,13 @@ pub async fn post_register_user(
 }
 
 pub async fn post_login_user(
-    pool: Extension<PgPool>,
+    Extension(pool): Extension<PgPool>,
     user: extract::Json<AuthUser>,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
     const ONE_HOUR_IN_SECONDS: u64 = 3600;
-
-    let conn = pool
-        .acquire()
-        .await
-        .context("Failed to establish connection")?;
     let user_id = login_user(
-        conn,
+        &pool,
         &user.login,
         SecretString::new(user.password.trim().to_string()),
     )
