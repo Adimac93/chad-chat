@@ -20,6 +20,7 @@ use std::{collections::{HashMap, HashSet}, sync::Mutex};
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
     pub id: Uuid,
+    pub login: String,
     pub exp: u64,
 }
 

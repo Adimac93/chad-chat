@@ -33,17 +33,16 @@ pub async fn post_create_group_invitation_link(
     Json(NewGroupInvitation { group_id }): Json<NewGroupInvitation>,
     state: Extension<Arc<InvitationState>>,
 ) -> Result<Json<Value>, GroupError> {
-    let is_member = check_if_group_member(&pool, &claims.id, &group_id)
-        .await
-        .map_err(|e| GroupError::Unexpected(e.into()))?;
-    let id = Uuid::new_v4();
-    if is_member {
-        let _ = state.code.write().await.insert(id, group_id);
+    match check_if_group_member(&pool, &claims.id, &group_id).await? {
+        true => {
+            let id = Uuid::new_v4();
+            let _ = state.code.write().await.insert(id, group_id);
+            Ok(Json(json!({
+                "url": format!("Your invitation link: 127.0.0.1:3000/groups/join/{id}")
+            })))
+        }
+        false => Err(GroupError::UserNotInGroup)
     }
-
-    Ok(Json(json!({
-        "url": format!("Your invitation link: 127.0.0.1:3000/groups/join/{id}")
-    })))
 }
 
 pub async fn get_join_group_by_link(

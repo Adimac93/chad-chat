@@ -106,7 +106,6 @@ pub async fn check_if_group_member(pool: &Pool<Postgres>, user_id: &Uuid, group_
     Ok(res.is_some())
 }
 
-// duplicates?
 pub async fn query_user_groups(
     pool: &Pool<Postgres>,
     user_id: Uuid,
@@ -125,46 +124,6 @@ pub async fn query_user_groups(
     .context("Failed to select groups with provided user id")?;
 
     Ok(Json(json!({ "groups": groups })))
-}
-
-// pub async fn select_user_groups(
-//     pool: &Pool<Postgres>,
-//     user_id: &Uuid,
-// ) -> Result<Vec<Group>, GroupError> {
-//     let res = query_as!(
-//         Group,
-//         r#"
-//         select groups.id, groups.name from group_users
-//         join groups on groups.id = group_users.group_id
-//         where user_id = $1
-//         "#,
-//         user_id
-//     )
-//     .fetch_all(pool)
-//     .await
-//     .context("Failed to select user groups")?;
-//     Ok(res)
-// }
-
-pub async fn check_if_is_group_member(
-    pool: &Pool<Postgres>,
-    group_id: &Uuid,
-    user_id: &Uuid,
-) -> Result<bool, GroupError> {
-    let res = query!(
-        r#"
-        select * from group_users
-        where group_id = $1
-        and user_id = $2
-    "#,
-        group_id,
-        user_id
-    )
-    .fetch_optional(pool)
-    .await
-    .context("Selecting group user failed")?;
-
-    Ok(res.is_some())
 }
 
 pub async fn check_if_group_exists(

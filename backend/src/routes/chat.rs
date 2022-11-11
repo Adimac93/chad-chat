@@ -4,7 +4,7 @@
         subscribe, create_message,
     },
     errors::GroupError,
-    groups::{query_user_groups, check_if_is_group_member, check_if_group_exists},
+    groups::{query_user_groups, check_if_group_member, check_if_group_exists},
     models::ChatState,
 };
 use axum::{
@@ -65,7 +65,7 @@ async fn chat_socket(
         return;
     }
 
-    let Ok(is_group_member) = check_if_is_group_member(&pool,&group_id,&claims.id).await else {
+    let Ok(is_group_member) = check_if_group_member(&pool,&group_id,&claims.id).await else {
         error!("Cannot check if user is a group member");
         return;
     };
@@ -127,7 +127,7 @@ async fn chat_socket(
                 .await
                 .is_err()
             {
-                error!("Failed to add the message to the database")
+                error!("Failed to save this message in the database")
             }
         }
     });

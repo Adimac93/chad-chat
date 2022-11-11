@@ -41,6 +41,7 @@ pub async fn post_login_user(
 
     let claims = Claims {
         id: user_id,
+        login: user.login.clone(),
         exp: jsonwebtoken::get_current_timestamp() + ONE_HOUR_IN_SECONDS,
     };
 

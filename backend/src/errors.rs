@@ -46,6 +46,8 @@ impl IntoResponse for AuthError {
 
 #[derive(Error, Debug)]
 pub enum GroupError {
+    #[error("User not in group")]
+    UserNotInGroup,
     #[error("Missing one or more group fields")]
     MissingGroupField,
     #[error("Already in group")]
@@ -59,6 +61,7 @@ pub enum GroupError {
 impl IntoResponse for GroupError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
+            GroupError::UserNotInGroup => StatusCode::FORBIDDEN,
             GroupError::MissingGroupField => StatusCode::BAD_REQUEST,
             GroupError::UserAlreadyInGroup => StatusCode::BAD_REQUEST,
             GroupError::BadInvitation => StatusCode::BAD_REQUEST,
