@@ -1,28 +1,26 @@
 ﻿use crate::{
     chat::{
-        check_if_group_exists, check_if_is_group_member, fetch_chat_messages, get_user_login_by_id,
-        subscribe, ChatError, ChatState,
+        fetch_chat_messages, get_user_login_by_id,
+        subscribe, create_message,
     },
-    models::{Group},
+    errors::GroupError,
+    groups::{query_user_groups, check_if_is_group_member, check_if_group_exists},
+    models::ChatState,
 };
-use anyhow::Context;
 use axum::{
-    debug_handler,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::{Html, Response},
     Extension, Json,
 };
 use futures::{StreamExt, SinkExt};
-use serde_json::{json, Value};
-use sqlx::{PgPool, query_as, Pool, Postgres};
-use std::{
-    sync::{Arc},
-};
+use serde_json::Value;
+use sqlx::{PgPool, Pool, Postgres};
+use std::sync::Arc;
 use std::str::FromStr;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
-use crate::{models::Claims, queries::create_message};
+use crate::models::Claims;
 
 pub async fn chat_handler(
     ws: WebSocketUpgrade,
@@ -46,7 +44,7 @@ async fn chat_socket(
     let mut group_id = String::new();
     while let Some(Ok(message)) = receiver.next().await {
         if let Message::Text(id) = message {
-            info!("Valid group id: {}", id);
+            info!("Group id: {}", id);
             group_id = id;
             break;
         }
@@ -98,7 +96,7 @@ async fn chat_socket(
         }
     }
 
-    // Subscribe before sending joined message.
+    // Subscribe before sending "joined" message.
     let (tx, mut rx) = {
         let mut groups = state.groups.lock().unwrap();
         subscribe(&mut groups, group_id, claims.id, &username)
@@ -140,7 +138,7 @@ async fn chat_socket(
         _ = (&mut recv_task_from_client) => send_task_to_client.abort(),
     };
 
-    // Send user left message.
+    // Send "user left" message.
     let msg = format!("{} left.", username);
     debug!("{}", msg);
     let _ = tx.send(msg);
@@ -155,23 +153,11 @@ async fn chat_socket(
 pub async fn get_user_groups(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
-) -> Result<Json<Value>, ChatError> {
-    let groups = query_as!(
-        Group,
-        r#"
-        select groups.id, groups.name from group_users
-        join groups on groups.id = group_users.group_id
-        where user_id = $1
-        "#,
-        claims.id
-    )
-    .fetch_all(&pool)
-    .await
-    .context("Failed to select groups with provided user id")?;
-
-    Ok(Json(json!({ "groups": groups })))
+) -> Result<Json<Value>, GroupError> {
+    query_user_groups(&pool, claims.id).await
 }
-// Include utf-8 file at **compile** time.
+
+// Include utf-8 file at compile time.
 pub async fn chat_index() -> Html<&'static str> {
     Html(std::include_str!("../../chat.html"))
 }

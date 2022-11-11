@@ -1,22 +1,18 @@
-﻿use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::groups::{GroupError, try_add_user_to_group};
-use crate::models::{Claims, GroupUser, NewGroup};
-use crate::queries::{check_if_group_member, create_group, AppError};
+﻿use std::sync::Arc;
+use crate::groups::{try_add_user_to_group, check_if_group_member, create_group};
+use crate::models::{Claims, GroupUser, NewGroup, NewGroupInvitation, InvitationState};
+use crate::errors::GroupError;
 use axum::extract::Path;
-use axum::{debug_handler, extract, Extension, Json};
-use serde::Deserialize;
+use axum::{extract, Extension, Json};
 use serde_json::{json, Value};
 use sqlx::PgPool;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 pub async fn post_create_group(
     claims: Claims,
     pool: Extension<PgPool>,
     group: extract::Json<NewGroup>,
-) -> Result<(), AppError> {
+) -> Result<(), GroupError> {
     tracing::trace!("JWT: {:#?}", claims);
     create_group(&pool, group.name.trim(), claims.id).await
 }
@@ -29,24 +25,6 @@ pub async fn post_add_user_to_group(
     tracing::trace!("JWT: {:#?}", claims);
     try_add_user_to_group(&pool, &user_id, &group_id).await?;
     Ok(())
-}
-
-pub struct InvitationState {
-    code: RwLock<HashMap<Uuid, Uuid>>,
-    // invitation : group
-}
-
-impl InvitationState {
-    pub fn new() -> Self {
-        InvitationState {
-            code: RwLock::new(HashMap::new()),
-        }
-    }
-}
-
-#[derive(Deserialize)]
-pub struct NewGroupInvitation {
-    group_id: Uuid,
 }
 
 pub async fn post_create_group_invitation_link(

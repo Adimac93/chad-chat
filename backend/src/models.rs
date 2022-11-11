@@ -1,4 +1,7 @@
-﻿use crate::auth::{get_token_secret, AuthError};
+﻿use crate::{
+    auth_utils::get_token_secret,
+    errors::AuthError,
+};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -8,9 +11,11 @@ use axum_extra::extract::CookieJar;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use time::{OffsetDateTime};
+use time::OffsetDateTime;
+use tokio::sync::{RwLock, broadcast};
 use tracing::debug;
 use uuid::Uuid;
+use std::{collections::{HashMap, HashSet}, sync::Mutex};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
@@ -52,7 +57,7 @@ pub struct NewGroup {
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Group {
     pub id: Uuid,
     pub name: String,
@@ -78,4 +83,49 @@ pub struct MessageModel {
     pub user_id: Uuid,
     pub group_id: Uuid,
     pub sent_at: OffsetDateTime
+}
+
+pub struct InvitationState {
+    pub code: RwLock<HashMap<Uuid, Uuid>>,
+    // invitation : group
+}
+
+impl InvitationState {
+    pub fn new() -> Self {
+        InvitationState {
+            code: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct NewGroupInvitation {
+    pub group_id: Uuid,
+}
+
+pub struct ChatState {
+    pub groups: Mutex<HashMap<Uuid, GroupTransmitter>>,
+}
+
+impl ChatState {
+    pub fn new() -> Self {
+        Self {
+            groups: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+pub struct GroupTransmitter {
+    pub tx: broadcast::Sender<String>,
+    pub users: HashSet<Uuid>,
+}
+
+impl GroupTransmitter {
+    pub fn new() -> Self {
+        let (tx, _rx) = broadcast::channel(100);
+        Self {
+            tx,
+            users: HashSet::new(),
+        }
+    }
 }

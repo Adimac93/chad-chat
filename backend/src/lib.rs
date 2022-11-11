@@ -1,21 +1,22 @@
 pub mod auth;
 pub mod database;
 pub mod models;
-pub mod queries;
 pub mod routes;
 pub mod groups;
 pub mod chat;
+pub mod errors;
+pub mod auth_utils;
 
-use std::sync::{Arc};
+use std::sync::Arc;
 use axum::{
     routing::{get, post},
     Extension, Router, http::HeaderValue,
-    http::header::{CONTENT_TYPE,}
+    http::header::CONTENT_TYPE,
 };
-use chat::ChatState;
-use routes::{chat::{chat_index, chat_handler, get_user_groups}, auth::{login_index, register_index}, groups::{get_join_group_by_link, InvitationState, post_create_group_invitation_link}};
+use routes::{chat::{chat_index, chat_handler, get_user_groups}, auth::{login_index, register_index}, groups::{get_join_group_by_link, post_create_group_invitation_link}};
 use sqlx::PgPool;
 use tower_http::cors::{CorsLayer};
+use models::{InvitationState, ChatState};
 
 pub async fn app(pool: PgPool) -> Router {
     let cors = CorsLayer::new().allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap()).allow_headers([CONTENT_TYPE]).allow_credentials(true); // allow_credentials "http://localhost:3000".parse::<HeaderValue>().unwrap()

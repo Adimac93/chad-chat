@@ -1,5 +1,9 @@
-﻿use crate::auth::{get_token_secret, login_user, try_register_user, AuthError};
-use crate::models::{AuthUser, Claims};
+﻿use crate::{
+    auth::{login_user, try_register_user},
+    auth_utils::get_token_secret,
+    models::{AuthUser, Claims},
+    errors::AuthError,
+};
 use anyhow::Context;
 use axum::response::Html;
 use axum::{extract, http::StatusCode, Extension, Json};
