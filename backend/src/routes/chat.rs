@@ -1,10 +1,7 @@
 ﻿use crate::{
-    chat::{
-        fetch_chat_messages, get_user_login_by_id,
-        subscribe, create_message,
-    },
+    chat::{create_message, fetch_chat_messages, get_user_login_by_id, subscribe},
     errors::GroupError,
-    groups::{query_user_groups, check_if_group_member, check_if_group_exists},
+    groups::{check_if_group_exists, check_if_group_member, query_user_groups},
     models::ChatState,
 };
 use axum::{
@@ -12,11 +9,11 @@ use axum::{
     response::{Html, Response},
     Extension, Json,
 };
-use futures::{StreamExt, SinkExt};
+use futures::{SinkExt, StreamExt};
 use serde_json::Value;
 use sqlx::{PgPool, Pool, Postgres};
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
@@ -65,7 +62,7 @@ async fn chat_socket(
         return;
     }
 
-    let Ok(is_group_member) = check_if_group_member(&pool,&group_id,&claims.id).await else {
+    let Ok(is_group_member) = check_if_group_member(&pool,&claims.id,&group_id).await else {
         error!("Cannot check if user is a group member");
         return;
     };

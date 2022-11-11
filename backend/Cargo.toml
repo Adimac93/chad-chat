@@ -16,6 +16,7 @@ name = "backend"
 anyhow = "1.0.66"
 axum = { version = "0.5.17", features = ["macros", "headers", "ws"] }
 axum-extra = { version = "0.3.7", features = ["cookie"] }
+config = "0.13.2"
 dotenv = "0.15.0"
 futures = "0.3.25"
 jsonwebtoken = "8.1.1"

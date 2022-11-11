@@ -1,18 +1,21 @@
 ﻿use backend::app;
+use dotenv::dotenv;
 use reqwest::Client;
-use sqlx::{PgPool, PgConnection, Connection, Executor};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
+use std::net::{SocketAddr, TcpListener};
 use uuid::Uuid;
-use std::net::{TcpListener, SocketAddr};
-
 pub async fn spawn_app() -> SocketAddr {
+    dotenv().ok();
+
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
     let addr = listener.local_addr().unwrap();
 
+    let id = Uuid::new_v4().to_string();
     let db_data = DatabaseConfig {
         username: "postgres".to_string(),
         address: "localhost".to_string(),
         port: "5432".to_string(),
-        name: Uuid::new_v4().to_string(),
+        name: format!("test_{id}"),
     };
 
     let pool = config_db(db_data).await;
@@ -29,7 +32,10 @@ pub async fn spawn_app() -> SocketAddr {
 }
 
 pub fn client() -> Client {
-    Client::builder().cookie_store(true).build().expect("Failed to build reqwest client")
+    Client::builder()
+        .cookie_store(true)
+        .build()
+        .expect("Failed to build reqwest client")
 }
 
 pub async fn config_db(config: DatabaseConfig) -> PgPool {
@@ -60,10 +66,16 @@ pub struct DatabaseConfig {
 
 impl DatabaseConfig {
     fn to_db_url(&self) -> String {
-        format!("postgresql://{}@{}:{}/{}", self.username, self.address, self.port, self.name)
+        format!(
+            "postgresql://{}@{}:{}/{}",
+            self.username, self.address, self.port, self.name
+        )
     }
 
     fn to_db_url_no_name(&self) -> String {
-        format!("postgresql://{}@{}:{}", self.username, self.address, self.port)
+        format!(
+            "postgresql://{}@{}:{}",
+            self.username, self.address, self.port
+        )
     }
 }

@@ -9,8 +9,6 @@ mod tests {
 
     #[tokio::test]
     pub async fn auth_test() {
-        dotenv().ok();
-
         let addr = tools::spawn_app().await;
         let client = tools::client();
 
@@ -48,8 +46,6 @@ mod tests {
 
     #[tokio::test]
     pub async fn bad_password_test() {
-        dotenv().ok();
-
         let addr = tools::spawn_app().await;
         let client = tools::client();
 
@@ -84,8 +80,6 @@ mod tests {
 
     #[tokio::test]
     pub async fn bad_login_test() {
-        dotenv().ok();
-
         let addr = tools::spawn_app().await;
         let client = tools::client();
 

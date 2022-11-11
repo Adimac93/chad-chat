@@ -1,7 +1,4 @@
-﻿use axum::{
-    response::IntoResponse,
-    http::StatusCode, Json,
-};
+﻿use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 use thiserror::Error;
 
@@ -18,7 +15,7 @@ pub enum AuthError {
     #[error("Invalid or expired token")]
     InvalidToken,
     #[error(transparent)]
-    Unexpected(#[from] anyhow::Error)
+    Unexpected(#[from] anyhow::Error),
 }
 
 impl IntoResponse for AuthError {
@@ -32,12 +29,12 @@ impl IntoResponse for AuthError {
             AuthError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
-            },
+            }
         };
-        
+
         let info = match self {
             AuthError::Unexpected(_) => "Unexpected server error".into(),
-            _ => format!("{self:?}")
+            _ => format!("{self:?}"),
         };
 
         (status_code, Json(json!({ "error_info": info }))).into_response()
@@ -55,7 +52,7 @@ pub enum GroupError {
     #[error("Wrong invitation url")]
     BadInvitation,
     #[error(transparent)]
-    Unexpected(#[from] anyhow::Error)
+    Unexpected(#[from] anyhow::Error),
 }
 
 impl IntoResponse for GroupError {
@@ -68,12 +65,12 @@ impl IntoResponse for GroupError {
             GroupError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
-            },
+            }
         };
 
         let info = match self {
             GroupError::Unexpected(_) => "Unexpected server error".into(),
-            _ => format!("{self:?}")
+            _ => format!("{self:?}"),
         };
 
         (status_code, Json(json!({ "error_info": info }))).into_response()

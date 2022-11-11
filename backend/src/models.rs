@@ -1,7 +1,4 @@
-﻿use crate::{
-    auth_utils::get_token_secret,
-    errors::AuthError,
-};
+﻿use crate::{auth_utils::get_token_secret, errors::AuthError};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -11,11 +8,14 @@ use axum_extra::extract::CookieJar;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 use time::OffsetDateTime;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{broadcast, RwLock};
 use tracing::debug;
 use uuid::Uuid;
-use std::{collections::{HashMap, HashSet}, sync::Mutex};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
@@ -32,15 +32,17 @@ where
     type Rejection = AuthError;
 
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let jar = CookieJar::from_request(req).await.context("Failed to fetch cookie jar")?;
+        let jar = CookieJar::from_request(req)
+            .await
+            .context("Failed to fetch cookie jar")?;
         let cookie = jar.get("jwt").ok_or(AuthError::InvalidToken)?;
         let mut validation = Validation::default();
         validation.leeway = 5;
-        debug!("{cookie:#?}");
+
         let data = decode::<Claims>(
             cookie.value(),
             &DecodingKey::from_secret(get_token_secret().expose_secret().as_bytes()),
-           &validation
+            &validation,
         );
         let new_data = data.map_err(|_| AuthError::InvalidToken)?;
         Ok(new_data.claims)
@@ -83,7 +85,7 @@ pub struct MessageModel {
     pub content: String,
     pub user_id: Uuid,
     pub group_id: Uuid,
-    pub sent_at: OffsetDateTime
+    pub sent_at: OffsetDateTime,
 }
 
 pub struct InvitationState {
