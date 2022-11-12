@@ -1,12 +1,8 @@
-pub mod auth;
-pub mod auth_utils;
-pub mod chat;
 pub mod configuration;
 pub mod database;
-pub mod errors;
-pub mod groups;
 pub mod models;
 pub mod routes;
+mod utils;
 
 use axum::{http::header::CONTENT_TYPE, http::HeaderValue, Extension, Router};
 use sqlx::PgPool;

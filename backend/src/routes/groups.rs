@@ -1,15 +1,11 @@
-﻿use crate::errors::GroupError;
-use crate::groups::{
-    check_if_group_member, create_group, get_group_info, query_user_groups, try_add_user_to_group,
-    GroupInfo,
-};
-use crate::models::{Claims, GroupUser, InvitationState, NewGroup, NewGroupInvitation};
-use axum::extract::Path;
+﻿use crate::models::{Claims, GroupUser, InvitationState, NewGroup, NewGroupInvitation};
+use crate::utils::groups::errors::*;
+use crate::utils::groups::*;
 use axum::Router;
 use axum::{
-    extract,
+    extract::{Json, Path},
     routing::{get, post},
-    Extension, Json,
+    Extension,
 };
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -26,23 +22,23 @@ pub fn router() -> Router {
         .layer(Extension(Arc::new(InvitationState::new())))
 }
 
-pub async fn get_user_groups(
+async fn get_user_groups(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
 ) -> Result<Json<Value>, GroupError> {
     query_user_groups(&pool, claims.id).await
 }
 
-pub async fn post_create_group(
+async fn post_create_group(
     claims: Claims,
     pool: Extension<PgPool>,
-    group: extract::Json<NewGroup>,
+    group: Json<NewGroup>,
 ) -> Result<(), GroupError> {
     tracing::trace!("JWT: {:#?}", claims);
     create_group(&pool, group.name.trim(), claims.id).await
 }
 
-pub async fn post_add_user_to_group(
+async fn post_add_user_to_group(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
     Json(GroupUser { user_id, group_id }): Json<GroupUser>,
@@ -52,7 +48,7 @@ pub async fn post_add_user_to_group(
     Ok(())
 }
 
-pub async fn post_create_group_invitation_link(
+async fn post_create_group_invitation_link(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
     Json(NewGroupInvitation { group_id }): Json<NewGroupInvitation>,

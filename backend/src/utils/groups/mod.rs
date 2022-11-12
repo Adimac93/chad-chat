@@ -1,13 +1,15 @@
-use crate::{errors::GroupError, models::Group};
+pub mod errors;
+use crate::models::Group;
 use anyhow::Context;
 use axum::Json;
+use errors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{query, query_as, Pool, Postgres};
+use sqlx::{query, query_as, PgPool};
 use uuid::Uuid;
 
 pub async fn try_add_user_to_group(
-    pool: &Pool<Postgres>,
+    pool: &PgPool,
     user_id: &Uuid,
     group_id: &Uuid,
 ) -> Result<(), GroupError> {
@@ -52,11 +54,7 @@ pub async fn try_add_user_to_group(
     Ok(())
 }
 
-pub async fn create_group(
-    pool: &Pool<Postgres>,
-    name: &str,
-    user_id: Uuid,
-) -> Result<(), GroupError> {
+pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<(), GroupError> {
     if name.is_empty() {
         return Err(GroupError::MissingGroupField);
     }
@@ -97,7 +95,7 @@ pub async fn create_group(
 }
 
 pub async fn check_if_group_member(
-    pool: &Pool<Postgres>,
+    pool: &PgPool,
     user_id: &Uuid,
     group_id: &Uuid,
 ) -> Result<bool, GroupError> {
@@ -116,10 +114,7 @@ pub async fn check_if_group_member(
     Ok(res.is_some())
 }
 
-pub async fn query_user_groups(
-    pool: &Pool<Postgres>,
-    user_id: Uuid,
-) -> Result<Json<Value>, GroupError> {
+pub async fn query_user_groups(pool: &PgPool, user_id: Uuid) -> Result<Json<Value>, GroupError> {
     let groups = query_as!(
         Group,
         r#"
@@ -136,10 +131,7 @@ pub async fn query_user_groups(
     Ok(Json(json!({ "groups": groups })))
 }
 
-pub async fn check_if_group_exists(
-    pool: &Pool<Postgres>,
-    group_id: &Uuid,
-) -> Result<bool, GroupError> {
+pub async fn check_if_group_exists(pool: &PgPool, group_id: &Uuid) -> Result<bool, GroupError> {
     let res = query!(
         r#"
             select * from groups
@@ -160,10 +152,7 @@ pub struct GroupInfo {
     pub members: i64,
 }
 
-pub async fn get_group_info(
-    pool: &Pool<Postgres>,
-    group_id: &Uuid,
-) -> Result<GroupInfo, GroupError> {
+pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo, GroupError> {
     let res = query!(
         r#"
             select g.name,count(user_id) from group_users

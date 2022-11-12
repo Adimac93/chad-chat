@@ -1,4 +1,4 @@
-﻿use crate::{auth_utils::get_token_secret, errors::AuthError};
+﻿use crate::{utils::auth::additions::get_token_secret, utils::auth::errors::*};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -14,7 +14,6 @@ use std::{
 };
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, RwLock};
-use tracing::debug;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]

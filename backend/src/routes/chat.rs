@@ -1,15 +1,13 @@
-﻿use crate::models::Claims;
-use crate::{
-    chat::{create_message, fetch_chat_messages, get_user_login_by_id, subscribe},
-    errors::GroupError,
-    groups::{check_if_group_exists, check_if_group_member, query_user_groups},
-    models::ChatState,
-};
+﻿use crate::models::{ChatState, Claims};
+use crate::utils::chat::*;
+use crate::utils::groups::*;
+
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    response::{Html, Response},
+    extract::Json,
+    response::Response,
     routing::{get, post},
-    Extension, Json, Router,
+    Extension, Router,
 };
 use futures::{SinkExt, StreamExt};
 use sqlx::{PgPool, Pool, Postgres};
@@ -20,12 +18,11 @@ use uuid::Uuid;
 
 pub fn router() -> Router {
     Router::new()
-        .route("/", get(chat_index))
         .route("/websocket", get(chat_handler))
         .layer(Extension(Arc::new(ChatState::new())))
 }
 
-pub async fn chat_handler(
+async fn chat_handler(
     ws: WebSocketUpgrade,
     claims: Claims,
     Extension(state): Extension<Arc<ChatState>>,
@@ -34,12 +31,7 @@ pub async fn chat_handler(
     ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool))
 }
 
-async fn chat_socket(
-    stream: WebSocket,
-    state: Arc<ChatState>,
-    claims: Claims,
-    pool: Pool<Postgres>,
-) {
+async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claims, pool: PgPool) {
     // By splitting we can send and receive at the same time.
     let (mut sender, mut receiver) = stream.split();
 
@@ -151,9 +143,4 @@ async fn chat_socket(
             let _is_present = group.users.remove(&claims.id);
         });
     }
-}
-
-// Include utf-8 file at compile time.
-pub async fn chat_index() -> Html<&'static str> {
-    Html(std::include_str!("../../chat.html"))
 }

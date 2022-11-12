@@ -1,17 +1,12 @@
-use std::{
-    collections::HashMap,
-};
-
+pub mod errors;
+use crate::models::{GroupTransmitter, MessageModel};
 use anyhow::Context;
-use sqlx::{query, query_as, Pool, Postgres};
+use errors::*;
+use sqlx::{query, query_as, PgPool};
+use std::collections::HashMap;
 use tokio::sync::broadcast::{Receiver, Sender};
 use tracing::debug;
 use uuid::Uuid;
-
-use crate::{
-    models::{MessageModel, GroupTransmitter},
-    errors::ChatError,
-};
 
 pub fn subscribe(
     groups: &mut HashMap<Uuid, GroupTransmitter>,
@@ -35,10 +30,7 @@ pub fn subscribe(
     (group.tx.clone(), rx)
 }
 
-pub async fn get_user_login_by_id(
-    pool: &Pool<Postgres>,
-    user_id: &Uuid,
-) -> Result<String, ChatError> {
+pub async fn get_user_login_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, ChatError> {
     let res = query!(
         r#"
             select login from users where id = $1
@@ -53,7 +45,7 @@ pub async fn get_user_login_by_id(
 }
 
 pub async fn fetch_chat_messages(
-    pool: &Pool<Postgres>,
+    pool: &PgPool,
     group_id: &Uuid,
 ) -> Result<Vec<MessageModel>, ChatError> {
     let res = query_as!(
@@ -71,7 +63,12 @@ pub async fn fetch_chat_messages(
     Ok(res)
 }
 
-pub async fn create_message(pool: &Pool<Postgres>, user_id: &Uuid, group_id: &Uuid, content: &str) -> Result<(), ChatError> {
+pub async fn create_message(
+    pool: &PgPool,
+    user_id: &Uuid,
+    group_id: &Uuid,
+    content: &str,
+) -> Result<(), ChatError> {
     query!(
         r#"
             insert into messages (content, user_id, group_id)
@@ -89,9 +86,9 @@ pub async fn create_message(pool: &Pool<Postgres>, user_id: &Uuid, group_id: &Uu
 
 #[cfg(test)]
 mod test {
-    use sqlx::{query, Pool, Postgres};
+    use sqlx::{query, PgPool};
     #[sqlx::test]
-    async fn select_user_groups(pool: Pool<Postgres>) {
+    async fn select_user_groups(pool: PgPool) {
         let name = String::from("abc");
         let _res = query!(
             r#"
@@ -104,14 +101,5 @@ mod test {
         .fetch_one(&pool)
         .await
         .unwrap();
-
-        // let res = query!(
-        //     r#"
-        //         insert into group_users (user_id, group_id)
-        //         values ($1, $2)
-        //     "#,
-        //     user_id,
-        //     group_id
-        // );
     }
 }

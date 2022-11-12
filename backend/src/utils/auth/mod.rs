@@ -1,13 +1,18 @@
-﻿use anyhow::Context;
+pub mod additions;
+pub mod errors;
+use crate::models::{AuthUser, Claims};
+use anyhow::Context;
 use argon2::verify_encoded;
-use sqlx::{query, Postgres, Pool};
+use errors::*;
+use jsonwebtoken::{encode, EncodingKey, Header};
+use secrecy::{ExposeSecret, SecretString};
+use sqlx::{query, PgPool};
+use time::Duration;
 use tracing::info;
 use uuid::Uuid;
-use secrecy::{SecretString, ExposeSecret};
-use crate::{errors::AuthError, auth_utils::{pass_is_strong, hash_pass}};
 
 pub async fn try_register_user(
-    pool: &Pool<Postgres>,
+    pool: &PgPool,
     login: &str,
     password: SecretString,
 ) -> Result<(), AuthError> {
@@ -15,8 +20,8 @@ pub async fn try_register_user(
         return Err(AuthError::MissingCredential);
     }
 
-    if !pass_is_strong(password.expose_secret(), &[&login]) {
-        return Err(AuthError::WeakPassword)
+    if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
+        return Err(AuthError::WeakPassword);
     }
 
     let user = query!(
@@ -33,7 +38,7 @@ pub async fn try_register_user(
         return Err(AuthError::UserAlreadyExists);
     }
 
-    let hashed_pass = hash_pass(password).context("Failed to hash pass")?;
+    let hashed_pass = additions::hash_pass(password).context("Failed to hash pass")?;
 
     let res = query!(
         r#"
@@ -52,7 +57,7 @@ pub async fn try_register_user(
 }
 
 pub async fn login_user(
-    pool: &Pool<Postgres>,
+    pool: &PgPool,
     login: &str,
     password: SecretString,
 ) -> Result<Uuid, AuthError> {
@@ -71,8 +76,38 @@ pub async fn login_user(
     .context("Failed to select user by login")?
     .ok_or(AuthError::WrongUserOrPassword)?;
 
-    match verify_encoded(&res.password, password.expose_secret().as_bytes()).context("Failed to verify password")? {
+    match verify_encoded(&res.password, password.expose_secret().as_bytes())
+        .context("Failed to verify password")?
+    {
         true => Ok(res.id),
         false => Err(AuthError::WrongUserOrPassword),
     }
+}
+
+pub async fn authorize_user(
+    pool: &PgPool,
+    user: AuthUser,
+    duration: Duration,
+) -> Result<String, AuthError> {
+    let user_id = login_user(
+        &pool,
+        &user.login,
+        SecretString::new(user.password.trim().to_string()),
+    )
+    .await?;
+
+    let claims = Claims {
+        id: user_id,
+        login: user.login.clone(),
+        exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
+    };
+
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(additions::get_token_secret().expose_secret().as_bytes()),
+    )
+    .context("Failed to encrypt token")?;
+
+    Ok(token)
 }
