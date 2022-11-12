@@ -1,12 +1,37 @@
-﻿use std::sync::Arc;
-use crate::groups::{try_add_user_to_group, check_if_group_member, create_group};
-use crate::models::{Claims, GroupUser, NewGroup, NewGroupInvitation, InvitationState};
-use crate::errors::GroupError;
+﻿use crate::errors::GroupError;
+use crate::groups::{
+    check_if_group_member, create_group, get_group_info, query_user_groups, try_add_user_to_group,
+    GroupInfo,
+};
+use crate::models::{Claims, GroupUser, InvitationState, NewGroup, NewGroupInvitation};
 use axum::extract::Path;
-use axum::{extract, Extension, Json};
+use axum::Router;
+use axum::{
+    extract,
+    routing::{get, post},
+    Extension, Json,
+};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
+
+pub fn router() -> Router {
+    Router::new()
+        .route("/", get(get_user_groups).post(post_create_group))
+        .route("/add-user", post(post_add_user_to_group))
+        .route("/invite", post(post_create_group_invitation_link))
+        .route("/join/:invite_id", get(get_join_group_by_link))
+        .route("/info/:invite_id", get(get_invitation_info))
+        .layer(Extension(Arc::new(InvitationState::new())))
+}
+
+pub async fn get_user_groups(
+    claims: Claims,
+    Extension(pool): Extension<PgPool>,
+) -> Result<Json<Value>, GroupError> {
+    query_user_groups(&pool, claims.id).await
+}
 
 pub async fn post_create_group(
     claims: Claims,
@@ -37,11 +62,9 @@ pub async fn post_create_group_invitation_link(
         true => {
             let id = Uuid::new_v4();
             let _ = state.code.write().await.insert(id, group_id);
-            Ok(Json(json!({
-                "url": format!("Your invitation link: 127.0.0.1:3000/groups/join/{id}")
-            })))
+            Ok(Json(json!({ "id": id })))
         }
-        false => Err(GroupError::UserNotInGroup)
+        false => Err(GroupError::UserNotInGroup),
     }
 }
 
@@ -53,9 +76,23 @@ pub async fn get_join_group_by_link(
 ) -> Result<(), GroupError> {
     match state.code.read().await.get(&invite_id) {
         Some(group_id) => {
-            try_add_user_to_group(&pool, &claims.id, group_id)
-                .await?;
+            try_add_user_to_group(&pool, &claims.id, group_id).await?;
             Ok(())
+        }
+        None => Err(GroupError::BadInvitation),
+    }
+}
+
+pub async fn get_invitation_info(
+    Path(invite_id): Path<Uuid>,
+    claims: Claims,
+    Extension(pool): Extension<PgPool>,
+    state: Extension<Arc<InvitationState>>,
+) -> Result<Json<GroupInfo>, GroupError> {
+    match state.code.read().await.get(&invite_id) {
+        Some(group_id) => {
+            let info = get_group_info(&pool, group_id).await?;
+            Ok(Json(info))
         }
         None => Err(GroupError::BadInvitation),
     }

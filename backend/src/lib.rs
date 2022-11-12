@@ -1,48 +1,29 @@
 pub mod auth;
+pub mod auth_utils;
+pub mod chat;
+pub mod configuration;
 pub mod database;
+pub mod errors;
+pub mod groups;
 pub mod models;
 pub mod routes;
-pub mod groups;
-pub mod chat;
-pub mod errors;
-pub mod auth_utils;
 
-use std::sync::Arc;
-use axum::{
-    routing::{get, post},
-    Extension, Router, http::HeaderValue,
-    http::header::CONTENT_TYPE,
-};
-use routes::{chat::{chat_index, chat_handler, get_user_groups}, auth::{login_index, register_index}, groups::{get_join_group_by_link, post_create_group_invitation_link}};
+use axum::{http::header::CONTENT_TYPE, http::HeaderValue, Extension, Router};
 use sqlx::PgPool;
-use tower_http::cors::{CorsLayer};
-use models::{InvitationState, ChatState};
+use tower_http::cors::CorsLayer;
 
 pub async fn app(pool: PgPool) -> Router {
-    let cors = CorsLayer::new().allow_origin("http://localhost:5173".parse::<HeaderValue>().unwrap()).allow_headers([CONTENT_TYPE]).allow_credentials(true); // allow_credentials "http://localhost:3000".parse::<HeaderValue>().unwrap()
+    let cors = CorsLayer::new()
+        .allow_origin("http://172.16.0.27:5173".parse::<HeaderValue>().unwrap())
+        .allow_headers([CONTENT_TYPE])
+        .allow_credentials(true);
 
-    let auth_routes = Router::new()
-        .route("/register", get(register_index).post(routes::auth::post_register_user))
-        .route("/login", get(login_index).post(routes::auth::post_login_user))
-        .route("/user-validation", post(routes::auth::protected_zone));
-
-    let group_routes = Router::new()
-        .route("/groups", post(routes::groups::post_create_group))
-        .route("/add-user", post(routes::groups::post_add_user_to_group))
-        .route("/groups/create",post(post_create_group_invitation_link))
-        .route("/groups/join/:invite_id",get(get_join_group_by_link))
-        .layer(Extension(Arc::new(InvitationState::new())));
-
-    let socket_routes = Router::new()
-        .route("/", get(chat_index))
-        .route("/websocket",get(chat_handler))
-        .route("/groups", get(get_user_groups))
-        .layer(Extension(Arc::new(ChatState::new())));
+    let api = Router::new().nest("/groups", routes::groups::router());
 
     Router::new()
-        .nest("/auth", auth_routes)
-        .nest("/api", group_routes)
-        .nest("/chat", socket_routes)
+        .nest("/auth", routes::auth::router())
+        .nest("/api", api)
+        .nest("/chat", routes::chat::router())
         .layer(Extension(pool))
         .layer(cors)
 }

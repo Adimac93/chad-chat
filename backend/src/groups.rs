@@ -1,30 +1,36 @@
+use crate::{errors::GroupError, models::Group};
 use anyhow::Context;
 use axum::Json;
-use serde_json::{Value, json};
-use sqlx::{query, Postgres, Pool, query_as};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use sqlx::{query, query_as, Pool, Postgres};
 use uuid::Uuid;
-use crate::{
-    errors::GroupError,
-    models::Group,
-};
 
-pub async fn try_add_user_to_group(pool: &Pool<Postgres>, user_id: &Uuid, group_id: &Uuid) -> Result<(), GroupError> {
+pub async fn try_add_user_to_group(
+    pool: &Pool<Postgres>,
+    user_id: &Uuid,
+    group_id: &Uuid,
+) -> Result<(), GroupError> {
     let mut transaction = pool.begin().await.context("Failed to begin transaction")?;
-    
+
     // queries for an instance of a particular user in the particular group
     let res = query!(
-    r#"
+        r#"
         select * from group_users 
         where user_id = $1 and group_id = $2
     "#,
-    user_id,
-    group_id
-    ).fetch_optional(&mut transaction)
+        user_id,
+        group_id
+    )
+    .fetch_optional(&mut transaction)
     .await
     .context("Failed to select group user")?;
 
     if res.is_some() {
-        transaction.rollback().await.context("Failed when aborting transaction")?;
+        transaction
+            .rollback()
+            .await
+            .context("Failed when aborting transaction")?;
         return Err(GroupError::UserAlreadyInGroup);
     }
 
@@ -42,7 +48,7 @@ pub async fn try_add_user_to_group(pool: &Pool<Postgres>, user_id: &Uuid, group_
     .context("Failed to add user to group")?;
 
     transaction.commit().await.context("Transaction failed")?;
-    
+
     Ok(())
 }
 
@@ -90,7 +96,11 @@ pub async fn create_group(
     Ok(())
 }
 
-pub async fn check_if_group_member(pool: &Pool<Postgres>, user_id: &Uuid, group_id: &Uuid) -> Result<bool, GroupError> {
+pub async fn check_if_group_member(
+    pool: &Pool<Postgres>,
+    user_id: &Uuid,
+    group_id: &Uuid,
+) -> Result<bool, GroupError> {
     let res = query!(
         r#"
             select * from group_users
@@ -113,9 +123,9 @@ pub async fn query_user_groups(
     let groups = query_as!(
         Group,
         r#"
-        select groups.id, groups.name from group_users
-        join groups on groups.id = group_users.group_id
-        where user_id = $1
+            select groups.id, groups.name from group_users
+            join groups on groups.id = group_users.group_id
+            where user_id = $1
         "#,
         user_id
     )
@@ -132,9 +142,9 @@ pub async fn check_if_group_exists(
 ) -> Result<bool, GroupError> {
     let res = query!(
         r#"
-        select * from groups
-        where id = $1
-    "#,
+            select * from groups
+            where id = $1
+        "#,
         group_id
     )
     .fetch_optional(pool)
@@ -142,4 +152,33 @@ pub async fn check_if_group_exists(
     .context("Failed to select group by id")?;
 
     Ok(res.is_some())
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct GroupInfo {
+    pub name: String,
+    pub members: i64,
+}
+
+pub async fn get_group_info(
+    pool: &Pool<Postgres>,
+    group_id: &Uuid,
+) -> Result<GroupInfo, GroupError> {
+    let res = query!(
+        r#"
+            select g.name,count(user_id) from group_users
+            join groups g on group_users.group_id = g.id
+            where group_id = $1
+            group by g.name
+        "#,
+        group_id
+    )
+    .fetch_one(pool)
+    .await
+    .context("Failed to select group infos")?;
+
+    Ok(GroupInfo {
+        name: res.name,
+        members: res.count.unwrap_or(0),
+    })
 }

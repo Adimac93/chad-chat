@@ -1,4 +1,5 @@
-﻿use crate::{
+﻿use crate::models::Claims;
+use crate::{
     chat::{create_message, fetch_chat_messages, get_user_login_by_id, subscribe},
     errors::GroupError,
     groups::{check_if_group_exists, check_if_group_member, query_user_groups},
@@ -7,17 +8,22 @@
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::{Html, Response},
-    Extension, Json,
+    routing::{get, post},
+    Extension, Json, Router,
 };
 use futures::{SinkExt, StreamExt};
-use serde_json::Value;
 use sqlx::{PgPool, Pool, Postgres};
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
-use crate::models::Claims;
+pub fn router() -> Router {
+    Router::new()
+        .route("/", get(chat_index))
+        .route("/websocket", get(chat_handler))
+        .layer(Extension(Arc::new(ChatState::new())))
+}
 
 pub async fn chat_handler(
     ws: WebSocketUpgrade,
@@ -145,13 +151,6 @@ async fn chat_socket(
             let _is_present = group.users.remove(&claims.id);
         });
     }
-}
-
-pub async fn get_user_groups(
-    claims: Claims,
-    Extension(pool): Extension<PgPool>,
-) -> Result<Json<Value>, GroupError> {
-    query_user_groups(&pool, claims.id).await
 }
 
 // Include utf-8 file at compile time.

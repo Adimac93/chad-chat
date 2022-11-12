@@ -1,18 +1,29 @@
 ﻿use crate::{
     auth::{login_user, try_register_user},
     auth_utils::get_token_secret,
-    models::{AuthUser, Claims},
     errors::AuthError,
+    models::{AuthUser, Claims},
 };
 use anyhow::Context;
-use axum::response::Html;
 use axum::{extract, http::StatusCode, Extension, Json};
+use axum::{
+    response::Html,
+    routing::{get, post},
+    Router,
+};
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+
+pub fn router() -> Router {
+    Router::new()
+        .route("/register", get(register_index).post(post_register_user))
+        .route("/login", get(login_index).post(post_login_user))
+        .route("/user-validation", post(protected_zone))
+}
 
 pub async fn post_register_user(
     Extension(pool): Extension<PgPool>,
@@ -53,8 +64,8 @@ pub async fn post_login_user(
     .context("Failed to encrypt token")?;
 
     let cookie = Cookie::build("jwt", token)
-        .http_only(true)
-        .secure(true)
+        .http_only(false)
+        .secure(false)
         .same_site(SameSite::Strict)
         .path("/")
         .finish();

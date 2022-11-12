@@ -1,3 +1,4 @@
 export const variables = {
-    basePath: import.meta.env.VITE_PUBLIC_BASE_PATH
+	api: import.meta.env.VITE_PUBLIC_BASE_PATH,
+	page: 'loaclhost:5173'
 };
