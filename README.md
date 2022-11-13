@@ -21,4 +21,15 @@ secret = "very_very_secret_token"
 ```
 
 ## Frontend
-*In progress*
+Directory: `./frontend/config/settings.json`
+
+### Example
+```json
+{
+  "origin": {
+    "ip": "localhost",
+    "port": 5173,
+    "secure": false
+  }
+}
+```
