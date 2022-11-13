@@ -1,7 +1,7 @@
 use backend::{app, configuration::get_config, database::get_database_pool};
 use dotenv::dotenv;
 use std::net::SocketAddr;
-use tracing::warn;
+use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -18,7 +18,7 @@ async fn main() {
         .init();
 
     let addr = SocketAddr::from((config.addr.ip, config.addr.port));
-    println!("listening on {}", addr);
+    info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(
             app(get_database_pool(&config.database.connection_string()).await)

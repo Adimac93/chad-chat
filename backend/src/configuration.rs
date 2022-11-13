@@ -5,6 +5,7 @@ use serde::Deserialize;
 pub struct Setting {
     pub database: DatabaseSettings,
     pub addr: AddresSettings,
+    pub origin: OriginSettings,
     pub jwt: JWTSettings,
 }
 
@@ -28,6 +29,23 @@ pub struct JWTSettings {
     pub secret: String,
 }
 
+#[derive(Deserialize)]
+pub struct OriginSettings {
+    pub ip: String,
+    pub port: u16,
+    pub secure: bool,
+}
+
+impl OriginSettings {
+    pub fn get(&self) -> String {
+        let mut origin = String::from("http");
+        if self.secure {
+            origin.push('s');
+        }
+        origin.push_str(&format!("://{}:{}", self.ip, self.port));
+        origin
+    }
+}
 impl DatabaseSettings {
     pub fn connection_string(&self) -> String {
         format!(
@@ -38,7 +56,9 @@ impl DatabaseSettings {
 }
 
 pub fn get_config() -> Result<Setting, ConfigError> {
-    let settings = Config::builder().add_source(File::new("config/settings", FileFormat::Toml));
+    let settings = Config::builder()
+        .add_source(File::new("config/settings", FileFormat::Toml))
+        .add_source(File::new("../frontend/config/settings", FileFormat::Json));
 
     settings.build()?.try_deserialize()
 }
