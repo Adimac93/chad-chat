@@ -42,8 +42,8 @@ async fn post_login_user(
     let token = authorize_user(&pool, user, Duration::hours(2)).await?;
     let cookie = Cookie::build("jwt", token)
         .http_only(false)
-        .secure(false)
-        .same_site(SameSite::Strict)
+        .secure(true)
+        .same_site(SameSite::None)
         .path("/")
         .finish();
 

@@ -15,9 +15,10 @@
 				login,
 				password
 			}),
+			mode: 'cors',
 			credentials: 'include'
 		});
-		message = res.status;
+		message = res.status
 		if (res.ok) {
 			goto(`/chat`);
 		}

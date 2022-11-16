@@ -1,4 +1,4 @@
-﻿use crate::models::{ChatState, Claims};
+﻿use crate::models::{ChatState, Claims, GroupTransmitter};
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 
@@ -9,10 +9,16 @@ use axum::{
     routing::{get, post},
     Extension, Router,
 };
+use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use sqlx::{PgPool, Pool, Postgres};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::str::FromStr;
 use std::sync::Arc;
+use time::format_description;
+use tokio::sync::broadcast::{Receiver, Sender};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
@@ -31,51 +37,161 @@ async fn chat_handler(
     ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool))
 }
 
-async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claims, pool: PgPool) {
+pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claims, pool: PgPool) {
     // By splitting we can send and receive at the same time.
-    let (mut sender, mut receiver) = stream.split();
+    let (sender, mut receiver) = stream.split();
+    let sender = Arc::new(Mutex::new(sender));
 
-    // Loop until a text message is found.
-    let mut group_id = String::new();
+    let mut ctx: Option<Sender<String>> = None;
+    let mut recv_task: Option<JoinHandle<()>> = None;
+    let mut current_group_id: Option<Uuid> = None;
+    // Listen for user message
     while let Some(Ok(message)) = receiver.next().await {
-        if let Message::Text(id) = message {
-            info!("Group id: {}", id);
-            group_id = id;
+        // Decode message
+        let Ok(action) = ChatAction::try_from(message) else {
+            error!("Invalid action");
             break;
+        };
+        match action {
+            ChatAction::ChangeGroup { group_id } => {
+                // Security checks
+                let Ok(is_group) = check_if_group_exists(&pool,&group_id).await else {
+                    error!("Cannot check if group exists");
+                    return;
+                };
+                if !is_group {
+                    info!("Non existing group");
+                    return;
+                }
+                let Ok(is_group_member) = check_if_group_member(&pool,&claims.id,&group_id).await else {
+                    error!("Cannot check if user is a group member");
+                    return;
+                };
+                if !is_group_member {
+                    info!("User isn't a group member");
+                    return;
+                }
+                // Save currend group id
+                current_group_id = Some(group_id);
+
+                // Load messages
+                let Ok(messages) = fetch_chat_messages(&pool,&group_id).await else {
+                    error!("Cannot fetch group messages");
+                    return;
+                };
+
+                for message in messages.iter() {
+                    let Ok(login) = get_user_login_by_id(&pool, &message.user_id).await else {
+                        error!("Failed to get user by login");
+                        return;
+                    };
+
+                    let send_at = message.sent_at.time();
+
+                    if sender
+                        .lock()
+                        .await
+                        .send(Message::Text(format!(
+                            "{}:{} {} : {}",
+                            send_at.hour(),
+                            send_at.minute(),
+                            login,
+                            message.content
+                        )))
+                        .await
+                        .is_err()
+                    {
+                        error!("Failed to load messages");
+                        break;
+                    }
+                }
+
+                // Fetch group transmitter or create one & add user as online member of group
+                let mut groups = state.groups.lock().await;
+                let group = groups
+                    .entry(group_id)
+                    .and_modify(|group_tx| {
+                        group_tx.users.insert(claims.id);
+                    })
+                    .or_insert(GroupTransmitter::new());
+
+                // Group channels
+                let tx = group.tx.clone();
+                let mut rx = tx.subscribe();
+                ctx = Some(tx);
+
+                // Send message to cliend side
+                if let Some(task) = recv_task {
+                    task.abort();
+                };
+                let sender_cloned = sender.clone();
+                recv_task = Some(tokio::spawn(async move {
+                    while let Ok(msg) = rx.recv().await {
+                        if sender_cloned
+                            .lock()
+                            .await
+                            .send(Message::Text(msg))
+                            .await
+                            .is_err()
+                        {
+                            debug!("Error while seding message to client");
+                            break;
+                        }
+                    }
+                }));
+            }
+            ChatAction::SendMessage { content } => {
+                if let Some(group_id) = current_group_id {
+                    if let Some(tx) = ctx.clone() {
+                        let payload = format!("{}: {}", claims.login, content);
+                        let res = tx.send(payload.clone());
+                        debug!("Sent: {payload}");
+                        debug!("Active transmitters: {res:?}");
+                    }
+                    let Ok(_) = create_message(&pool, &claims.id, &group_id, &content).await else {
+                        return;
+                    };
+                } else {
+                    error!("Cannot send message - group not selected");
+                    return;
+                }
+            }
         }
     }
+}
 
-    let Ok(group_id) = Uuid::from_str(&group_id) else {
-        error!("Provided invalid UUID");
-        return;
-    };
+#[derive(Serialize, Deserialize)]
+enum ChatAction {
+    ChangeGroup { group_id: Uuid },
+    SendMessage { content: String },
+}
+// {"ChangeGroup" : {"group_id": "asd-asdasd-asd-asd"}}
+// {"SendMessage" : {"content": "Hello"}}
 
-    let Ok(is_group) = check_if_group_exists(&pool,&group_id).await else {
-        error!("Cannot check if group exists");
-        return;
-    };
+#[derive(Serialize, Deserialize)]
+struct ChatMessage {
+    msg_type: ChatAction,
+}
+impl TryFrom<Message> for ChatAction {
+    type Error = ();
 
-    if !is_group {
-        info!("Non existing group");
-        return;
+    fn try_from(value: Message) -> Result<Self, Self::Error> {
+        match value {
+            Message::Text(text) => {
+                let action = serde_json::from_str::<ChatAction>(&text).map_err(|e| ())?;
+                Ok(action)
+            },
+            _ => Err(())
+            // Message::Binary(_) => todo!(),
+            // Message::Ping(_) => todo!(),
+            // Message::Pong(_) => todo!(),
+            // Message::Close(_) => todo!(),
+        }
     }
+}
 
-    let Ok(is_group_member) = check_if_group_member(&pool,&claims.id,&group_id).await else {
-        error!("Cannot check if user is a group member");
-        return;
-    };
-
-    if !is_group_member {
-        info!("User isn't a group member");
-        return;
-    }
-
-    let Ok(username) = get_user_login_by_id(&pool,&claims.id).await else {
-        error!("Cannot fetch user login by id");
-        return;
-    };
-
-    let Ok(messages) = fetch_chat_messages(&pool,&group_id).await else {
+async fn load_messages(pool: &PgPool, sender: &mut SplitSink<WebSocket, Message>, group_id: &Uuid) {
+    let Ok(messages) = fetch_chat_messages(pool,group_id).await else {
         error!("Cannot fetch group messages");
         return;
     };
@@ -89,58 +205,5 @@ async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claims, p
             error!("Failed to load messages");
             break;
         }
-    }
-
-    // Subscribe before sending "joined" message.
-    let (tx, mut rx) = {
-        let mut groups = state.groups.lock().unwrap();
-        subscribe(&mut groups, group_id, claims.id, &username)
-    };
-
-    // This task will receive broadcast messages and send text message to our client.
-    let mut send_task_to_client = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            // In any websocket error, break loop.
-            if sender.send(Message::Text(msg)).await.is_err() {
-                break;
-            }
-        }
-    });
-
-    // Clone things we want to pass to the receiving task.
-    let name = username.clone();
-    let cloned_tx = tx.clone();
-
-    // This task will receive messages from client and send them to broadcast subscribers.
-    let mut recv_task_from_client = tokio::spawn(async move {
-        while let Some(Ok(Message::Text(text))) = receiver.next().await {
-            // Add username before message.
-            let msg = format!("{}: {}", name, text);
-            let _ = cloned_tx.send(msg.clone());
-
-            if create_message(&pool, &claims.id, &group_id, &msg)
-                .await
-                .is_err()
-            {
-                error!("Failed to save this message in the database")
-            }
-        }
-    });
-
-    // If any one of the tasks exit, abort the other.
-    tokio::select! {
-        _ = (&mut send_task_to_client) => recv_task_from_client.abort(),
-        _ = (&mut recv_task_from_client) => send_task_to_client.abort(),
-    };
-
-    // Send "user left" message.
-    let msg = format!("{} left.", username);
-    debug!("{}", msg);
-    let _ = tx.send(msg);
-    {
-        let mut groups = state.groups.lock().unwrap();
-        groups.entry(group_id).and_modify(|group| {
-            let _is_present = group.users.remove(&claims.id);
-        });
     }
 }

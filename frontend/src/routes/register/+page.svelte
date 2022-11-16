@@ -17,7 +17,7 @@
 				password
 			})
 		});
-		message = res.status;
+		message = (await res.json()).error_info;
 	}
 </script>
 

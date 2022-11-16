@@ -25,7 +25,7 @@
 
 	function onKeyDown(e: KeyboardEvent) {
 		if (e.key == 'Enter') {
-			websocket.send(input);
+			websocket.send(JSON.stringify({SendMessage: {content: input}}));
 			input = '';
 		}
 	}
@@ -36,7 +36,7 @@
 		websocket.onopen = () => {
 			console.log(`connection opened`);
 			console.log(selectedGroup);
-			websocket.send(selectedGroup);
+			websocket.send(JSON.stringify({ChangeGroup: {group_id: selectedGroup}}));
 		};
 
 		websocket.onclose = () => {
