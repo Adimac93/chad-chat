@@ -46,9 +46,18 @@ where
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct AuthUser {
+pub struct LoginCredentials {
     pub login: String,
     pub password: String,
+}
+
+impl LoginCredentials {
+    pub fn new(login: &str, password: &str) -> Self {
+        Self {
+            login: login.to_string(),
+            password: password.to_string(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]

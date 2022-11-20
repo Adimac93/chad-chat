@@ -1,16 +1,15 @@
 ﻿use crate::{
-    models::{AuthUser, Claims},
+    models::{LoginCredentials, Claims},
     utils::auth::{errors::AuthError, *},
 };
 use axum::{extract, http::StatusCode, Extension, Json};
 use axum::{
-    response::Html,
-    routing::{get, post},
+    routing::post,
     Router,
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
@@ -24,7 +23,7 @@ pub fn router() -> Router {
 
 async fn post_register_user(
     Extension(pool): Extension<PgPool>,
-    user: extract::Json<AuthUser>,
+    user: extract::Json<LoginCredentials>,
 ) -> Result<(), AuthError> {
     try_register_user(
         &pool,
@@ -36,7 +35,7 @@ async fn post_register_user(
 
 async fn post_login_user(
     Extension(pool): Extension<PgPool>,
-    Json(user): extract::Json<AuthUser>,
+    Json(user): extract::Json<LoginCredentials>,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
     let token = authorize_user(&pool, user, Duration::hours(2)).await?;

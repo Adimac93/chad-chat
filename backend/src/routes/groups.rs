@@ -44,8 +44,7 @@ async fn post_add_user_to_group(
     Json(GroupUser { user_id, group_id }): Json<GroupUser>,
 ) -> Result<(), GroupError> {
     tracing::trace!("JWT: {:#?}", claims);
-    try_add_user_to_group(&pool, &user_id, &group_id).await?;
-    Ok(())
+    try_add_user_to_group(&pool, &user_id, &group_id).await
 }
 
 async fn post_create_group_invitation_link(
@@ -81,7 +80,7 @@ pub async fn get_join_group_by_link(
 
 pub async fn get_invitation_info(
     Path(invite_id): Path<Uuid>,
-    claims: Claims,
+    _claims: Claims,
     Extension(pool): Extension<PgPool>,
     state: Extension<Arc<InvitationState>>,
 ) -> Result<Json<GroupInfo>, GroupError> {

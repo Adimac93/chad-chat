@@ -1,16 +1,13 @@
-﻿use super::errors::*;
-use anyhow::Context;
-use argon2::hash_encoded;
+﻿use argon2::hash_encoded;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use secrecy::{ExposeSecret, SecretString};
 
-pub fn hash_pass(pass: SecretString) -> Result<String, AuthError> {
-    Ok(hash_encoded(
+pub fn hash_pass(pass: SecretString) -> Result<String, argon2::Error> {
+    hash_encoded(
         pass.expose_secret().as_bytes(),
         random_salt().as_bytes(),
         &argon2::Config::default(),
     )
-    .context("Failed to hash pass")?)
 }
 
 pub fn random_salt() -> String {

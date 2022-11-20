@@ -4,6 +4,7 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct Setting {
     pub database: DatabaseSettings,
+    pub test_database: DatabaseSettings,
     pub addr: AddresSettings,
     pub origin: OriginSettings,
     pub jwt: JWTSettings,
@@ -46,6 +47,7 @@ impl OriginSettings {
         origin
     }
 }
+
 impl DatabaseSettings {
     pub fn connection_string(&self) -> String {
         format!(

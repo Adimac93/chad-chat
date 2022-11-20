@@ -1,6 +1,6 @@
 pub mod additions;
 pub mod errors;
-use crate::models::{AuthUser, Claims};
+use crate::models::{LoginCredentials, Claims};
 use anyhow::Context;
 use argon2::verify_encoded;
 use errors::*;
@@ -86,7 +86,7 @@ pub async fn login_user(
 
 pub async fn authorize_user(
     pool: &PgPool,
-    user: AuthUser,
+    user: LoginCredentials,
     duration: Duration,
 ) -> Result<String, AuthError> {
     let user_id = login_user(

@@ -1,29 +1,22 @@
-﻿use backend::app;
+﻿use backend::{app, database::get_database_pool};
+use backend::configuration::get_config;
 use dotenv::dotenv;
 use reqwest::Client;
-use sqlx::{Connection, Executor, PgConnection, PgPool};
 use std::net::{SocketAddr, TcpListener};
-use uuid::Uuid;
 pub async fn spawn_app() -> SocketAddr {
     dotenv().ok();
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
     let addr = listener.local_addr().unwrap();
 
-    let id = Uuid::new_v4().to_string();
-    let db_data = DatabaseConfig {
-        username: "postgres".to_string(),
-        address: "localhost".to_string(),
-        port: "5432".to_string(),
-        name: format!("test_{id}"),
-    };
-
-    let pool = config_db(db_data).await;
+    let config = get_config().expect("Failed to read config");
 
     tokio::spawn(async move {
         axum::Server::from_tcp(listener)
             .unwrap()
-            .serve(app(pool).await.into_make_service())
+            .serve(app(get_database_pool(&config.test_database.connection_string()).await)
+                .await
+                .into_make_service())
             .await
             .unwrap()
     });
@@ -36,46 +29,4 @@ pub fn client() -> Client {
         .cookie_store(true)
         .build()
         .expect("Failed to build reqwest client")
-}
-
-pub async fn config_db(config: DatabaseConfig) -> PgPool {
-    let mut connection = PgConnection::connect(&config.to_db_url_no_name())
-        .await
-        .expect("Failed to connect to Postgres");
-    connection
-        .execute(format!(r#"create database "{}";"#, config.name).as_str())
-        .await
-        .expect("Failed to create database.");
-
-    let url = &config.to_db_url();
-    let pool = PgPool::connect(&url).await.unwrap();
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("Failed to migrate the database");
-
-    pool
-}
-
-pub struct DatabaseConfig {
-    pub username: String,
-    pub address: String,
-    pub port: String,
-    pub name: String,
-}
-
-impl DatabaseConfig {
-    fn to_db_url(&self) -> String {
-        format!(
-            "postgresql://{}@{}:{}/{}",
-            self.username, self.address, self.port, self.name
-        )
-    }
-
-    fn to_db_url_no_name(&self) -> String {
-        format!(
-            "postgresql://{}@{}:{}",
-            self.username, self.address, self.port
-        )
-    }
 }

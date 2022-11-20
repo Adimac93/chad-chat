@@ -4,19 +4,16 @@ use crate::utils::groups::*;
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::Json,
     response::Response,
-    routing::{get, post},
+    routing::get,
     Extension, Router,
 };
-use futures::stream::{SplitSink, SplitStream};
+use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::str::FromStr;
 use std::sync::Arc;
-use time::format_description;
-use tokio::sync::broadcast::{Receiver, Sender};
+use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
@@ -178,7 +175,7 @@ impl TryFrom<Message> for ChatAction {
     fn try_from(value: Message) -> Result<Self, Self::Error> {
         match value {
             Message::Text(text) => {
-                let action = serde_json::from_str::<ChatAction>(&text).map_err(|e| ())?;
+                let action = serde_json::from_str::<ChatAction>(&text).map_err(|_e| ())?;
                 Ok(action)
             },
             _ => Err(())
