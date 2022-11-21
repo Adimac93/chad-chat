@@ -22,16 +22,33 @@
 </script>
 
 <h1>Register</h1>
-<form>
-	<label>Login<input bind:value={login} placeholder="login" type="text" /></label>
-	<label>Password<input bind:value={password} placeholder="password" type="password" /></label>
-	<label
-		>Repeat password<input
-			bind:value={repeated_password}
-			placeholder="password"
-			type="password"
+<form class="flex-box text-center">
+	<label class="m-2 block"
+		>Login<br /><input
+			bind:value={login}
+			placeholder="login"
+			type="text"
+			class="rounded-md border-4"
 		/></label
 	>
-	<button on:click|preventDefault={login_user}>Register</button>
+	<label class="m-2 block"
+		>Password<br /><input
+			bind:value={password}
+			placeholder="password"
+			type="password"
+			class="rounded-md border-4"
+		/></label
+	>
+	<label class="m-2 block"
+		>Repeat password<br /><input
+			bind:value={repeated_password}
+			placeholder="repeat password"
+			type="password"
+			class="rounded-md border-4"
+		/></label
+	>
+	<button
+		class="content m-6 rounded-lg border-4 px-4 hover:bg-slate-100"
+		on:click|preventDefault={login_user}>Register</button
+	>
 </form>
-<div>Status: {message}</div>
