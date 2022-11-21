@@ -13,7 +13,8 @@ use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
-use tokio::sync::broadcast::Sender;
+use time::{format_description, OffsetDateTime};
+use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
@@ -42,6 +43,10 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
     let mut ctx: Option<Sender<String>> = None;
     let mut recv_task: Option<JoinHandle<()>> = None;
     let mut current_group_id: Option<Uuid> = None;
+
+    // Message format
+    let format = format_description::parse("[hour]:[minute]").unwrap();
+
     // Listen for user message
     while let Some(Ok(message)) = receiver.next().await {
         // Decode message
@@ -83,17 +88,14 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                         return;
                     };
 
-                    let send_at = message.sent_at.time();
+                    let sent_at = message.sent_at.format(&format).unwrap();
 
                     if sender
                         .lock()
                         .await
                         .send(Message::Text(format!(
-                            "{}:{} {} : {}",
-                            send_at.hour(),
-                            send_at.minute(),
-                            login,
-                            message.content
+                            "{} {}: {}",
+                            sent_at, login, message.content
                         )))
                         .await
                         .is_err()
@@ -140,7 +142,12 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
             ChatAction::SendMessage { content } => {
                 if let Some(group_id) = current_group_id {
                     if let Some(tx) = ctx.clone() {
-                        let payload = format!("{}: {}", claims.login, content);
+                        let payload = format!(
+                            "{} {}: {}",
+                            OffsetDateTime::now_utc().format(&format).unwrap(),
+                            claims.login,
+                            content
+                        );
                         let res = tx.send(payload.clone());
                         debug!("Sent: {payload}");
                         debug!("Active transmitters: {res:?}");
@@ -162,6 +169,7 @@ enum ChatAction {
     ChangeGroup { group_id: Uuid },
     SendMessage { content: String },
 }
+
 // {"ChangeGroup" : {"group_id": "asd-asdasd-asd-asd"}}
 // {"SendMessage" : {"content": "Hello"}}
 
