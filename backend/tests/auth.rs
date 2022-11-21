@@ -5,11 +5,13 @@ use uuid::Uuid;
 mod tools;
 
 mod tests {
+    use sqlx::PgPool;
+
     use super::*;
 
-    #[tokio::test]
-    pub async fn user_register_test_positive() {
-        let addr = tools::spawn_app().await;
+    #[sqlx::test]
+    pub async fn user_register_test_positive(db: PgPool) {
+        let addr = tools::spawn_app(db).await;
         let client = tools::client();
 
         let payload = json!({
@@ -28,24 +30,10 @@ mod tests {
     }
 
     // todo: error result causes
-    #[tokio::test]
-    pub async fn user_register_test_negative() {
-        let addr = tools::spawn_app().await;
+    #[sqlx::test(fixtures("user"))]
+    pub async fn user_register_test_negative(db: PgPool) {
+        let addr = tools::spawn_app(db).await;
         let client = tools::client();
-
-        let repeating_user = format!("User{}", Uuid::new_v4());
-
-        let payload = json!({
-            "login": repeating_user,
-            "password": "#very#_#strong#_#pass#",
-        });
-
-        let _res = client
-            .post(format!("http://{}/auth/register", addr))
-            .json(&payload)
-            .send()
-            .await
-            .unwrap();
 
         let test_data: Vec<LoginCredentials> = vec!(
             // missing credential
@@ -56,7 +44,8 @@ mod tests {
             // weak pass
             LoginCredentials::new(&format!("User{}", Uuid::new_v4()), "12345678"),
             // user already exists
-            LoginCredentials::new(&repeating_user, "#very#_#strong#_#pass#"),
+            LoginCredentials::new("some_user", "#very#_#strong#_#pass#"),
+            LoginCredentials::new("some_user", "#strong#_#pass#"),
         );
 
         for elem in test_data {
@@ -76,9 +65,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    pub async fn auth_integration_test() {
-        let addr = tools::spawn_app().await;
+    #[sqlx::test]
+    pub async fn auth_integration_test(db: PgPool) {
+        let addr = tools::spawn_app(db).await;
         let client = tools::client();
 
         let payload = json!({
