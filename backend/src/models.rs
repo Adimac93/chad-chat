@@ -5,6 +5,7 @@ use axum::{
     extract::{self, FromRequest},
 };
 use axum_extra::extract::CookieJar;
+use dashmap::DashMap;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
@@ -112,13 +113,13 @@ pub struct NewGroupInvitation {
 }
 
 pub struct ChatState {
-    pub groups: Mutex<HashMap<Uuid, GroupTransmitter>>,
+    pub groups: DashMap<Uuid, GroupTransmitter>,
 }
 
 impl ChatState {
     pub fn new() -> Self {
         Self {
-            groups: Mutex::new(HashMap::new()),
+            groups: DashMap::new(),
         }
     }
 }

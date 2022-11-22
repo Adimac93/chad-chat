@@ -106,8 +106,8 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 }
 
                 // Fetch group transmitter or create one & add user as online member of group
-                let mut groups = state.groups.lock().await;
-                let group = groups
+                let group = state
+                    .groups
                     .entry(group_id)
                     .and_modify(|group_tx| {
                         group_tx.users.insert(claims.id);

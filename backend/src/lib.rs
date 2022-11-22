@@ -49,6 +49,7 @@ async fn home_page() -> impl IntoResponse {
     // TODO: api docs, info
     Json(json!({"info":"docs"}))
 }
+
 async fn not_found(Path(slug): Path<String>) -> impl IntoResponse {
     let message = format!("endpoint '{slug}' isn't used");
     Json(json!({ "info": message }))
