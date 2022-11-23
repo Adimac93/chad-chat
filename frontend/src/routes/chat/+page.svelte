@@ -14,7 +14,7 @@
 	let groups: Array<Group> = [];
 	let websocket: WebSocket;
 
-	let messages: Array<string> = [];
+	let chatMessages: Array<Message> = [];
 
 	onMount(async () => {
 		groups = await getGroups();
@@ -44,6 +44,13 @@
 		}
 	}
 
+	interface Message {
+		sender: string,
+		sat: number,
+		content: string,
+	}
+
+
 	function initWebsocket() {
 		const websocket = new WebSocket(`ws://${variables.api}/chat/websocket`);
 
@@ -58,27 +65,40 @@
 		};
 
 		websocket.onmessage = (e) => {
-			console.log('received message: ' + e.data);
-			// textbox += e.data + '\r\n';
-			messages.push(e.data);
-			messages = messages;
+			const msg = JSON.parse(e.data);
+			console.log(msg);
+			const keys = Object.keys(msg);
 			
+			if (keys[0] == "LoadMessages") {
+				chatMessages = []
+				const messages = (msg.LoadMessages as Array<Message>)
+				messages.forEach((m)=>{
+					chatMessages.push(m);
+				})
+				chatMessages = chatMessages;
+			} else if (keys[0] == "Message") {
+				const message = (msg.Message as Message);
+				chatMessages.push(message);
+				chatMessages = chatMessages;
+			} else {
+				console.log("error");
+			}
 		};
 		return websocket;
 	}
 </script>
 
 <h1>Chat</h1>
-<div class="justify-center items-center h-64">
+<div class="justify-center items-center h-1/2 w-auto">
 		<select bind:value={selectedGroup} on:change={changeChat} class="block px-10 rounded-mdsele">
 			<option disabled selected>Select chat, chad</option>
 			{#each groups as group}
 				<option value={group}>{group.name}</option>
 			{/each}
 		</select>
-		<div class="block w-1/3 h-2/3 min-h- box-border border-4 rounded-lg rounded-b-none overflow-y-scroll max-h-96 scroll">
-			{#each messages as message}
-				<div class="block">{message}</div>
+		<div class="block w-1/3 h-2/3 box-border border-4 rounded-lg rounded-b-none overflow-y-scroll max-h-96 scroll">
+			{#each chatMessages as message}
+				<div class="block">{new Date(message.sat).toLocaleTimeString()} {message.sender}: {message.content}</div>
 			{/each}
 		</div>
 		<input

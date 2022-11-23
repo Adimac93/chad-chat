@@ -7,7 +7,8 @@ const config: UserConfig = {
 	server: {
 		port: settings.origin.port,
 		host: settings.origin.ip,
-		https: settings.origin.secure
+		https: settings.origin.secure,
+		fs: { allow: ['..'] }
 	}
 };
 

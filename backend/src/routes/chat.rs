@@ -44,9 +44,6 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
     let mut recv_task: Option<JoinHandle<()>> = None;
     let mut current_group_id: Option<Uuid> = None;
 
-    // Message format
-    let format = format_description::parse("[hour]:[minute]").unwrap();
-
     // Listen for user message
     while let Some(Ok(message)) = receiver.next().await {
         // Decode message
@@ -54,6 +51,8 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
             error!("Invalid action");
             break;
         };
+
+        // Interpret message
         match action {
             ChatAction::ChangeGroup { group_id } => {
                 // Security checks
@@ -82,27 +81,28 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     return;
                 };
 
-                for message in messages.iter() {
+                let mut payload_messages = vec![];
+                for message in messages.into_iter() {
                     let Ok(login) = get_user_login_by_id(&pool, &message.user_id).await else {
+                        // ?User deleted account
                         error!("Failed to get user by login");
                         return;
                     };
 
-                    let sent_at = message.sent_at.format(&format).unwrap();
+                    payload_messages.push(UserMessage {
+                        sender: login,
+                        content: message.content,
+                        sat: message.sent_at.unix_timestamp(),
+                    })
+                }
 
-                    if sender
-                        .lock()
-                        .await
-                        .send(Message::Text(format!(
-                            "{} {}: {}",
-                            sent_at, login, message.content
-                        )))
-                        .await
-                        .is_err()
-                    {
-                        error!("Failed to load messages");
-                        break;
-                    }
+                // Send messages json object
+                let payload = SocketMessage::LoadMessages(payload_messages);
+                let msg = serde_json::to_string(&payload).unwrap();
+
+                if sender.lock().await.send(Message::Text(msg)).await.is_err() {
+                    error!("Failed to load messages");
+                    break;
                 }
 
                 // Fetch group transmitter or create one & add user as online member of group
@@ -121,7 +121,8 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
 
                 // Send message to cliend side
                 if let Some(task) = recv_task {
-                    task.abort();
+                    // Abort listening to other group message transmitter
+                    task.abort()
                 };
                 let sender_cloned = sender.clone();
                 recv_task = Some(tokio::spawn(async move {
@@ -142,14 +143,14 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
             ChatAction::SendMessage { content } => {
                 if let Some(group_id) = current_group_id {
                     if let Some(tx) = ctx.clone() {
-                        let payload = format!(
-                            "{} {}: {}",
-                            OffsetDateTime::now_utc().format(&format).unwrap(),
-                            claims.login,
-                            content
-                        );
-                        let res = tx.send(payload.clone());
-                        debug!("Sent: {payload}");
+                        let payload = SocketMessage::Message(UserMessage {
+                            content: content.to_string(),
+                            sat: OffsetDateTime::now_utc().unix_timestamp(),
+                            sender: claims.login.to_string(),
+                        });
+                        let msg = serde_json::to_string(&payload).unwrap();
+                        debug!("Sent: {msg:#?}");
+                        let res = tx.send(msg);
                         debug!("Active transmitters: {res:?}");
                     }
                     let Ok(_) = create_message(&pool, &claims.id, &group_id, &content).await else {
@@ -160,6 +161,9 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     return;
                 }
             }
+            ChatAction::GroupInvite { group_id } => {
+                todo!()
+            }
         }
     }
 }
@@ -168,15 +172,13 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
 enum ChatAction {
     ChangeGroup { group_id: Uuid },
     SendMessage { content: String },
+    GroupInvite { group_id: Uuid },
 }
 
 // {"ChangeGroup" : {"group_id": "asd-asdasd-asd-asd"}}
-// {"SendMessage" : {"content": "Hello"}}
+// {"SendMessage" : {"content": "Hello"}} -> {"message": {"content": "Hello", "time": 1669233892}}
+// {"GroupInvite": {"group_id": "asd-asdasd-asd-asd"}} -> {"invite": {"group_id": "asd-asdasd-asd-asd"}}
 
-#[derive(Serialize, Deserialize)]
-struct ChatMessage {
-    msg_type: ChatAction,
-}
 impl TryFrom<Message> for ChatAction {
     type Error = ();
 
@@ -195,20 +197,16 @@ impl TryFrom<Message> for ChatAction {
     }
 }
 
-async fn load_messages(pool: &PgPool, sender: &mut SplitSink<WebSocket, Message>, group_id: &Uuid) {
-    let Ok(messages) = fetch_chat_messages(pool,group_id).await else {
-        error!("Cannot fetch group messages");
-        return;
-    };
+#[derive(Serialize, Deserialize)]
+enum SocketMessage {
+    LoadMessages(Vec<UserMessage>),
+    GroupInvite,
+    Message(UserMessage),
+}
 
-    for message in messages.iter() {
-        if sender
-            .send(Message::Text(format!("{}", message.content)))
-            .await
-            .is_err()
-        {
-            error!("Failed to load messages");
-            break;
-        }
-    }
+#[derive(Serialize, Deserialize)]
+struct UserMessage {
+    sender: String,
+    sat: i64,
+    content: String,
 }
