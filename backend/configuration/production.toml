@@ -1,3 +1,10 @@
 [app]
 host = "0.0.0.0"
 jwt_key = "SECRET"
+
+[database]
+host = "containers-us-west-60.railway.app"
+database_name = "railway"
+username = "postgres"
+password = "e98sT8uG3WfMwQBnxDC8"
+port = 6342
