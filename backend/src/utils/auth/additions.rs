@@ -17,12 +17,5 @@ pub fn random_salt() -> String {
 
 pub fn pass_is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
     let score = zxcvbn::zxcvbn(user_password, user_inputs);
-    match score {
-        Ok(s) => s.score() >= 3,
-        Err(_) => false,
-    }
-}
-
-pub fn get_token_secret() -> SecretString {
-    SecretString::new(std::env::var("TOKEN_SECRET").expect("Cannot find token secret"))
+    score.map_or(false, |entropy| entropy.score() >= 3)
 }

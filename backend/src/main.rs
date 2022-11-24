@@ -17,7 +17,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let addr = SocketAddr::from((config.addr.ip, config.addr.port));
+    let addr = config.app.get_addr();
     info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(

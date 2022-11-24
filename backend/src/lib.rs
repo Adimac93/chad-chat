@@ -13,6 +13,7 @@ use axum::{
     Extension, Json, Router,
 };
 use configuration::get_config;
+use secrecy::Secret;
 use serde_json::json;
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
@@ -23,9 +24,7 @@ pub async fn app(pool: PgPool) -> Router {
 
     let cors = CorsLayer::new()
         .allow_origin(
-            config
-                .origin
-                .get()
+            "http://localhost:5173"
                 .parse::<HeaderValue>()
                 .expect("Invalid origin"),
         )
@@ -42,8 +41,12 @@ pub async fn app(pool: PgPool) -> Router {
         .nest("/api", api)
         .nest("/chat", routes::chat::router())
         .layer(Extension(pool))
+        .layer(Extension(JwtSecret(config.app.jwt_key)))
         .layer(cors)
 }
+
+#[derive(Clone)]
+pub struct JwtSecret(pub Secret<String>);
 
 async fn home_page() -> impl IntoResponse {
     // TODO: api docs, info

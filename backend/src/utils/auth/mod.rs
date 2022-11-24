@@ -1,11 +1,16 @@
 pub mod additions;
 pub mod errors;
-use crate::models::{LoginCredentials, Claims};
+use crate::{
+    configuration::get_config,
+    models::{Claims, LoginCredentials},
+    JwtSecret,
+};
 use anyhow::Context;
 use argon2::verify_encoded;
+use axum::Extension;
 use errors::*;
 use jsonwebtoken::{encode, EncodingKey, Header};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, Secret, SecretString};
 use sqlx::{query, PgPool};
 use time::Duration;
 use tracing::info;
@@ -88,6 +93,7 @@ pub async fn authorize_user(
     pool: &PgPool,
     user: LoginCredentials,
     duration: Duration,
+    key: Secret<String>,
 ) -> Result<String, AuthError> {
     let user_id = login_user(
         &pool,
@@ -102,10 +108,11 @@ pub async fn authorize_user(
         exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
     };
 
+    let config = get_config().expect("Failed to read configuration");
     let token = encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(additions::get_token_secret().expose_secret().as_bytes()),
+        &EncodingKey::from_secret(key.expose_secret().as_bytes()),
     )
     .context("Failed to encrypt token")?;
 

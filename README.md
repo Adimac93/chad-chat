@@ -1,24 +1,21 @@
 # Configuration
 
 ## Backend
-Directory: `./backend/config/settings.toml`
+Directory: `./backend/configuration`
 
-### Example
-```toml
-[database]
-host = "localhost"
-database_name = "chad_chat"
-username = "postgres"
-password = ""
-port = 5432
+### Files
 
-[addr]
-ip = [127, 0, 0, 1]
-port = 3000
+`base.toml`
 
-[jwt]
-secret = "very_very_secret_token"
-```
+Shared configuration
+
+`local.toml`
+
+Configuration applied on local machine
+
+`production.toml`
+
+Configuration appliedo on remote machine
 
 ## Frontend
 Directory: `./frontend/config/settings.json`

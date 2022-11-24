@@ -1,12 +1,10 @@
 ﻿use crate::{
-    models::{LoginCredentials, Claims},
+    models::{Claims, LoginCredentials},
     utils::auth::{errors::AuthError, *},
+    JwtSecret,
 };
 use axum::{extract, http::StatusCode, Extension, Json};
-use axum::{
-    routing::post,
-    Router,
-};
+use axum::{routing::post, Router};
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
 use secrecy::SecretString;
@@ -35,10 +33,11 @@ async fn post_register_user(
 
 async fn post_login_user(
     Extension(pool): Extension<PgPool>,
+    Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
     Json(user): extract::Json<LoginCredentials>,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
-    let token = authorize_user(&pool, user, Duration::hours(2)).await?;
+    let token = authorize_user(&pool, user, Duration::hours(2), jwt_key).await?;
     let cookie = Cookie::build("jwt", token)
         .http_only(false)
         .secure(true)

@@ -1,4 +1,4 @@
-﻿use crate::{utils::auth::additions::get_token_secret, utils::auth::errors::*};
+﻿use crate::{configuration::get_config, utils::auth::errors::*, JwtSecret};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, Mutex, RwLock};
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -29,6 +30,12 @@ where
     type Rejection = AuthError;
 
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let ext = req.extensions();
+        let JwtSecret(jwt_key) = ext
+            .get::<JwtSecret>()
+            .expect("Failed to get jwt secret extension")
+            .clone();
+
         let jar = CookieJar::from_request(req)
             .await
             .context("Failed to fetch cookie jar")?;
@@ -38,7 +45,7 @@ where
 
         let data = decode::<Claims>(
             cookie.value(),
-            &DecodingKey::from_secret(get_token_secret().expose_secret().as_bytes()),
+            &DecodingKey::from_secret(jwt_key.expose_secret().as_bytes()),
             &validation,
         );
         let new_data = data.map_err(|_| AuthError::InvalidToken)?;
