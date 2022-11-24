@@ -28,3 +28,17 @@ pub fn client() -> Client {
         .build()
         .expect("Failed to build reqwest client")
 }
+
+pub struct AppData {
+    pub addr: SocketAddr,
+    pub client: Client,
+}
+
+impl AppData {
+    pub async fn new(db: PgPool) -> Self {
+        Self {
+            addr: spawn_app(db).await,
+            client: client(),
+        }
+    }
+}
