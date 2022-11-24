@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getGroups, getInvitationID, type Group } from "$lib/api/groups";
-	import { variables } from "$lib/variables";
 	import { onMount } from "svelte";
 
 	let selectedGroup: string = "";
@@ -15,7 +14,6 @@
 		if (!res) return;
 
 		id = res;
-		await navigator.clipboard.writeText(`http://${variables.page}/join/${id}`);
 		
 	}
 

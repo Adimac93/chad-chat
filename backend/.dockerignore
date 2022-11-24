@@ -17,5 +17,5 @@ Dockerfile
 .env
 .git
 .gitignore
-migrations
+
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { variables } from '$lib/variables';
+	import { api,ws } from '$lib/variables';
 	import { getGroups } from '$lib/api/groups';
 	import { onMount } from 'svelte';
 
@@ -52,7 +52,7 @@
 
 
 	function initWebsocket() {
-		const websocket = new WebSocket(`ws://${variables.api}/chat/websocket`);
+		const websocket = new WebSocket(`${ws}/chat/websocket`);
 
 		websocket.onopen = () => {
 			console.log(`connection opened`);

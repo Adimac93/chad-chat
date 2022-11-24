@@ -22,12 +22,13 @@ use tracing::info;
 pub async fn app(pool: PgPool) -> Router {
     let config = get_config().expect("Failed to read configuration");
 
+    let origin = config
+        .app
+        .origin
+        .parse::<HeaderValue>()
+        .expect("Invalid origin");
     let cors = CorsLayer::new()
-        .allow_origin(
-            "http://localhost:5173"
-                .parse::<HeaderValue>()
-                .expect("Invalid origin"),
-        )
+        .allow_origin(origin)
         .allow_headers([CONTENT_TYPE])
         .allow_credentials(true);
 

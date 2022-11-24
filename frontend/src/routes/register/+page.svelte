@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { variables } from '$lib/variables';
+	import { api } from '$lib/variables';
 
 	let login = '';
 	let password = '';
@@ -9,13 +9,10 @@
 	async function login_user() {
 		if (password != repeated_password) return;
 
-		let res = await fetch(`http://${variables.api}/auth/register`, {
+		let res = await fetch(`${api}/auth/register`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				login,
-				password
-			})
+			body: JSON.stringify({login,password})
 		});
 		message = (await res.json()).error_info;
 	}

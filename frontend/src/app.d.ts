@@ -6,8 +6,4 @@ declare namespace App {
 	// interface PageData {}
 	// interface Error {}
 	// interface Platform {}
-
-	interface ImportMetaEnv {
-		VITE_PUBLIC_BASE_PATH: string;
-	}
 }

@@ -5,8 +5,24 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[derive(Deserialize, Clone)]
 pub struct Settings {
-    pub database: DatabaseSettings,
     pub app: ApplicationSettings,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ApplicationSettings {
+    pub database_url: Secret<String>,
+    pub host: String,
+    pub port: u16,
+    pub jwt_key: Secret<String>,
+    pub origin: String,
+}
+
+impl ApplicationSettings {
+    pub fn get_addr(&self) -> SocketAddr {
+        let addr = format!("{}:{}", self.host, self.port);
+        addr.parse::<SocketAddr>()
+            .expect(&format!("Failed to parse address: {addr} "))
+    }
 }
 
 #[derive(Deserialize, Clone)]
@@ -18,33 +34,9 @@ pub struct DatabaseSettings {
     pub database_name: String,
 }
 
-#[derive(Deserialize, Clone)]
-pub struct ApplicationSettings {
-    pub host: String,
-    pub port: u16,
-    pub jwt_key: Secret<String>,
-}
-
-impl ApplicationSettings {
-    pub fn get_addr(&self) -> SocketAddr {
-        let addr = format!("{}:{}", self.host, self.port);
-        addr.parse::<SocketAddr>()
-            .expect(&format!("Failed to parse address: {addr} "))
-    }
-}
-
 enum Environment {
     Local,
     Production,
-}
-
-impl Environment {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Environment::Local => "local",
-            Environment::Production => "production",
-        }
-    }
 }
 
 impl TryFrom<String> for Environment {
@@ -60,18 +52,6 @@ impl TryFrom<String> for Environment {
         }
     }
 }
-impl DatabaseSettings {
-    pub fn connection_string(&self) -> String {
-        format!(
-            "postgres://{}:{}@{}:{}/{}",
-            self.username,
-            self.password.expose_secret(),
-            self.host,
-            self.port,
-            self.database_name
-        )
-    }
-}
 
 pub fn get_config() -> Result<Settings, ConfigError> {
     let base_path = std::env::current_dir().expect("Failed to determine the current directory");
@@ -82,16 +62,33 @@ pub fn get_config() -> Result<Settings, ConfigError> {
             env.try_into().expect("Failed to parse APP_ENVIRONMENT.")
         });
 
-    let environment_filename = format!("{}.toml", environment.as_str());
+    match environment {
+        Environment::Local => {
+            let settings = Config::builder()
+                .add_source(config::File::from(config_dir.join("settings.toml")))
+                .add_source(
+                    config::Environment::with_prefix("APP")
+                        .prefix_separator("_")
+                        .separator("__"),
+                );
+            return settings.build()?.try_deserialize();
+        }
 
-    let settings = Config::builder()
-        .add_source(config::File::from(config_dir.join("base.toml")))
-        .add_source(config::File::from(config_dir.join(&environment_filename)))
-        .add_source(
-            config::Environment::with_prefix("APP")
-                .prefix_separator("_")
-                .separator("__"),
-        );
+        Environment::Production => {
+            let settings = Settings {
+                app: ApplicationSettings {
+                    host: "0.0.0.0".into(),
+                    port: get_env("PORT").parse::<u16>().expect("Invalid port number"),
+                    jwt_key: Secret::from(get_env("JWT_SECRET")),
+                    database_url: Secret::from(get_env("DATABASE_URL")),
+                    origin: get_env("FRONTEND_URL"),
+                },
+            };
+            return Ok(settings);
+        }
+    }
+}
 
-    settings.build()?.try_deserialize()
+fn get_env(name: &str) -> String {
+    std::env::var(name).expect(format!("Missing {name}").as_str())
 }

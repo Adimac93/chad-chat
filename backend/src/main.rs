@@ -1,5 +1,6 @@
 use backend::{app, configuration::get_config, database::get_database_pool};
 use dotenv::dotenv;
+use secrecy::ExposeSecret;
 use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -21,7 +22,7 @@ async fn main() {
     info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(
-            app(get_database_pool(&config.database.connection_string()).await)
+            app(get_database_pool(&config.app.database_url.expose_secret()).await)
                 .await
                 .into_make_service(),
         )

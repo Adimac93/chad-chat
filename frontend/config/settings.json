@@ -1,8 +1,0 @@
-{
-	"origin": {
-		"ip": "localhost",
-		"port": 5173,
-		"secure": false
-	},
-	"api": "127.0.0.1:3000"
-}

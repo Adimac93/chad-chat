@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { variables } from '$lib/variables';
+	import { api } from '$lib/variables';
 
 	let login = '';
 	let password = '';
@@ -8,7 +8,7 @@
 
 	async function login_user() {
 		console.log(`${login} - ${password}`);
-		let res = await fetch(`http://${variables.api}/auth/login`, {
+		let res = await fetch(`${api}/auth/login`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
