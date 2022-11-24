@@ -1,0 +1,297 @@
+{
+  "db": "PostgreSQL",
+  "000e6fcca9caf0689b984c84c614287396616f7fcd06e97edb60adfba80927dd": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            insert into users (login, password)\n            values ($1, $2)\n        "
+  },
+  "0beafd8b199ca4d8bab4d484e4fc38a80eeda2a8b730cbaa9286c3e6465db0a5": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "group_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select * from group_users\n            where user_id = $1 and group_id = $2\n        "
+  },
+  "0e08998c2c8bba4233827d746265e350c31611dd354a981e33bb8416a82bda64": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select groups.id, groups.name from group_users\n            join groups on groups.id = group_users.group_id\n            where user_id = $1\n        "
+  },
+  "2e49d78f4391e503e4e99010f12223dfc0d4380fd70e7dc3665c837ab9af8e6e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "login",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "password",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            select * from users where login = $1\n        "
+  },
+  "5947c98a070c3696182f8e167122554ad7041b1d72270050b48eb56e29cfaa50": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select * from groups\n            where id = $1\n        "
+  },
+  "61f63190e41c2273c24c4dc1508687882c57af6f940afc7a0435ae43af702036": {
+    "describe": {
+      "columns": [
+        {
+          "name": "login",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select login from users where id = $1\n        "
+  },
+  "708ad8d5a03ff3b7818612f0af212c4e0188fbf25625528fb29d3dc68e66ed3f": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            insert into group_users (user_id, group_id)\n            values ($1, $2)\n        "
+  },
+  "a9ac57cc0a1f7ca964b990c8361a2ffdca199921ce48b572aebbba2454c7da90": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "name",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            insert into groups (name)\n            values ($1)\n            returning *\n        "
+  },
+  "d1dbd29e4010ae3abe68ab140e70707e433b37e3f23928bb571645f20490b137": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "group_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "content",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "id",
+          "ordinal": 3,
+          "type_info": "Int4"
+        },
+        {
+          "name": "sent_at",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select * from messages\n            where group_id = $1\n        "
+  },
+  "e140b0936ba4bf13f5173c19cff9f89dc01534be2325f345b375ac031b131f52": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Uuid",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            insert into messages (content, user_id, group_id)\n            values ($1, $2, $3)\n        "
+  },
+  "e9ce742288a27afb7f80d00d2959fe905dd892c6cc49bc9319ca032219883593": {
+    "describe": {
+      "columns": [
+        {
+          "name": "name",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "count",
+          "ordinal": 1,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select g.name,count(user_id) from group_users\n            join groups g on group_users.group_id = g.id\n            where group_id = $1\n            group by g.name\n        "
+  },
+  "f09385f08ebe168d3e1d4efadcfa268380e82c746c8dd7cb44b30f5740815842": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "group_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n        select * from group_users \n        where user_id = $1 and group_id = $2\n    "
+  }
+}
