@@ -124,24 +124,24 @@ connection fails - panics
 registers the user with specified login credentials (adds the user to the database)
 
 Should fail when:
-- [ ] at least one of the credentials is missing (or empty after trimming)
-- [ ] username is taken
-- [ ] password is weak
+- [x] at least one of the credentials is missing (or empty after trimming)
+- [x] username is taken
+- [x] password is weak
 - [ ] suggestion: username is not between a specified range of length
 
 `login_user()`
 
 verifies login credentials
 Should fail when:
-- [ ] at least one of the credentials is missing (or empty after trimming)
-- [ ] it can't select a corresponding username
-- [ ] password doesn't match the username
+- [x] at least one of the credentials is missing (or empty after trimming)
+- [x] it can't select a corresponding username
+- [x] password doesn't match the username
 
 `authorize_user()`
 
 creates a jwt token and sends it to the client (in a cookie jar)
 Should fail when:
-- [ ] credential verification fails - login_user()
+- [x] credential verification fails - login_user()
 
 `get_user_login_by_id()`
 

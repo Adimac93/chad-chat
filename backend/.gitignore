@@ -14,4 +14,4 @@ Cargo.lock
 *.pdb
 
 # contains server config info
-config/settings.toml
+configuration/settings.toml

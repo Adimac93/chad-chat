@@ -97,7 +97,7 @@ pub async fn authorize_user(
 ) -> Result<String, AuthError> {
     let user_id = login_user(
         &pool,
-        &user.login,
+        &user.login.trim(),
         SecretString::new(user.password.trim().to_string()),
     )
     .await?;
