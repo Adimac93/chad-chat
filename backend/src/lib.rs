@@ -8,6 +8,7 @@ use axum::{
     extract::Path,
     http::header::CONTENT_TYPE,
     http::HeaderValue,
+    http::StatusCode,
     response::{Html, IntoResponse},
     routing::get,
     Extension, Json, Router,
@@ -17,7 +18,6 @@ use secrecy::Secret;
 use serde_json::json;
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
-use tracing::info;
 
 pub async fn app(pool: PgPool) -> Router {
     let config = get_config().expect("Failed to read configuration");
@@ -59,7 +59,16 @@ async fn not_found(Path(slug): Path<String>) -> impl IntoResponse {
     Json(json!({ "info": message }))
 }
 
-async fn health_check() -> impl IntoResponse {
-    // TODO: database check and optional 3rd party server checks
-    Json(json!({"info": "working"}))
+async fn health_check(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
+    let is_database_connected = sqlx::query("select 1").fetch_one(&pool).await.is_ok();
+    if is_database_connected {
+        return (
+            StatusCode::OK,
+            Json(json!({"status": "all backend services are working properly"})),
+        );
+    }
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"status":"database unavailable"})),
+    )
 }
