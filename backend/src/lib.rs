@@ -56,7 +56,7 @@ async fn home_page() -> impl IntoResponse {
 
 async fn not_found(Path(slug): Path<String>) -> impl IntoResponse {
     let message = format!("endpoint '{slug}' isn't used");
-    Json(json!({ "info": message }))
+    (StatusCode::NOT_FOUND, Json(json!({ "info": message })))
 }
 
 async fn health_check(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
