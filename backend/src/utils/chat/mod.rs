@@ -1,4 +1,6 @@
 pub mod errors;
+pub mod messages;
+
 use crate::models::{GroupTransmitter, MessageModel};
 use anyhow::Context;
 use errors::*;

@@ -1,11 +1,7 @@
-use backend::models::LoginCredentials;
 use reqwest::StatusCode;
-use serde_json::json;
-use uuid::Uuid;
 mod tools;
 
-mod tests {
-    use reqwest::Response;
+mod service {
     use sqlx::PgPool;
 
     use super::*;

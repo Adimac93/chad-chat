@@ -33,8 +33,7 @@
     "body": [
       "#[sqlx::test]",
       "pub async fn $1(pool: PgPool) {",
-      "    let addr = tools::spawn_app(pool).await;",
-      "    let client = tools::client();",
+      "    let app_data = tools::AppData::new(pool).await;",
       "$2",
       "}"
     ]

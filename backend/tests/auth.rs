@@ -4,7 +4,7 @@ use serde_json::json;
 use uuid::Uuid;
 mod tools;
 
-mod tests {
+mod auth {
     use reqwest::Response;
     use sqlx::PgPool;
 

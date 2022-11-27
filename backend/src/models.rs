@@ -92,7 +92,7 @@ pub struct Message {
     pub group_id: Uuid,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MessageModel {
     pub id: i32,
     pub content: String,

@@ -2,7 +2,7 @@ pub mod configuration;
 pub mod database;
 pub mod models;
 pub mod routes;
-mod utils;
+pub mod utils;
 
 use axum::{
     extract::Path,
