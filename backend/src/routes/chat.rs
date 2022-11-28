@@ -1,4 +1,5 @@
 ﻿use crate::models::{ChatState, Claims, GroupTransmitter};
+use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 
@@ -13,7 +14,7 @@ use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
-use time::{format_description, OffsetDateTime};
+use time::{format_description, Duration, OffsetDateTime};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -76,7 +77,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 current_group_id = Some(group_id);
 
                 // Load messages
-                let Ok(messages) = fetch_chat_messages(&pool,&group_id).await else {
+                let Ok(messages) = fetch_last_messages_in_range(&pool,&group_id,10,0).await else {
                     error!("Cannot fetch group messages");
                     return;
                 };
@@ -141,6 +142,10 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 }));
             }
             ChatAction::SendMessage { content } => {
+                if content.len() > 2000 {
+                    debug!("Message too long");
+                    return;
+                }
                 if let Some(group_id) = current_group_id {
                     if let Some(tx) = ctx.clone() {
                         let payload = SocketMessage::Message(UserMessage {
@@ -161,8 +166,50 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     return;
                 }
             }
+            ChatAction::RequestMessages { loaded } => {
+                // Load messages
+                if let Some(group_id) = current_group_id {
+                    info!("Requested messages");
+                    let Ok(messages) = fetch_last_messages_in_range(&pool,&group_id,10,loaded).await else {
+                        
+                        error!("Cannot fetch group messages");
+                        return;
+                    };
+                    
+
+                    let mut payload_messages = vec![];
+                    for message in messages.into_iter() {
+                        let Ok(login) = get_user_login_by_id(&pool, &message.user_id).await else {
+                        // ?User deleted account
+                        error!("Failed to get user by login");
+                        return;
+                    };
+
+                        payload_messages.push(UserMessage {
+                            sender: login,
+                            content: message.content,
+                            sat: message.sent_at.unix_timestamp(),
+                        })
+                    }
+                    info!("{payload_messages:?}");
+                    // Send messages json object
+                    let payload = SocketMessage::LoadRequested(payload_messages);
+                    let msg = serde_json::to_string(&payload).unwrap();
+
+                    if sender.lock().await.send(Message::Text(msg)).await.is_err() {
+                        error!("Failed to load messages");
+                        break;
+                    }
+                } else {
+                    error!("Cannot fetch requested messages - group not selected");
+                    return;
+                }
+            }
             ChatAction::GroupInvite { group_id } => {
-                todo!()
+                let Ok(is_member) = check_if_group_member(&pool, &claims.id, &group_id).await else {
+                    return;
+                };
+                if is_member {}
             }
         }
     }
@@ -173,6 +220,7 @@ enum ChatAction {
     ChangeGroup { group_id: Uuid },
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
+    RequestMessages { loaded: i64 },
 }
 
 // {"ChangeGroup" : {"group_id": "asd-asdasd-asd-asd"}}
@@ -180,15 +228,15 @@ enum ChatAction {
 // {"GroupInvite": {"group_id": "asd-asdasd-asd-asd"}} -> {"invite": {"group_id": "asd-asdasd-asd-asd"}}
 
 impl TryFrom<Message> for ChatAction {
-    type Error = ();
+    type Error = String;
 
     fn try_from(value: Message) -> Result<Self, Self::Error> {
         match value {
             Message::Text(text) => {
-                let action = serde_json::from_str::<ChatAction>(&text).map_err(|_e| ())?;
+                let action = serde_json::from_str::<ChatAction>(&text).map_err(|e| e.to_string())?;
                 Ok(action)
             },
-            _ => Err(())
+            _ => Err(format!("Invalid action {:#?}",value.to_text().unwrap()))
             // Message::Binary(_) => todo!(),
             // Message::Ping(_) => todo!(),
             // Message::Pong(_) => todo!(),
@@ -200,11 +248,12 @@ impl TryFrom<Message> for ChatAction {
 #[derive(Serialize, Deserialize)]
 enum SocketMessage {
     LoadMessages(Vec<UserMessage>),
+    LoadRequested(Vec<UserMessage>),
     GroupInvite,
     Message(UserMessage),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct UserMessage {
     sender: String,
     sat: i64,

@@ -21,14 +21,6 @@ pub async fn try_register_user(
     login: &str,
     password: SecretString,
 ) -> Result<(), AuthError> {
-    if login.is_empty() || password.expose_secret().is_empty() {
-        return Err(AuthError::MissingCredential);
-    }
-
-    if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
-        return Err(AuthError::WeakPassword);
-    }
-
     let user = query!(
         r#"
             select * from users where login = $1
@@ -41,6 +33,14 @@ pub async fn try_register_user(
 
     if user.is_some() {
         return Err(AuthError::UserAlreadyExists);
+    }
+
+    if login.is_empty() || password.expose_secret().is_empty() {
+        return Err(AuthError::MissingCredential);
+    }
+
+    if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
+        return Err(AuthError::WeakPassword);
     }
 
     let hashed_pass = additions::hash_pass(password).context("Failed to hash pass")?;

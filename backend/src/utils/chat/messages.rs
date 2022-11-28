@@ -9,10 +9,10 @@ use super::errors::ChatError;
 pub async fn fetch_last_messages_in_range(
     pool: &PgPool,
     group_id: &Uuid,
-    limit: &i64,
-    offset: &i64,
+    limit: i64,
+    offset: i64,
 ) -> Result<Vec<MessageModel>, ChatError> {
-    let messages = query_as!(
+    let mut messages = query_as!(
         MessageModel,
         r#"
             select * from messages
@@ -28,6 +28,7 @@ pub async fn fetch_last_messages_in_range(
     .await
     .context("Failed to fetch last messages")?;
 
+    messages.reverse();
     Ok(messages)
 }
 

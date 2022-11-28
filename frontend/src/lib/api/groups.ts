@@ -1,4 +1,4 @@
-import { api } from '$lib/variables';
+import { api } from '../variables';
 
 export const getGroups = async () => {
 	const res = await fetch(`${api}/api/groups`, {

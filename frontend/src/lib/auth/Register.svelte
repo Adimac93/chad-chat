@@ -1,0 +1,53 @@
+<script lang="ts">
+  import { isAuthorized } from "../stores";
+  import { api } from "../variables";
+
+  let login = "";
+  let passwordA = "";
+  let passwordB = "";
+  let message = "";
+
+  async function register_user() {
+    let res = await fetch(`${api}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        login,
+        password: passwordA,
+      }),
+      mode: "cors",
+      credentials: "include",
+    });
+    if (res.ok) {
+      isAuthorized.set(true);
+    } else {
+      const json = await res.json();
+      message = json.error_info;
+      setTimeout(() => {
+        message = "";
+      }, 5000);
+    }
+  }
+</script>
+
+<form>
+  <input bind:value={login} placeholder="login" type="text" />
+  <input bind:value={passwordA} placeholder="password" type="password" />
+  <input bind:value={passwordB} placeholder="repeat password" type="password" />
+  <div>{message}</div>
+  <button
+    on:click|preventDefault={register_user}
+    disabled={!login || !passwordA || !passwordB || passwordA != passwordB}
+    >Register</button
+  >
+</form>
+
+<style>
+  input {
+    display: block;
+    margin: auto;
+    margin-bottom: 0.5em;
+    align-items: center;
+    text-align: center;
+  }
+</style>

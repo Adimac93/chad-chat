@@ -25,7 +25,7 @@ mod messages {
         let expected = load_on_fetch * loadings;
         for _ in 0..loadings {
             let messages =
-                fetch_last_messages_in_range(&pool, &group_id, &load_on_fetch, &loaded_messages)
+                fetch_last_messages_in_range(&pool, &group_id, load_on_fetch, loaded_messages)
                     .await
                     .unwrap();
             loaded_messages += messages.len() as i64;
