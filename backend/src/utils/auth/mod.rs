@@ -21,6 +21,14 @@ pub async fn try_register_user(
     login: &str,
     password: SecretString,
 ) -> Result<(), AuthError> {
+    if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
+        return Err(AuthError::MissingCredential);
+    }
+
+    if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
+        return Err(AuthError::WeakPassword);
+    }
+
     let user = query!(
         r#"
             select * from users where login = $1
@@ -66,7 +74,7 @@ pub async fn login_user(
     login: &str,
     password: SecretString,
 ) -> Result<Uuid, AuthError> {
-    if login.is_empty() || password.expose_secret().is_empty() {
+    if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
         return Err(AuthError::MissingCredential);
     }
 

@@ -3,7 +3,7 @@ use dotenv::dotenv;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::net::{SocketAddr, TcpListener};
-async fn spawn_app(db: PgPool) -> SocketAddr {
+pub async fn spawn_app(db: PgPool) -> SocketAddr {
     dotenv().ok();
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
