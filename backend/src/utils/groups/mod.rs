@@ -57,7 +57,7 @@ pub async fn try_add_user_to_group(
 }
 
 pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<(), GroupError> {
-    if name.is_empty() {
+    if name.trim().is_empty() {
         return Err(GroupError::MissingGroupField);
     }
 
@@ -116,7 +116,7 @@ pub async fn check_if_group_member(
     Ok(res.is_some())
 }
 
-pub async fn query_user_groups(pool: &PgPool, user_id: Uuid) -> Result<Json<Value>, GroupError> {
+pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> Result<Json<Value>, GroupError> {
     let groups = query_as!(
         Group,
         r#"

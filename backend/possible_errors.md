@@ -168,26 +168,25 @@ saves a record indicating the presence of a particular user in the group in the 
 Should fail when:
 - [ ] user does not exist
 - [ ] group does not exist
+- [x] user is already in group
 
 `create_group()`
 
 adds a new group to the database
 Should fail when:
-- [ ] user is not authorized
-- [ ] group name is empty (when trimmed)
+- [x] user is not authorized
+- [x] group name is empty (when trimmed)
 
 `check_if_group_member()`
 
 checks if a particular user is a particular group member
-Should fail when:
-- [ ] user does not exist
-- [ ] group does not exist
+This should never fail
 
 `query_user_groups()`
 
 searches every group, which user is a member of
 Should fail when:
-- [ ] user is not authorized
+- [x] user is not authorized
 
 `check_if_group_exists()`
 

@@ -26,7 +26,7 @@ async fn get_user_groups(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
 ) -> Result<Json<Value>, GroupError> {
-    query_user_groups(&pool, claims.id).await
+    query_user_groups(&pool, &claims.id).await
 }
 
 async fn post_create_group(
