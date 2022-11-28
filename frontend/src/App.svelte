@@ -1,30 +1,44 @@
 <script lang="ts">
   import Auth from "./lib/auth/Auth.svelte";
   import Logout from "./lib/auth/Logout.svelte";
+	import Register from "./lib/auth/Register.svelte";
   import Chat from "./lib/chat/Chat.svelte";
-  import ChatBox from "./lib/chat/ChatBox.svelte";
   import { isAuthorized } from "./lib/stores";
+	import TextButton from "./lib/TextButton.svelte";
 
-  let menu: "login" | "register" | "chat" = "login";
-  let messages: Array<MessageModel> = [
-    { content: "Hello", sat: 100000, sender: "it's me mario" },
-    { content: "Hello", sat: 100000, sender: "it's me mario" },
-    { content: "Hello", sat: 100000, sender: "it's me mario" },
-  ];
+  let menu = "";
+  const menuTypes = ["Chat","Friends"];
+
+  let auth: "login" | "register" = "login";
 </script>
 
 {#if !$isAuthorized}
   <nav class="card">
-    <button on:click={() => (menu = "login")}>Login</button>
-    <button on:click={() => (menu = "register")}>Register</button>
+    {#if auth == "login"}
+      <div>Don't have account?</div>
+      <TextButton on:click={() => (auth = "register")}>Register</TextButton>
+      {:else}
+      <div>Already a chad?</div>
+      <TextButton on:click={() => (auth = "login")}>Login</TextButton>
+    {/if}
+    
   </nav>
 {/if}
 
 <main>
   {#if $isAuthorized}
     <Logout />
-    <Chat />
+    {#if menu == "Chat"}
+      <Chat />
+    {:else}
+      <div>
+        {#each menuTypes as menuType}
+          <button on:click={() => menu = menuType}>{menuType}</button>
+        {/each}
+      </div>
+    {/if}
+
   {:else}
-    <Auth bind:menu />
+    <Auth bind:type={auth} />
   {/if}
 </main>

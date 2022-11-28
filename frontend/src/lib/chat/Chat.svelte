@@ -1,21 +1,29 @@
 <script lang="ts">
   import { Socket } from "./socket";
   import Groups from "./Groups.svelte";
-  import { Action } from "./socket";
+
   import { onDestroy, onMount } from "svelte";
   import Message from "./Message.svelte";
   import Input from "./Input.svelte";
   import { beforeUpdate, afterUpdate } from "svelte";
   import { messages } from "../stores";
-  import Create from "./Create.svelte";
 
   let groupName = "";
   let chatBox: HTMLElement;
   let chatBoxHeight: number;
   let isLoading = false;
-  const socket = new Socket();
+  let chatAvailable = true;
 
-  onMount(() => {});
+  let socket = new Socket();
+
+  socket.webSocket.onclose = (e) => {
+    chatAvailable = false;
+      console.log("Reconnecting")
+      setInterval(() => {
+          socket.connect() 
+      },10000)
+    
+  }
 
   afterUpdate(() => {
     if (isLoading) {
@@ -27,7 +35,7 @@
       chatBox.scrollTo({ top: chatBox.scrollHeight });
     }
   });
-
+  
   function sendMessage(e: CustomEvent<string>) {
     isLoading = false;
     const message = e.detail;
@@ -48,26 +56,29 @@
       socket.requestMessageLoad();
     }
   }
-
+  
   onDestroy(() => {
     socket.webSocket.close();
   });
 </script>
 
 <div>
-  <Groups on:groupSelect={changeGroup} />
-  <div class="chatbox" bind:this={chatBox} on:scroll={parseScroll}>
-    {#if socket.isBlocked}
-      <div>This is the beggining of your chad conversation</div>
-    {/if}
-    {#key $messages}
-      {#each $messages as message}
-        <Message {message} />
-      {/each}
-    {/key}
-  </div>
-  <Input on:message={sendMessage} {groupName} />
-
+  {#if !chatAvailable}
+    <div>Connection interrupted, try refreshing page</div>
+  {/if}
+    <Groups on:groupSelect={changeGroup} />
+    <div class="chatbox" bind:this={chatBox} on:scroll={parseScroll}>
+      {#if socket.isBlocked}
+        <div>This is the beggining of your chad conversation</div>
+      {/if}
+      {#key $messages}
+        {#each $messages as message}
+          <Message {message} />
+        {/each}
+      {/key}
+    </div>
+    <Input on:message={sendMessage} {groupName} />
+  
   <style>
     .chatbox {
       min-width: 50em;

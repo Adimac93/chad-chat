@@ -26,6 +26,8 @@
   });
 
   function groupSelect() {
+    console.log(`Selected group ${selected.name}`);
+    
     dispatch("groupSelect", selected);
   }
 </script>

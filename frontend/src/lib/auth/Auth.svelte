@@ -2,13 +2,13 @@
   import Login from "./Login.svelte";
   import Register from "./Register.svelte";
 
-  export let menu;
+  export let type: "login"| "register";
 </script>
 
 <div class="card">
-  {#if menu == "login"}
+  {#if type == "login"}
     <Login />
-  {:else if menu == "register"}
+  {:else if type == "register"}
     <Register />
   {/if}
 </div>

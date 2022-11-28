@@ -6,6 +6,7 @@
   let isOk;
   let groupName = "";
   let prompt = "";
+  
   async function create() {
     if (groupName.length == 0) return;
     isOk = await createNewGroup(groupName);

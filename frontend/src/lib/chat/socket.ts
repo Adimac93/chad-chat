@@ -1,13 +1,21 @@
 import { wsPath } from "../variables";
-import { messages } from "../stores";
+import { isAuthorized, messages } from "../stores";
+import { checkAvailability } from "../api/service";
+
 export class Socket {
     webSocket: WebSocket;
     isBlocked = false;
     loaded = 0;
 
+
     constructor() {
-        this.webSocket = new WebSocket(wsPath)
+        this.connect()
+        this.webSocket.onopen = (e) => {
+            console.log("Chat opened");
+        }
+        
         this.webSocket.onmessage = (e) => {
+            
             try {
             const message = JSON.parse(e.data);
             const key = Object.keys(message)[0] as Action;
@@ -34,15 +42,26 @@ export class Socket {
                 
             }
             } catch (e) {
-                console.log("Websocket error")
+                console.log(`${e}`)
                 
             }
         };
-        const unsubscribe = messages.subscribe(value => {
+        const unsubscribeMessages = messages.subscribe(value => {
             console.log(value.length);
             
             this.loaded = value.length;
         });
+        const unsubscribeIsAUthorized = isAuthorized.subscribe(is => {
+            if (!is) {
+                this.webSocket.close()
+                console.log("Closing")
+            }
+        })
+
+
+    }
+    connect() {
+        this.webSocket = new WebSocket(wsPath) 
     }
 
     private socketSend(payload: any) {
@@ -61,12 +80,8 @@ export class Socket {
         if (!this.isBlocked) this.socketSend({RequestMessages: { loaded: this.loaded }})
     }
 
-    
-
-    
 }
-
-export enum Action {
+enum Action {
     Message = "Message",
     LoadMessages = "LoadMessages",
     LoadRequested = "LoadRequested"

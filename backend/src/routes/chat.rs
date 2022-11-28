@@ -18,7 +18,7 @@ use time::{format_description, Duration, OffsetDateTime};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
 pub fn router() -> Router {
@@ -48,9 +48,14 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
     // Listen for user message
     while let Some(Ok(message)) = receiver.next().await {
         // Decode message
-        let Ok(action) = ChatAction::try_from(message) else {
-            error!("Invalid action");
-            break;
+
+        
+        let action = match ChatAction::try_from(message) {
+            Ok(action) => action,
+            Err(e) => {
+                debug!("Invalid action {e}");
+                break;
+            },
         };
 
         // Interpret message
@@ -153,10 +158,17 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                             sat: OffsetDateTime::now_utc().unix_timestamp(),
                             sender: claims.login.to_string(),
                         });
+                        debug!("Sent: {payload:#?}");
                         let msg = serde_json::to_string(&payload).unwrap();
-                        debug!("Sent: {msg:#?}");
                         let res = tx.send(msg);
-                        debug!("Active transmitters: {res:?}");
+                        match res {
+                            Ok(count) => {
+                                debug!("Active transmitters: {count}");
+                            },
+                            Err(e) => {
+                                error!("{e}")
+                            },
+                        }
                     }
                     let Ok(_) = create_message(&pool, &claims.id, &group_id, &content).await else {
                         return;
@@ -191,7 +203,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                             sat: message.sent_at.unix_timestamp(),
                         })
                     }
-                    info!("{payload_messages:?}");
+                    trace!("{payload_messages:#?}");
                     // Send messages json object
                     let payload = SocketMessage::LoadRequested(payload_messages);
                     let msg = serde_json::to_string(&payload).unwrap();
@@ -211,6 +223,9 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 };
                 if is_member {}
             }
+            ChatAction::Close => {
+                return;
+            }
         }
     }
 }
@@ -221,6 +236,7 @@ enum ChatAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RequestMessages { loaded: i64 },
+    Close
 }
 
 // {"ChangeGroup" : {"group_id": "asd-asdasd-asd-asd"}}
@@ -236,16 +252,19 @@ impl TryFrom<Message> for ChatAction {
                 let action = serde_json::from_str::<ChatAction>(&text).map_err(|e| e.to_string())?;
                 Ok(action)
             },
-            _ => Err(format!("Invalid action {:#?}",value.to_text().unwrap()))
-            // Message::Binary(_) => todo!(),
-            // Message::Ping(_) => todo!(),
-            // Message::Pong(_) => todo!(),
-            // Message::Close(_) => todo!(),
+           
+            Message::Binary(_) => Err(format!("Binary")),
+            Message::Ping(_) => Err(format!("Ping")),
+            Message::Pong(_) => Err(format!("Pong")),
+            Message::Close(frame) => {
+                debug!("Closing socket");
+                Ok(ChatAction::Close)
+            },
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 enum SocketMessage {
     LoadMessages(Vec<UserMessage>),
     LoadRequested(Vec<UserMessage>),
