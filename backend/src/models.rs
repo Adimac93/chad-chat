@@ -145,3 +145,9 @@ impl GroupTransmitter {
         }
     }
 }
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct GroupInfo {
+    pub name: String,
+    pub members: i64,
+}

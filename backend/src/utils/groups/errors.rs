@@ -4,6 +4,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GroupError {
+    #[error("User does not exist")]
+    UserDoesNotExist,
+    #[error("Group does not exist")]
+    GroupDoesNotExist,
     #[error("User not in group")]
     UserNotInGroup,
     #[error("Missing one or more group fields")]
@@ -19,6 +23,8 @@ pub enum GroupError {
 impl IntoResponse for GroupError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
+            GroupError::UserDoesNotExist => StatusCode::BAD_REQUEST,
+            GroupError::GroupDoesNotExist => StatusCode::BAD_REQUEST,
             GroupError::UserNotInGroup => StatusCode::FORBIDDEN,
             GroupError::MissingGroupField => StatusCode::BAD_REQUEST,
             GroupError::UserAlreadyInGroup => StatusCode::BAD_REQUEST,

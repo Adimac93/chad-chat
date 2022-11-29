@@ -1,4 +1,4 @@
-﻿use crate::models::{Claims, GroupUser, InvitationState, NewGroup, NewGroupInvitation};
+﻿use crate::models::{Claims, GroupUser, InvitationState, NewGroup, NewGroupInvitation, GroupInfo};
 use crate::utils::groups::errors::*;
 use crate::utils::groups::*;
 use axum::Router;

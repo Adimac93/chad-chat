@@ -1,7 +1,7 @@
 pub mod errors;
 pub mod invites;
 
-use crate::models::Group;
+use crate::models::{Group, GroupInfo};
 use anyhow::Context;
 use axum::Json;
 use errors::*;
@@ -18,7 +18,6 @@ pub async fn try_add_user_to_group(
 ) -> Result<(), GroupError> {
     let mut transaction = pool.begin().await.context("Failed to begin transaction")?;
 
-    // queries for an instance of a particular user in the particular group
     let res = query!(
         r#"
         select * from group_users 
@@ -39,7 +38,22 @@ pub async fn try_add_user_to_group(
         return Err(GroupError::UserAlreadyInGroup);
     }
 
-    // adds the user with a corresponding id to the db
+    if !check_if_group_exists(pool, group_id).await? {
+        transaction
+            .rollback()
+            .await
+            .context("Failed when aborting transaction")?;
+        return Err(GroupError::GroupDoesNotExist);
+    }
+
+    if !check_if_user_exists(pool, user_id).await? {
+        transaction
+            .rollback()
+            .await
+            .context("Failed when aborting transaction")?;
+        return Err(GroupError::UserDoesNotExist);
+    }
+    
     query!(
         r#"
             insert into group_users (user_id, group_id)
@@ -149,13 +163,26 @@ pub async fn check_if_group_exists(pool: &PgPool, group_id: &Uuid) -> Result<boo
     Ok(res.is_some())
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct GroupInfo {
-    pub name: String,
-    pub members: i64,
+pub async fn check_if_user_exists(pool: &PgPool, user_id: &Uuid) -> Result<bool, GroupError> {
+    let res = query!(
+        r#"
+            select * from users
+            where id = $1
+        "#,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await
+    .context("Failed to select user by id")?;
+
+    Ok(res.is_some())
 }
 
 pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo, GroupError> {
+    if !check_if_group_exists(pool, group_id).await? {
+        return Err(GroupError::GroupDoesNotExist);
+    }
+    
     let res = query!(
         r#"
             select g.name,count(user_id) from group_users

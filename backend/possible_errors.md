@@ -166,8 +166,8 @@ Should fail when:
 
 saves a record indicating the presence of a particular user in the group in the database
 Should fail when:
-- [ ] user does not exist
-- [ ] group does not exist
+- [x] user does not exist
+- [x] group does not exist
 - [x] user is already in group
 
 `create_group()`
@@ -197,22 +197,22 @@ This should never fail
 
 searches the group information:
 Should fail when:
-- [ ] group does not exist
-- [ ] user is not authorized
+- [x] group does not exist
+- [x] user is not authorized
 
 `post_create_group_invitation_link()`
 
 creates an invitation link that can be sent back to the client
 Should fail when:
 - [ ] group does not exist
-- [ ] user is not authorized
+- [x] user is not authorized
 
 `get_join_group_by_link()`
 
 tries to join a specified group with a link
 Should fail when:
 - [ ] group does not exist
-- [ ] user is not authorized
+- [x] user is not authorized
 - [ ] invitation link does not match the correct one
 
 `get_invitation_info()`
@@ -220,5 +220,5 @@ Should fail when:
 gets information about a group that could be shown to a user with the invitation link
 Should fail when:
 - [ ] group does not exist
-- [ ] user is not authorized
+- [x] user is not authorized
 - [ ] invitation link does not match the correct one
