@@ -1,4 +1,5 @@
 pub mod errors;
+pub mod invites;
 
 use crate::models::Group;
 use anyhow::Context;
