@@ -17,5 +17,6 @@ Dockerfile
 .env
 .git
 .gitignore
-
+/configuration
+*md
 
