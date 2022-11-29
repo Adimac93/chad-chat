@@ -32,6 +32,25 @@ pub fn subscribe(
     (group.tx.clone(), rx)
 }
 
+pub async fn get_group_nickname(
+    pool: &PgPool,
+    user_id: &Uuid,
+    group_id: &Uuid,
+) -> Result<String, ChatError> {
+    let res = query!(
+        r#"
+            select nickname from group_users
+            where user_id = $1 and group_id = $2
+        "#,
+        user_id,
+        group_id
+    )
+    .fetch_one(pool)
+    .await
+    .context("Cannot fetch user nickname from database")?;
+
+    Ok(res.nickname)
+}
 pub async fn get_user_login_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, ChatError> {
     let res = query!(
         r#"

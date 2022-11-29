@@ -6,6 +6,7 @@
   let passwordA = "";
   let passwordB = "";
   let message = "";
+  let nickname = "";
 
   async function register_user() {
     let res = await fetch(`${api}/auth/register`, {
@@ -14,6 +15,7 @@
       body: JSON.stringify({
         login,
         password: passwordA,
+        nickname,
       }),
       mode: "cors",
       credentials: "include",
@@ -32,6 +34,7 @@
 
 <form>
   <input bind:value={login} placeholder="login" type="text" />
+  <input bind:value={nickname} placeholder="nickname" type="text" />
   <input bind:value={passwordA} placeholder="password" type="password" />
   <input bind:value={passwordB} placeholder="repeat password" type="password" />
   <div>{message}</div>

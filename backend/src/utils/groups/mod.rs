@@ -18,9 +18,9 @@ pub async fn try_add_user_to_group(
 
     let res = query!(
         r#"
-        select * from group_users 
-        where user_id = $1 and group_id = $2
-    "#,
+            select * from group_users 
+            where user_id = $1 and group_id = $2
+        "#,
         user_id,
         group_id
     )
@@ -51,14 +51,27 @@ pub async fn try_add_user_to_group(
             .context("Failed when aborting transaction")?;
         return Err(GroupError::UserDoesNotExist);
     }
-    
+
+    let nickname = query!(
+        r#"
+            select (nickname) from users
+            where id = $1
+        "#,
+        user_id
+    )
+    .fetch_one(&mut transaction)
+    .await
+    .context("Failed to fetch user nickname")?
+    .nickname;
+
     query!(
         r#"
-            insert into group_users (user_id, group_id)
-            values ($1, $2)
+            insert into group_users (user_id, group_id, nickname)
+            values ($1, $2, $3)
         "#,
         user_id,
-        group_id
+        group_id,
+        nickname
     )
     .execute(&mut transaction)
     .await
@@ -89,13 +102,26 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
     .await
     .context("Failed to create a group")?;
 
-    query!(
+    let nickname = query!(
         r#"
-            insert into group_users (user_id, group_id)
-            values ($1, $2)
+            select (nickname) from users
+            where id = $1
         "#,
         user_id,
-        group.id
+    )
+    .fetch_one(&mut transaction)
+    .await
+    .context("Failed to fetch user nickname")?
+    .nickname;
+
+    query!(
+        r#"
+            insert into group_users (user_id, group_id, nickname)
+            values ($1, $2, $3)
+        "#,
+        user_id,
+        group.id,
+        nickname
     )
     .execute(&mut transaction)
     .await
@@ -180,7 +206,7 @@ pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo,
     if !check_if_group_exists(pool, group_id).await? {
         return Err(GroupError::GroupDoesNotExist);
     }
-    
+
     let res = query!(
         r#"
             select g.name,count(user_id) from group_users

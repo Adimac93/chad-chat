@@ -88,14 +88,14 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
 
                 let mut payload_messages = vec![];
                 for message in messages.into_iter() {
-                    let Ok(login) = get_user_login_by_id(&pool, &message.user_id).await else {
+                    let Ok(nickname) = get_group_nickname(&pool, &message.user_id,&group_id).await else {
                         // ?User deleted account
-                        error!("Failed to get user by login");
+                        error!("Failed to get user by id");
                         return;
                     };
 
                     payload_messages.push(UserMessage {
-                        sender: login,
+                        sender: nickname,
                         content: message.content,
                         sat: message.sent_at.unix_timestamp(),
                     })
@@ -152,10 +152,15 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 }
                 if let Some(group_id) = current_group_id {
                     if let Some(tx) = ctx.clone() {
+                        let Ok(nickname) = get_group_nickname(&pool, &claims.id,&group_id).await else {
+                            // ?User deleted account
+                            error!("Failed to get user by id");
+                            return;
+                        };
                         let payload = SocketMessage::Message(UserMessage {
                             content: content.to_string(),
                             sat: OffsetDateTime::now_utc().unix_timestamp(),
-                            sender: claims.login.to_string(),
+                            sender: nickname
                         });
                         debug!("Sent: {payload:#?}");
                         let msg = serde_json::to_string(&payload).unwrap();
@@ -190,18 +195,19 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
 
                     let mut payload_messages = vec![];
                     for message in messages.into_iter() {
-                        let Ok(login) = get_user_login_by_id(&pool, &message.user_id).await else {
+                        let Ok(nickname) = get_group_nickname(&pool, &message.user_id,&group_id).await else {
                         // ?User deleted account
-                        error!("Failed to get user by login");
+                        error!("Failed to get nickname by id");
                         return;
                     };
 
                         payload_messages.push(UserMessage {
-                            sender: login,
+                            sender: nickname,
                             content: message.content,
                             sat: message.sent_at.unix_timestamp(),
                         })
                     }
+                    
                     trace!("{payload_messages:#?}");
                     // Send messages json object
                     let payload = SocketMessage::LoadRequested(payload_messages);
@@ -255,7 +261,16 @@ impl TryFrom<Message> for ChatAction {
             Message::Binary(_) => Err(format!("Binary")),
             Message::Ping(_) => Err(format!("Ping")),
             Message::Pong(_) => Err(format!("Pong")),
-            Message::Close(_frame) => {
+            Message::Close(frame) => {
+                match frame {
+                    Some(frame) => {
+                        trace!("Code: {} Reason: {}",frame.code,frame.reason);
+                    },
+                    None => {
+                        trace!("Closed without frame")
+                    }
+                }
+                
                 debug!("Closing socket");
                 Ok(ChatAction::Close)
             },

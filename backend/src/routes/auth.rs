@@ -1,5 +1,5 @@
 ﻿use crate::{
-    models::{Claims, LoginCredentials},
+    models::{Claims, LoginCredentials, RegisterCredentials},
     utils::auth::{errors::AuthError, *},
     JwtSecret,
 };
@@ -21,12 +21,13 @@ pub fn router() -> Router {
 
 async fn post_register_user(
     Extension(pool): Extension<PgPool>,
-    user: extract::Json<LoginCredentials>,
+    user: extract::Json<RegisterCredentials>,
 ) -> Result<(), AuthError> {
     try_register_user(
         &pool,
         user.login.trim(),
         SecretString::new(user.password.trim().to_string()),
+        &user.nickname,
     )
     .await
 }

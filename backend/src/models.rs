@@ -58,6 +58,13 @@ pub struct LoginCredentials {
     pub password: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct RegisterCredentials {
+    pub login: String,
+    pub password: String,
+    pub nickname: String,
+}
+
 impl LoginCredentials {
     pub fn new(login: &str, password: &str) -> Self {
         Self {

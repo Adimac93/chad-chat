@@ -27,7 +27,7 @@
 
   function groupSelect() {
     console.log(`Selected group ${selected.name}`);
-    
+
     dispatch("groupSelect", selected);
   }
 </script>
@@ -65,5 +65,14 @@
     background-color: #1a1a1a;
     cursor: pointer;
     transition: border-color 0.25s;
+  }
+
+  @media (prefers-color-scheme: light) {
+    option {
+      background-color: #f9f9f9;
+    }
+    select {
+      background-color: #f9f9f9;
+    }
   }
 </style>

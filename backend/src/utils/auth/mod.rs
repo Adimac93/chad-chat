@@ -18,7 +18,9 @@ pub async fn try_register_user(
     pool: &PgPool,
     login: &str,
     password: SecretString,
+    nickname: &str,
 ) -> Result<(), AuthError> {
+    // TODO: Forbid login with spaces
     if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
         return Err(AuthError::MissingCredential);
     }
@@ -51,13 +53,20 @@ pub async fn try_register_user(
 
     let hashed_pass = additions::hash_pass(password).context("Failed to hash pass")?;
 
+    let mut nickname = nickname.trim();
+    if nickname.is_empty() {
+        // TODO: Generate random nickname
+        nickname = "I am definitely not a chad"
+    }
+
     let res = query!(
         r#"
-            insert into users (login, password)
-            values ($1, $2)
+            insert into users (login, password, nickname)
+            values ($1, $2, $3)
         "#,
         login,
-        hashed_pass
+        hashed_pass,
+        nickname
     )
     .execute(pool)
     .await
