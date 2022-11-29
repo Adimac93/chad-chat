@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
+use validator::Validate;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
@@ -52,8 +53,12 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+const MIN_USERNAME_LENGTH: u8 = 4;
+const MAX_USERNAME_LENGTH: u8 = 20;
+
+#[derive(Serialize, Deserialize, Validate)]
 pub struct LoginCredentials {
+    #[validate(length(min = "MIN_USERNAME_LENGTH", max = "MAX_USERNAME_LENGTH"), does_not_contain = " ")]
     pub login: String,
     pub password: String,
 }

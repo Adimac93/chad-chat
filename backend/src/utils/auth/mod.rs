@@ -13,6 +13,7 @@ use sqlx::{query, PgPool};
 use time::Duration;
 use tracing::info;
 use uuid::Uuid;
+use validator::Validate;
 
 pub async fn try_register_user(
     pool: &PgPool,
@@ -27,6 +28,8 @@ pub async fn try_register_user(
         return Err(AuthError::WeakPassword);
     }
 
+    let _ = LoginCredentials::new(login, password.expose_secret()).validate()?;
+
     let user = query!(
         r#"
             select * from users where login = $1
@@ -39,14 +42,6 @@ pub async fn try_register_user(
 
     if user.is_some() {
         return Err(AuthError::UserAlreadyExists);
-    }
-
-    if login.is_empty() || password.expose_secret().is_empty() {
-        return Err(AuthError::MissingCredential);
-    }
-
-    if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
-        return Err(AuthError::WeakPassword);
     }
 
     let hashed_pass = additions::hash_pass(password).context("Failed to hash pass")?;
