@@ -2,7 +2,7 @@ pub mod additions;
 pub mod errors;
 use crate::{
     configuration::get_config,
-    models::{Claims, LoginCredentials},
+    models::{Claims, LoginCredentials, RegisterCredentials},
 };
 use anyhow::Context;
 use argon2::verify_encoded;
@@ -13,6 +13,7 @@ use sqlx::{query, PgPool};
 use time::Duration;
 use tracing::info;
 use uuid::Uuid;
+use validator::Validate;
 
 pub async fn try_register_user(
     pool: &PgPool,
@@ -20,15 +21,6 @@ pub async fn try_register_user(
     password: SecretString,
     nickname: &str,
 ) -> Result<(), AuthError> {
-    // TODO: Forbid login with spaces
-    if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
-        return Err(AuthError::MissingCredential);
-    }
-
-    if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
-        return Err(AuthError::WeakPassword);
-    }
-
     let user = query!(
         r#"
             select * from users where login = $1
@@ -43,9 +35,11 @@ pub async fn try_register_user(
         return Err(AuthError::UserAlreadyExists);
     }
 
-    if login.is_empty() || password.expose_secret().is_empty() {
+    if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
         return Err(AuthError::MissingCredential);
     }
+
+    let _ = RegisterCredentials::new(login, password.expose_secret(), &nickname).validate()?;
 
     if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
         return Err(AuthError::WeakPassword);

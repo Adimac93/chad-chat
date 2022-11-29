@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
+use validator::Validate;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
@@ -52,24 +53,26 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Validate)]
 pub struct LoginCredentials {
     pub login: String,
     pub password: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Validate)]
 pub struct RegisterCredentials {
+    #[validate(length(min = 4, max = 20), does_not_contain = " ")]
     pub login: String,
     pub password: String,
     pub nickname: String,
 }
 
-impl LoginCredentials {
-    pub fn new(login: &str, password: &str) -> Self {
+impl RegisterCredentials {
+    pub fn new(login: &str, password: &str, nickname: &str) -> Self {
         Self {
-            login: login.to_string(),
-            password: password.to_string(),
+            login: login.into(),
+            password: password.into(),
+            nickname: nickname.into(),
         }
     }
 }

@@ -1,22 +1,23 @@
 ﻿use backend::models::LoginCredentials;
+use backend::utils::auth::{errors::AuthError, login_user, try_register_user};
+use nanoid::nanoid;
 use reqwest::StatusCode;
+use secrecy::SecretString;
 use serde_json::json;
-use uuid::Uuid;
 mod tools;
 
 mod auth {
+    use super::*;
     use backend::utils::auth::{errors::AuthError, login_user, try_register_user};
     use reqwest::Response;
     use secrecy::SecretString;
     use sqlx::PgPool;
 
-    use super::*;
-
     #[sqlx::test]
-    async fn user_register_test_positive(db: PgPool) {
+    async fn registration_health_check(db: PgPool) {
         let res = try_register_user(
             &db,
-            &format!("User{}", Uuid::new_v4()),
+            &format!("User{}", nanoid!(10)),
             SecretString::new("#very#_#strong#_#pass#".to_string()),
             "Chad",
         )
@@ -29,7 +30,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn registration_returns_400_if_missing_credential_0(db: PgPool) {
+    async fn registration_missing_credential_0(db: PgPool) {
         let res = try_register_user(
             &db,
             "",
@@ -45,7 +46,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn registration_returns_400_if_missing_credential_1(db: PgPool) {
+    async fn registration_missing_credential_1(db: PgPool) {
         let res = try_register_user(
             &db,
             "   ",
@@ -61,10 +62,10 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn registration_returns_400_if_missing_credential_2(db: PgPool) {
+    async fn registration_missing_credential_2(db: PgPool) {
         let res = try_register_user(
             &db,
-            &format!("User{}", Uuid::new_v4()),
+            &format!("User{}", nanoid!(10)),
             SecretString::new("  ".to_string()),
             "Chad",
         )
@@ -77,7 +78,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn registration_returns_400_if_missing_credential_3(db: PgPool) {
+    async fn registration_missing_credential_3(db: PgPool) {
         let res = try_register_user(&db, "  ", SecretString::new("   ".to_string()), "Chad").await;
 
         match res {
@@ -87,10 +88,10 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn registration_returns_400_if_weak_password(db: PgPool) {
+    async fn registration_weak_password(db: PgPool) {
         let res = try_register_user(
             &db,
-            &format!("User{}", Uuid::new_v4()),
+            &format!("User{}", nanoid!(10)),
             SecretString::new("12345678".to_string()),
             "Chad",
         )
@@ -103,7 +104,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn registration_returns_400_if_user_exists_0(db: PgPool) {
+    async fn registration_user_exists_0(db: PgPool) {
         let res = try_register_user(
             &db,
             "some_user",
@@ -119,7 +120,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn registration_returns_400_if_user_exists_1(db: PgPool) {
+    async fn registration_user_exists_1(db: PgPool) {
         let res = try_register_user(
             &db,
             "some_user",
@@ -135,7 +136,55 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn login_returns_200_if_valid_credentials(db: PgPool) {
+    async fn registration_invalid_username_0(db: PgPool) {
+        let res = try_register_user(
+            &db,
+            "why",
+            SecretString::new("#strong#_#pass#".to_string()),
+            "Chad",
+        )
+        .await;
+
+        match res {
+            Err(AuthError::InvalidUsername(_)) => (),
+            _ => panic!("Test gives the result {:?}", res),
+        }
+    }
+
+    #[sqlx::test(fixtures("user"))]
+    async fn registration_invalid_username_1(db: PgPool) {
+        let res = try_register_user(
+            &db,
+            "spaced name",
+            SecretString::new("#strong#_#pass#".to_string()),
+            "Chad",
+        )
+        .await;
+
+        match res {
+            Err(AuthError::InvalidUsername(_)) => (),
+            _ => panic!("Test gives the result {:?}", res),
+        }
+    }
+
+    #[sqlx::test(fixtures("user"))]
+    async fn registration_invalid_username_2(db: PgPool) {
+        let res = try_register_user(
+            &db,
+            "verylongveryverylongnameveryveryverylongname",
+            SecretString::new("#strong#_#pass#".to_string()),
+            "Chad",
+        )
+        .await;
+
+        match res {
+            Err(AuthError::InvalidUsername(_)) => (),
+            _ => panic!("Test gives the result {:?}", res),
+        }
+    }
+
+    #[sqlx::test(fixtures("user"))]
+    async fn login_health_check(db: PgPool) {
         let res = login_user(
             &db,
             "some_user",
@@ -150,7 +199,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn login_returns_400_if_missing_credential_0(db: PgPool) {
+    async fn login_missing_credential_0(db: PgPool) {
         let res = login_user(&db, "some_user", SecretString::new("   ".to_string())).await;
 
         match res {
@@ -160,7 +209,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn login_returns_400_if_missing_credential_1(db: PgPool) {
+    async fn login_missing_credential_1(db: PgPool) {
         let res = login_user(
             &db,
             "    ",
@@ -175,7 +224,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn login_returns_400_if_missing_credential_2(db: PgPool) {
+    async fn login_missing_credential_2(db: PgPool) {
         let res = login_user(&db, "    ", SecretString::new("  ".to_string())).await;
 
         match res {
@@ -185,7 +234,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn login_returns_401_if_no_user_found(db: PgPool) {
+    async fn login_no_user_found(db: PgPool) {
         let res = login_user(
             &db,
             "different_user",
@@ -200,7 +249,7 @@ mod auth {
     }
 
     #[sqlx::test(fixtures("user"))]
-    async fn login_returns_401_if_wrong_password(db: PgPool) {
+    async fn login_wrong_password(db: PgPool) {
         let res = login_user(
             &db,
             "some_user",
@@ -220,7 +269,7 @@ mod auth {
         let client = app_data.client();
 
         let payload = json!({
-            "login": format!("User{}", Uuid::new_v4()),
+            "login": format!("User{}", nanoid!(10)),
             "password": format!("#very#_#strong#_#pass#"),
             "nickname": format!("Chad")
         });

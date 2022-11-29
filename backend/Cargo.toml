@@ -35,6 +35,7 @@ tower-http = { version = "0.3.4", features = ["cors"] }
 tracing = "0.1.36"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
+validator = { version = "0.16.0", features = ["derive"] }
 zxcvbn = "2.2.1"
 
 [dev-dependencies]
