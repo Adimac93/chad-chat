@@ -1,16 +1,15 @@
-﻿mod tests {
-    use backend::models::GroupInfo;
-    use backend::utils::groups::{check_if_group_exists, get_group_info};
-    use backend::utils::groups::{try_add_user_to_group, errors::GroupError, create_group, check_if_group_member, query_user_groups};
-    use serde_json::json;
-    use serde_json::Value;
-    use sqlx::PgPool;
-    use uuid::Uuid;
+﻿use backend::models::GroupInfo;
+use backend::utils::groups::{check_if_group_exists, get_group_info};
+use backend::utils::groups::{try_add_user_to_group, errors::GroupError, create_group, check_if_group_member, query_user_groups};
+use serde_json::Value;
+use sqlx::PgPool;
+use uuid::Uuid;
 
+mod groups {
     use super::*;
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
-    async fn add_user_to_group_positive(db: PgPool) {
+    async fn add_user_to_group_health_check(db: PgPool) {
         // tries to add Adam to Giga-chadders
         let res = try_add_user_to_group(
             &db,
@@ -70,7 +69,7 @@
     }
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
-    async fn create_group_positive(db: PgPool) {
+    async fn create_group_health_check(db: PgPool) {
         let res = create_group (
             &db,
             "Full-Release Males",
@@ -98,7 +97,7 @@
     }
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
-    async fn check_if_group_member_positive(db: PgPool) {
+    async fn check_if_group_member_health_check(db: PgPool) {
         // is Hubert in Chadders?
         let res = check_if_group_member(
             &db,
@@ -128,7 +127,7 @@
     }
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
-    async fn query_user_groups_positive(db: PgPool) {
+    async fn query_user_groups_health_check(db: PgPool) {
         // Adam's groups
         let res = query_user_groups (
             &db,
@@ -154,7 +153,7 @@
     }
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
-    async fn check_if_group_exists_positive(db: PgPool) {
+    async fn check_if_group_exists_health_check(db: PgPool) {
         // does group "Indefinable JavaScript undefiners" exist?
         let res = check_if_group_exists (
             &db,
@@ -182,7 +181,7 @@
     }
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
-    async fn get_group_info_positive(db: PgPool) {
+    async fn get_group_info_health_check(db: PgPool) {
         // Chadders group info
         let res = get_group_info (
             &db,

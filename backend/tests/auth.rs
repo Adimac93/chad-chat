@@ -1,19 +1,17 @@
-﻿use backend::models::LoginCredentials;
+﻿mod tools;
+
 use reqwest::StatusCode;
 use serde_json::json;
 use uuid::Uuid;
-mod tools;
+use backend::utils::auth::{try_register_user, errors::AuthError, login_user};
+use secrecy::SecretString;
+use sqlx::PgPool;
 
 mod auth {
-    use backend::utils::auth::{try_register_user, errors::AuthError, login_user};
-    use reqwest::Response;
-    use secrecy::SecretString;
-    use sqlx::PgPool;
-
     use super::*;
 
     #[sqlx::test]
-    async fn user_register_test_positive(db: PgPool) {
+    async fn user_register_test_health_check(db: PgPool) {
         let res = try_register_user(
             &db,
             &format!("User{}", Uuid::new_v4()),

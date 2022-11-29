@@ -1,7 +1,7 @@
-use config::{Config, ConfigError, File, FileFormat};
-use secrecy::{ExposeSecret, Secret};
+use config::{Config, ConfigError};
+use secrecy::Secret;
 use serde::Deserialize;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 
 #[derive(Deserialize, Clone)]
 pub struct Settings {

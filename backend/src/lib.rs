@@ -9,7 +9,7 @@ use axum::{
     http::header::CONTENT_TYPE,
     http::HeaderValue,
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::IntoResponse,
     routing::get,
     Extension, Json, Router,
 };

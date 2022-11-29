@@ -1,4 +1,4 @@
-insert into group_users
+insert into group_users(user_id, group_id)
 values
 -- Chadders - Adam, Hubert
 ('ba34ff10-4b89-44cb-9b36-31eb57c41556', 'b8c9a317-a456-458f-af88-01d99633f8e2'),

@@ -4,6 +4,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ChatError {
+    #[error("Empty message")]
+    EmptyMessage,
     #[error(transparent)]
     Unexpected(#[from] anyhow::Error),
 }
@@ -11,10 +13,11 @@ pub enum ChatError {
 impl IntoResponse for ChatError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
+            ChatError::EmptyMessage => StatusCode::BAD_REQUEST,
             ChatError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
-            }
+            },
         };
 
         let info = match self {

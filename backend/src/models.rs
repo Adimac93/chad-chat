@@ -1,4 +1,4 @@
-﻿use crate::{configuration::get_config, utils::auth::errors::*, JwtSecret};
+﻿use crate::{utils::auth::errors::*, JwtSecret};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -11,8 +11,7 @@ use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
-use tokio::sync::{broadcast, Mutex, RwLock};
-use tracing::info;
+use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]

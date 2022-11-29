@@ -9,13 +9,12 @@ use axum::{
     routing::get,
     Extension, Router,
 };
-use futures::stream::SplitSink;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
-use time::{format_description, Duration, OffsetDateTime};
-use tokio::sync::broadcast::{Receiver, Sender};
+use time::OffsetDateTime;
+use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
@@ -256,7 +255,7 @@ impl TryFrom<Message> for ChatAction {
             Message::Binary(_) => Err(format!("Binary")),
             Message::Ping(_) => Err(format!("Ping")),
             Message::Pong(_) => Err(format!("Pong")),
-            Message::Close(frame) => {
+            Message::Close(_frame) => {
                 debug!("Closing socket");
                 Ok(ChatAction::Close)
             },

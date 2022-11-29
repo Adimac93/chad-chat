@@ -3,11 +3,9 @@ pub mod errors;
 use crate::{
     configuration::get_config,
     models::{Claims, LoginCredentials},
-    JwtSecret,
 };
 use anyhow::Context;
 use argon2::verify_encoded;
-use axum::Extension;
 use errors::*;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use secrecy::{ExposeSecret, Secret, SecretString};
@@ -63,7 +61,7 @@ pub async fn try_register_user(
     )
     .execute(pool)
     .await
-    .context("Failed to create a new user");
+    .context("Failed to create a new user")?;
 
     info!("{res:?}");
     Ok(())
@@ -116,7 +114,7 @@ pub async fn authorize_user(
         exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
     };
 
-    let config = get_config().expect("Failed to read configuration");
+    let _config = get_config().expect("Failed to read configuration");
     let token = encode(
         &Header::default(),
         &claims,

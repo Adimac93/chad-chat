@@ -1,7 +1,6 @@
 use backend::{app, configuration::get_config, database::get_database_pool};
 use dotenv::dotenv;
 use secrecy::ExposeSecret;
-use std::net::SocketAddr;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 

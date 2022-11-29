@@ -147,20 +147,14 @@ Should fail when:
 
 queries for a user login
 Should fail when:
-- [ ] it can't find the corresponding username
-
-`fetch_chat_messages()`
-
-queries for chat messages in a specified group
-Should fail when:
-- [ ] user is not authorized
+- [x] it can't find the corresponding username
 
 `create_message()`
 
 saves a message in the database
 Should fail when:
 - [ ] its content is empty (when trimmed)
-- [ ] user is not authorized
+- [x] user is not authorized
 
 `try_add_user_to_group()`
 

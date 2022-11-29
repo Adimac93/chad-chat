@@ -1,10 +1,10 @@
 pub mod errors;
 pub mod messages;
 
-use crate::models::{GroupTransmitter, MessageModel};
+use crate::models::GroupTransmitter;
 use anyhow::Context;
 use errors::*;
-use sqlx::{query, query_as, PgPool};
+use sqlx::{query, PgPool};
 use std::collections::HashMap;
 use tokio::sync::broadcast::{Receiver, Sender};
 use tracing::debug;
@@ -46,31 +46,16 @@ pub async fn get_user_login_by_id(pool: &PgPool, user_id: &Uuid) -> Result<Strin
     Ok(res.login)
 }
 
-pub async fn fetch_chat_messages(
-    pool: &PgPool,
-    group_id: &Uuid,
-) -> Result<Vec<MessageModel>, ChatError> {
-    let res = query_as!(
-        MessageModel,
-        r#"
-            select * from messages
-            where group_id = $1
-        "#,
-        group_id
-    )
-    .fetch_all(pool)
-    .await
-    .context("Failed to query all messages from group")?;
-
-    Ok(res)
-}
-
 pub async fn create_message(
     pool: &PgPool,
     user_id: &Uuid,
     group_id: &Uuid,
     content: &str,
 ) -> Result<(), ChatError> {
+    if content.trim().is_empty() {
+        return Err(ChatError::EmptyMessage);
+    }
+
     query!(
         r#"
             insert into messages (content, user_id, group_id)
