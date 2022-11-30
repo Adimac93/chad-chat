@@ -1,21 +1,20 @@
 pub mod errors;
-pub mod invites;
 
 use crate::models::{Group, GroupInfo};
 use anyhow::Context;
 use axum::Json;
 use errors::*;
+use futures::FutureExt;
 use serde_json::{json, Value};
-use sqlx::{query, query_as, PgPool};
+use sqlx::{query, query_as, Acquire, Executor, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-pub async fn try_add_user_to_group(
-    pool: &PgPool,
+pub async fn try_add_user_to_group<'c>(
+    conn: impl Acquire<'c, Database = Postgres>,
     user_id: &Uuid,
     group_id: &Uuid,
 ) -> Result<(), GroupError> {
-    let mut transaction = pool.begin().await.context("Failed to begin transaction")?;
-
+    let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
     let res = query!(
         r#"
             select * from group_users 
@@ -36,7 +35,7 @@ pub async fn try_add_user_to_group(
         return Err(GroupError::UserAlreadyInGroup);
     }
 
-    if !check_if_group_exists(pool, group_id).await? {
+    if !check_if_group_exists(&mut transaction, group_id).await? {
         transaction
             .rollback()
             .await
@@ -44,7 +43,7 @@ pub async fn try_add_user_to_group(
         return Err(GroupError::GroupDoesNotExist);
     }
 
-    if !check_if_user_exists(pool, user_id).await? {
+    if !check_if_user_exists(&mut transaction, user_id).await? {
         transaction
             .rollback()
             .await
@@ -172,7 +171,10 @@ pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> Result<Json<Val
     Ok(Json(json!({ "groups": groups })))
 }
 
-pub async fn check_if_group_exists(pool: &PgPool, group_id: &Uuid) -> Result<bool, GroupError> {
+pub async fn check_if_group_exists<'c>(
+    exe: impl Executor<'c, Database = Postgres>,
+    group_id: &Uuid,
+) -> Result<bool, GroupError> {
     let res = query!(
         r#"
             select * from groups
@@ -180,14 +182,17 @@ pub async fn check_if_group_exists(pool: &PgPool, group_id: &Uuid) -> Result<boo
         "#,
         group_id
     )
-    .fetch_optional(pool)
+    .fetch_optional(exe)
     .await
     .context("Failed to select group by id")?;
 
     Ok(res.is_some())
 }
 
-pub async fn check_if_user_exists(pool: &PgPool, user_id: &Uuid) -> Result<bool, GroupError> {
+pub async fn check_if_user_exists<'c>(
+    exe: impl Executor<'c, Database = Postgres>,
+    user_id: &Uuid,
+) -> Result<bool, GroupError> {
     let res = query!(
         r#"
             select * from users
@@ -195,7 +200,7 @@ pub async fn check_if_user_exists(pool: &PgPool, user_id: &Uuid) -> Result<bool,
         "#,
         user_id
     )
-    .fetch_optional(pool)
+    .fetch_optional(exe)
     .await
     .context("Failed to select user by id")?;
 

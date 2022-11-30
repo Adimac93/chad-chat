@@ -1,11 +1,16 @@
 ﻿use backend::models::GroupInfo;
 use backend::utils::groups::{check_if_group_exists, get_group_info};
-use backend::utils::groups::{try_add_user_to_group, errors::GroupError, create_group, check_if_group_member, query_user_groups};
+use backend::utils::groups::{
+    check_if_group_member, create_group, errors::GroupError, query_user_groups,
+    try_add_user_to_group,
+};
 use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 mod groups {
+    use sqlx::{Postgres, Transaction};
+
     use super::*;
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
@@ -14,8 +19,9 @@ mod groups {
         let res = try_add_user_to_group(
             &db,
             &Uuid::parse_str("ba34ff10-4b89-44cb-9b36-31eb57c41556").unwrap(),
-            &Uuid::parse_str("347ac024-f8c9-4450-850f-9d85fb17c957").unwrap()
-        ).await;
+            &Uuid::parse_str("347ac024-f8c9-4450-850f-9d85fb17c957").unwrap(),
+        )
+        .await;
 
         match res {
             Ok(_) => (),
@@ -29,8 +35,9 @@ mod groups {
         let res = try_add_user_to_group(
             &db,
             &Uuid::parse_str("ba34ff10-4b89-44cb-9b36-31eb57c41556").unwrap(),
-            &Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap()
-        ).await;
+            &Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
+        )
+        .await;
 
         match res {
             Err(GroupError::UserAlreadyInGroup) => (),
@@ -44,8 +51,9 @@ mod groups {
         let res = try_add_user_to_group(
             &db,
             &Uuid::parse_str("ba34ff10-4b89-44cb-9b36-31eb57c41556").unwrap(),
-            &Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap()
-        ).await;
+            &Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
+        )
+        .await;
 
         match res {
             Err(GroupError::GroupDoesNotExist) => (),
@@ -59,8 +67,9 @@ mod groups {
         let res = try_add_user_to_group(
             &db,
             &Uuid::parse_str("347ac024-f8c9-4450-850f-9d85fb17c957").unwrap(),
-            &Uuid::parse_str("347ac024-f8c9-4450-850f-9d85fb17c957").unwrap()
-        ).await;
+            &Uuid::parse_str("347ac024-f8c9-4450-850f-9d85fb17c957").unwrap(),
+        )
+        .await;
 
         match res {
             Err(GroupError::UserDoesNotExist) => (),
@@ -70,11 +79,12 @@ mod groups {
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
     async fn create_group_health_check(db: PgPool) {
-        let res = create_group (
+        let res = create_group(
             &db,
             "Full-Release Males",
-            Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap()
-        ).await;
+            Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
+        )
+        .await;
 
         match res {
             Ok(_) => (),
@@ -84,11 +94,12 @@ mod groups {
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
     async fn create_group_missing_group_name(db: PgPool) {
-        let res = create_group (
+        let res = create_group(
             &db,
             "  ",
-            Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap()
-        ).await;
+            Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
+        )
+        .await;
 
         match res {
             Err(GroupError::MissingGroupField) => (),
@@ -102,8 +113,9 @@ mod groups {
         let res = check_if_group_member(
             &db,
             &Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
-            &Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap()
-        ).await;
+            &Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
+        )
+        .await;
 
         match res {
             Ok(true) => (),
@@ -117,8 +129,9 @@ mod groups {
         let res = check_if_group_member(
             &db,
             &Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
-            &Uuid::parse_str("b9ad636d-1163-4d32-8e88-8fb2318468c4").unwrap()
-        ).await;
+            &Uuid::parse_str("b9ad636d-1163-4d32-8e88-8fb2318468c4").unwrap(),
+        )
+        .await;
 
         match res {
             Ok(false) => (),
@@ -129,10 +142,11 @@ mod groups {
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
     async fn query_user_groups_health_check(db: PgPool) {
         // Adam's groups
-        let res = query_user_groups (
+        let res = query_user_groups(
             &db,
             &Uuid::parse_str("ba34ff10-4b89-44cb-9b36-31eb57c41556").unwrap(),
-        ).await;
+        )
+        .await;
 
         match res {
             Ok(json) => {
@@ -144,10 +158,13 @@ mod groups {
                 }
                 result_vec.sort();
                 assert_eq!(
-                    result_vec, 
-                    vec!["a1fd5c51-326f-476e-a4f7-2e61a692bb56", "b8c9a317-a456-458f-af88-01d99633f8e2"]
+                    result_vec,
+                    vec![
+                        "a1fd5c51-326f-476e-a4f7-2e61a692bb56",
+                        "b8c9a317-a456-458f-af88-01d99633f8e2"
+                    ]
                 );
-            },
+            }
             _ => panic!("Test result is {:?}", res),
         }
     }
@@ -155,10 +172,11 @@ mod groups {
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
     async fn check_if_group_exists_health_check(db: PgPool) {
         // does group "Indefinable JavaScript undefiners" exist?
-        let res = check_if_group_exists (
+        let res = check_if_group_exists(
             &db,
             &Uuid::parse_str("b9ad636d-1163-4d32-8e88-8fb2318468c4").unwrap(),
-        ).await;
+        )
+        .await;
 
         match res {
             Ok(true) => (),
@@ -169,10 +187,11 @@ mod groups {
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
     async fn check_if_group_exists_negative(db: PgPool) {
         // does group ??? exist?
-        let res = check_if_group_exists (
+        let res = check_if_group_exists(
             &db,
             &Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
-        ).await;
+        )
+        .await;
 
         match res {
             Ok(false) => (),
@@ -183,16 +202,22 @@ mod groups {
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
     async fn get_group_info_health_check(db: PgPool) {
         // Chadders group info
-        let res = get_group_info (
+        let res = get_group_info(
             &db,
             &Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
-        ).await;
+        )
+        .await;
 
         match res {
-            Ok(info) if info == GroupInfo {
-                members: 2,
-                name: "Chadders".to_string(),
-            } => (),
+            Ok(info)
+                if info
+                    == GroupInfo {
+                        members: 2,
+                        name: "Chadders".to_string(),
+                    } =>
+            {
+                ()
+            }
             _ => panic!("Test result is {:?}", res),
         }
     }
@@ -200,10 +225,11 @@ mod groups {
     #[sqlx::test(fixtures("users", "groups", "group_users"))]
     async fn get_group_info_group_does_not_exist(db: PgPool) {
         // ??? group info
-        let res = get_group_info (
+        let res = get_group_info(
             &db,
             &Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
-        ).await;
+        )
+        .await;
 
         match res {
             Err(GroupError::GroupDoesNotExist) => (),
