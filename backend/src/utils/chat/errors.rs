@@ -17,12 +17,12 @@ impl IntoResponse for ChatError {
             ChatError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
-            },
+            }
         };
 
         let info = match self {
             ChatError::Unexpected(_) => "Unexpected server error".into(),
-            _ => format!("{self:?}"),
+            _ => self.to_string(),
         };
 
         (status_code, Json(json!({ "error_info": info }))).into_response()

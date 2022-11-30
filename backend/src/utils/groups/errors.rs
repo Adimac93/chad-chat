@@ -37,7 +37,7 @@ impl IntoResponse for GroupError {
 
         let info = match self {
             GroupError::Unexpected(_) => "Unexpected server error".into(),
-            _ => format!("{self:?}"),
+            _ => self.to_string(),
         };
 
         (status_code, Json(json!({ "error_info": info }))).into_response()

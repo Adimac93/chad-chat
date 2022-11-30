@@ -27,7 +27,7 @@ impl IntoResponse for InvitationError {
 
         let info = match self {
             InvitationError::Unexpected(_) => "Unexpected server error".into(),
-            _ => format!("{self}"),
+            _ => self.to_string(),
         };
 
         (status_code, Json(json!({ "error_info": info }))).into_response()

@@ -38,7 +38,7 @@ impl IntoResponse for AuthError {
         let info = match self {
             AuthError::Unexpected(_) => "Unexpected server error".into(),
             AuthError::InvalidUsername(_) => "Invalid username".into(),
-            _ => format!("{self:?}"),
+            _ => self.to_string(),
         };
 
         (status_code, Json(json!({ "error_info": info }))).into_response()
