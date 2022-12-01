@@ -1,4 +1,3 @@
-import { wsPath } from "../variables";
 import { isAuthorized, messages } from "../stores";
 import { checkAvailability } from "../api/service";
 
@@ -38,7 +37,7 @@ export class Socket {
                     this.isBlocked = true
                 } 
                 
-                    messages.update((newerMessages) => oldMessages.concat(newerMessages));
+                messages.update((newerMessages) => oldMessages.concat(newerMessages));
                 
             }
             } catch (e) {
@@ -61,7 +60,9 @@ export class Socket {
 
     }
     connect() {
-        this.webSocket = new WebSocket(wsPath) 
+        console.log("Connecting");
+        console.log(`ws://${window.location.host}/chat/websocket`)
+        this.webSocket = new WebSocket(`ws://${window.location.host}/chat/websocket`) 
     }
 
     private socketSend(payload: any) {

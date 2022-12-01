@@ -1,6 +1,5 @@
 <script lang="ts">
   import { isAuthorized } from "../stores";
-  import { api } from "../variables";
 
   let login = "";
   let passwordA = "";
@@ -9,7 +8,7 @@
   let nickname = "";
 
   async function register_user() {
-    let res = await fetch(`${api}/auth/register`, {
+    let res = await fetch(`api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -17,8 +16,6 @@
         password: passwordA,
         nickname,
       }),
-      mode: "cors",
-      credentials: "include",
     });
     if (res.ok) {
       isAuthorized.set(true);

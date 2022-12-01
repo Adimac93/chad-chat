@@ -41,9 +41,9 @@ async fn post_login_user(
 ) -> Result<CookieJar, AuthError> {
     let token = authorize_user(&pool, user, Duration::hours(2), jwt_key).await?;
     let cookie = Cookie::build("jwt", token)
-        .http_only(false)
-        .secure(false)
-        .same_site(SameSite::None)
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Strict)
         .path("/")
         .finish();
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from "svelte";
-  import { getGroups } from "../api/groups";
-  import Create from "./Create.svelte";
+  import { getGroups } from "../../api/groups";
+  import CreateGroup from "./CreateGroup.svelte";
 
   const dispatch = createEventDispatcher<{ groupSelect: Group }>();
 
@@ -38,41 +38,4 @@
     <option value={group}>{group.name}</option>
   {/each}
 </select>
-<Create on:groupCreate={async () => await fetchGroups()} />
-
-<style>
-  select {
-    border-radius: 8px;
-    border: 1px solid transparent;
-    padding: 0.6em 1.2em;
-    margin: 0.5em;
-    font-size: 1em;
-    font-weight: 500;
-    font-family: inherit;
-    background-color: #1a1a1a;
-    cursor: pointer;
-    transition: border-color 0.25s;
-  }
-
-  option {
-    border-radius: 8px;
-    border: 1px solid transparent;
-    padding: 0.6em 1.2em;
-    margin: 0.5em;
-    font-size: 1em;
-    font-weight: 500;
-    font-family: inherit;
-    background-color: #1a1a1a;
-    cursor: pointer;
-    transition: border-color 0.25s;
-  }
-
-  @media (prefers-color-scheme: light) {
-    option {
-      background-color: #f9f9f9;
-    }
-    select {
-      background-color: #f9f9f9;
-    }
-  }
-</style>
+<CreateGroup on:groupCreate={async () => await fetchGroups()} />

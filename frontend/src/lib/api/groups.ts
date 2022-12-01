@@ -1,10 +1,6 @@
-import { api } from '../variables';
-
 export const getGroups = async () => {
-	const res = await fetch(`${api}/api/groups`, {
+	const res = await fetch(`/api/groups`, {
 		method: 'GET',
-		mode: 'cors',
-		credentials: 'include'
 	});
 	if (!res.ok) return [];
 
@@ -14,10 +10,8 @@ export const getGroups = async () => {
 };
 
 export const getInvitationID = async (groupID: string): Promise<string | undefined> => {
-	const res = await fetch(`${api}/api/groups/invite`, {
+	const res = await fetch(`/api/groups/invite`, {
 		method: 'POST',
-		mode: 'cors',
-		credentials: 'include',
 		headers: { 'Content-type': 'application/json' },
 		body: JSON.stringify({ group_id: groupID })
 	});
@@ -34,11 +28,9 @@ export interface InvitationInfo {
 }
 
 export const getInvitationInfo = async (id: string): Promise<InvitationInfo | undefined> => {
-	console.log(`${api}/api/groups/info/${id}`);
-	const res = await fetch(`${api}/api/groups/info/${id}`, {
+	console.log(`/api/api/groups/info/${id}`);
+	const res = await fetch(`/api/groups/info/${id}`, {
 		method: 'GET',
-		mode: 'cors',
-		credentials: 'include'
 	});
 	if (!res.ok) return;
 	const json = await res.json();
@@ -47,20 +39,16 @@ export const getInvitationInfo = async (id: string): Promise<InvitationInfo | un
 };
 
 export const joinGroupById = async (id: string): Promise<boolean> => {
-	const res = await fetch(`${api}/api/groups/join/${id}`, {
+	const res = await fetch(`/api/groups/join/${id}`, {
 		method: 'GET',
-		mode: 'cors',
-		credentials: 'include'
 	});
 	if (!res.ok) false;
 	return true;
 };
 
 export const createNewGroup = async (name: string) => {
-	const res = await fetch(`${api}/api/groups`, {
+	const res = await fetch(`/api/groups`, {
 		method: 'POST',
-		mode: 'cors',
-		credentials: 'include',
 		headers: { 'Content-type': 'application/json' },
 		body: JSON.stringify({ name })
 	});

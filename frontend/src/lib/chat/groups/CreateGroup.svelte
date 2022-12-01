@@ -1,12 +1,12 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import { createNewGroup } from "../api/groups";
+  import { createNewGroup } from "../../api/groups";
 
   const dispatch = createEventDispatcher<{ groupCreate }>();
   let isOk;
   let groupName = "";
   let prompt = "";
-  
+
   async function create() {
     if (groupName.length == 0) return;
     isOk = await createNewGroup(groupName);

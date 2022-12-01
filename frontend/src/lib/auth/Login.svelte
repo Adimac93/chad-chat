@@ -1,7 +1,6 @@
 <script lang="ts">
   import { isAuthorized } from "../stores";
   import TextButton from "../TextButton.svelte";
-  import { api } from "../variables";
 
   let login = "";
   let password = "";
@@ -10,15 +9,13 @@
   let message = "";
 
   async function login_user() {
-    let res = await fetch(`${api}/auth/login`, {
+    let res = await fetch(`api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         login,
         password,
       }),
-      mode: "cors",
-      credentials: "include",
     });
     if (res.ok) {
       isAuthorized.set(true);

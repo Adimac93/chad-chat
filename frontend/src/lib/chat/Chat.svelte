@@ -1,12 +1,13 @@
 <script lang="ts">
   import { Socket } from "./socket";
-  import Groups from "./Groups.svelte";
+  import Groups from "./groups/Groups.svelte";
 
   import { onDestroy, onMount } from "svelte";
   import Message from "./Message.svelte";
   import Input from "./Input.svelte";
   import { beforeUpdate, afterUpdate } from "svelte";
   import { messages } from "../stores";
+  import Invitation from "./groups/invitation/Invitation.svelte";
 
   let groupName = "";
   let chatBox: HTMLElement;
@@ -16,14 +17,15 @@
 
   let socket = new Socket();
 
+  let groupId = "";
+
   socket.webSocket.onclose = (e) => {
     chatAvailable = false;
-      console.log("Reconnecting")
-      setInterval(() => {
-          socket.connect() 
-      },10000)
-    
-  }
+    console.log("Reconnecting");
+    setInterval(() => {
+      socket.connect();
+    }, 10000);
+  };
 
   afterUpdate(() => {
     if (isLoading) {
@@ -35,7 +37,7 @@
       chatBox.scrollTo({ top: chatBox.scrollHeight });
     }
   });
-  
+
   function sendMessage(e: CustomEvent<string>) {
     isLoading = false;
     const message = e.detail;
@@ -45,8 +47,9 @@
   function changeGroup(e: CustomEvent<Group>) {
     isLoading = false;
     const group = e.detail;
+    groupId = group.id;
     groupName = group.name;
-    socket.changeGroup(group.id);
+    socket.changeGroup(groupId);
   }
 
   function parseScroll() {
@@ -56,9 +59,10 @@
       socket.requestMessageLoad();
     }
   }
-  
+
   onDestroy(() => {
     socket.webSocket.close();
+    socket = null;
   });
 </script>
 
@@ -66,19 +70,20 @@
   {#if !chatAvailable}
     <div>Connection interrupted, try refreshing page</div>
   {/if}
-    <Groups on:groupSelect={changeGroup} />
-    <div class="chatbox" bind:this={chatBox} on:scroll={parseScroll}>
-      {#if socket.isBlocked}
-        <div>This is the beggining of your chad conversation</div>
-      {/if}
-      {#key $messages}
-        {#each $messages as message}
-          <Message {message} />
-        {/each}
-      {/key}
-    </div>
-    <Input on:message={sendMessage} {groupName} />
-  
+  <Invitation bind:group_id={groupId} />
+  <Groups on:groupSelect={changeGroup} />
+  <div class="chatbox" bind:this={chatBox} on:scroll={parseScroll}>
+    {#if socket.isBlocked}
+      <div>This is the beggining of your chad conversation</div>
+    {/if}
+    {#key $messages}
+      {#each $messages as message}
+        <Message {message} />
+      {/each}
+    {/key}
+  </div>
+  <Input on:message={sendMessage} {groupName} />
+
   <style>
     .chatbox {
       min-width: 50em;
