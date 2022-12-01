@@ -300,5 +300,21 @@ mod auth {
             .unwrap();
 
         assert_eq!(res.status(), StatusCode::OK);
+
+        let res = client
+            .post(format!("http://{}/auth/logout", app_data.addr))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let res = client
+            .post(format!("http://{}/auth/user-validation", app_data.addr))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 }

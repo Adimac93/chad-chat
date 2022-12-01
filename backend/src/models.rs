@@ -2,13 +2,14 @@
 use anyhow::Context;
 use axum::{
     async_trait,
-    extract::{self, FromRequest},
+    extract::{self, FromRequest}, Extension,
 };
 use axum_extra::extract::CookieJar;
 use dashmap::DashMap;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use sqlx::query;
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, RwLock};
@@ -17,7 +18,8 @@ use validator::Validate;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
-    pub id: Uuid,
+    pub jti: Uuid,
+    pub user_id: Uuid,
     pub login: String,
     pub exp: u64,
 }
@@ -39,6 +41,7 @@ where
         let jar = CookieJar::from_request(req)
             .await
             .context("Failed to fetch cookie jar")?;
+
         let cookie = jar.get("jwt").ok_or(AuthError::InvalidToken)?;
         let mut validation = Validation::default();
         validation.leeway = 5;
@@ -48,8 +51,9 @@ where
             &DecodingKey::from_secret(jwt_key.expose_secret().as_bytes()),
             &validation,
         );
-        let new_data = data.map_err(|_| AuthError::InvalidToken)?;
-        Ok(new_data.claims)
+        let data = data.map_err(|_| AuthError::InvalidToken)?;
+
+        Ok(data.claims)
     }
 }
 

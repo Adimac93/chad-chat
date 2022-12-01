@@ -69,7 +69,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     info!("Non existing group");
                     return;
                 }
-                let Ok(is_group_member) = check_if_group_member(&pool,&claims.id,&group_id).await else {
+                let Ok(is_group_member) = check_if_group_member(&pool,&claims.user_id,&group_id).await else {
                     error!("Cannot check if user is a group member");
                     return;
                 };
@@ -115,7 +115,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     .groups
                     .entry(group_id)
                     .and_modify(|group_tx| {
-                        group_tx.users.insert(claims.id);
+                        group_tx.users.insert(claims.user_id);
                     })
                     .or_insert(GroupTransmitter::new());
 
@@ -152,7 +152,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 }
                 if let Some(group_id) = current_group_id {
                     if let Some(tx) = ctx.clone() {
-                        let Ok(nickname) = get_group_nickname(&pool, &claims.id,&group_id).await else {
+                        let Ok(nickname) = get_group_nickname(&pool, &claims.user_id,&group_id).await else {
                             // ?User deleted account
                             error!("Failed to get user by id");
                             return;
@@ -174,7 +174,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                             },
                         }
                     }
-                    let Ok(_) = create_message(&pool, &claims.id, &group_id, &content).await else {
+                    let Ok(_) = create_message(&pool, &claims.user_id, &group_id, &content).await else {
                         return;
                     };
                 } else {
@@ -223,7 +223,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 }
             }
             ChatAction::GroupInvite { group_id } => {
-                let Ok(is_member) = check_if_group_member(&pool, &claims.id, &group_id).await else {
+                let Ok(is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await else {
                     return;
                 };
                 if is_member {}

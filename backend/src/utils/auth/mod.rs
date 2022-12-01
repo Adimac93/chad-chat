@@ -14,6 +14,7 @@ use time::Duration;
 use tracing::info;
 use uuid::Uuid;
 use validator::Validate;
+use time::OffsetDateTime;
 
 pub async fn try_register_user(
     pool: &PgPool,
@@ -112,7 +113,8 @@ pub async fn authorize_user(
     .await?;
 
     let claims = Claims {
-        id: user_id,
+        jti: Uuid::new_v4(),
+        user_id,
         login: user.login.clone(),
         exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
     };
@@ -126,4 +128,20 @@ pub async fn authorize_user(
     .context("Failed to encrypt token")?;
 
     Ok(token)
+}
+
+pub async fn add_token_to_blacklist(pool: &PgPool, claims: Claims) -> Result<(), AuthError> {
+    let _res = query!(
+        r#"
+            insert into jwt_blacklist (token_id, expiry)
+            values ($1, $2)
+        "#,
+        claims.user_id,
+        claims.exp as i64,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to add token to the blacklist")?;
+    
+    Ok(())
 }

@@ -17,6 +17,7 @@ pub fn router() -> Router {
         .route("/register", post(post_register_user))
         .route("/login", post(post_login_user))
         .route("/user-validation", post(protected_zone))
+        .route("/logout", post(post_logout_user))
 }
 
 async fn post_register_user(
@@ -50,5 +51,16 @@ async fn post_login_user(
 }
 
 async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
-    Ok(Json(json!({ "user id": claims.id })))
+    Ok(Json(json!({ "user id": claims.user_id })))
+}
+
+async fn post_logout_user(
+    Extension(pool): Extension<PgPool>,
+    claims: Claims,
+    jar: CookieJar
+) -> Result<CookieJar, AuthError> {
+    // TODO: check jwt_blacklist on token validation
+    add_token_to_blacklist(&pool, claims).await?;
+
+    Ok(jar.remove(Cookie::named("jwt")))
 }

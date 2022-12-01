@@ -26,7 +26,7 @@ async fn get_user_groups(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
 ) -> Result<Json<Value>, GroupError> {
-    query_user_groups(&pool, &claims.id).await
+    query_user_groups(&pool, &claims.user_id).await
 }
 
 async fn post_create_group(
@@ -35,7 +35,7 @@ async fn post_create_group(
     group: Json<NewGroup>,
 ) -> Result<(), GroupError> {
     tracing::trace!("JWT: {:#?}", claims);
-    create_group(&pool, group.name.trim(), claims.id).await
+    create_group(&pool, group.name.trim(), claims.user_id).await
 }
 
 async fn post_add_user_to_group(
@@ -53,7 +53,7 @@ async fn post_create_group_invitation_link(
     Json(NewGroupInvitation { group_id }): Json<NewGroupInvitation>,
     state: Extension<Arc<InvitationState>>,
 ) -> Result<Json<Value>, GroupError> {
-    match check_if_group_member(&pool, &claims.id, &group_id).await? {
+    match check_if_group_member(&pool, &claims.user_id, &group_id).await? {
         true => {
             let id = Uuid::new_v4();
             let _ = state.code.write().await.insert(id, group_id);
@@ -71,7 +71,7 @@ pub async fn get_join_group_by_link(
 ) -> Result<(), GroupError> {
     match state.code.read().await.get(&invite_id) {
         Some(group_id) => {
-            try_add_user_to_group(&pool, &claims.id, group_id).await?;
+            try_add_user_to_group(&pool, &claims.user_id, group_id).await?;
             Ok(())
         }
         None => Err(GroupError::BadInvitation),
