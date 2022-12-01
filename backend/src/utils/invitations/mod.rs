@@ -1,8 +1,8 @@
 pub mod errors;
 use anyhow::Context;
 use nanoid::nanoid;
-use serde::Deserialize;
-use sqlx::{query, Executor, PgPool, Postgres, Transaction};
+use serde::{Deserialize, Serialize};
+use sqlx::{query, Acquire, Executor, PgPool, Postgres, Transaction};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -36,7 +36,9 @@ impl TryFrom<GroupInvitationCreate> for GroupInvitation {
         Ok(invitation)
     }
 }
-struct GroupInvitation {
+
+#[derive(Serialize)]
+pub struct GroupInvitation {
     group_id: Uuid,
     expiration_date: Option<OffsetDateTime>,
     uses_left: Option<i32>,
@@ -80,10 +82,10 @@ pub async fn try_create_group_invitation_with_code(
     .await
     .context("Failed to create a group invitation")?;
 
-    todo!()
+    Ok(invitation.id)
 }
 
-pub async fn try_join_group_by_code(
+pub async fn fetch_group_info_by_code(
     pool: &PgPool,
     user_id: &Uuid,
     code: &str,
@@ -104,11 +106,39 @@ pub async fn try_join_group_by_code(
     .context("Failed to find group invitation")?;
 
     let invitation = res.ok_or(InvitationError::InvalidCode)?;
-    let res = try_add_user_to_group(&mut transaction, user_id, &invitation.group_id).await;
+
     Ok(GroupInfo {
         name: invitation.name,
         members: invitation.members_count.context("Members count is None")?,
     })
+}
+
+pub async fn try_join_group_by_code<'c>(
+    conn: impl Acquire<'c, Database = Postgres>,
+    user_id: &Uuid,
+    code: &str,
+) -> Result<(), InvitationError> {
+    let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
+    let res = query!(
+        r#"
+            select group_id from group_invitations
+            where id = $1
+        "#,
+        code
+    )
+    .fetch_optional(&mut transaction)
+    .await
+    .context("Failed to find group invitation")?;
+
+    match res {
+        Some(record) => {
+            try_add_user_to_group(&mut transaction, user_id, &record.group_id)
+                .await
+                .context("Failed to add user to group")?; // ? better error conversion possible
+            return Ok(());
+        }
+        None => Err(InvitationError::InvalidCode),
+    }
 }
 
 enum Uses {

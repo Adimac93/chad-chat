@@ -5,13 +5,8 @@ pub mod routes;
 pub mod utils;
 
 use axum::{
-    extract::Path,
-    http::header::CONTENT_TYPE,
-    http::HeaderValue,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Extension, Json, Router,
+    extract::Path, http::header::CONTENT_TYPE, http::HeaderValue, http::StatusCode,
+    response::IntoResponse, routing::get, Extension, Json, Router,
 };
 use configuration::get_config;
 use secrecy::Secret;
@@ -32,14 +27,17 @@ pub async fn app(pool: PgPool) -> Router {
         .allow_headers([CONTENT_TYPE])
         .allow_credentials(true);
 
-    let api = Router::new().nest("/groups", routes::groups::router());
+    let groups = Router::new().nest(
+        "/groups",
+        routes::groups::router().nest("/invitations", routes::invitations::router()),
+    );
 
     Router::new()
         .route("/", get(home_page))
         .route("/:slug", get(not_found).post(not_found))
         .route("/health", get(health_check))
         .nest("/auth", routes::auth::router())
-        .nest("/api", api)
+        .merge(groups)
         .nest("/chat", routes::chat::router())
         .layer(Extension(pool))
         .layer(Extension(JwtSecret(config.app.jwt_key)))
