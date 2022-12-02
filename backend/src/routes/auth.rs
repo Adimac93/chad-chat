@@ -59,7 +59,6 @@ async fn post_logout_user(
     claims: Claims,
     jar: CookieJar
 ) -> Result<CookieJar, AuthError> {
-    // TODO: check jwt_blacklist on token validation
     add_token_to_blacklist(&pool, claims).await?;
 
     Ok(jar.remove(Cookie::named("jwt")))

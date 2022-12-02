@@ -12,6 +12,7 @@ use secrecy::{ExposeSecret, Secret, SecretString};
 use sqlx::{query, PgPool};
 use time::Duration;
 use tracing::info;
+use tracing::debug;
 use uuid::Uuid;
 use validator::Validate;
 use time::OffsetDateTime;
@@ -131,13 +132,16 @@ pub async fn authorize_user(
 }
 
 pub async fn add_token_to_blacklist(pool: &PgPool, claims: Claims) -> Result<(), AuthError> {
-    let _res = query!(
+    let exp = OffsetDateTime::from_unix_timestamp(claims.exp as i64)
+        .context("Failed to convert timestamp to date and time with the timezone")?;
+
+    let res = query!(
         r#"
             insert into jwt_blacklist (token_id, expiry)
             values ($1, $2)
         "#,
-        claims.user_id,
-        claims.exp as i64,
+        claims.jti,
+        exp,
     )
     .execute(pool)
     .await

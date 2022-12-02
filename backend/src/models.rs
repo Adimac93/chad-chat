@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use sqlx::query;
+use sqlx::{query, PgPool};
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use tokio::sync::{broadcast, RwLock};
@@ -38,6 +38,11 @@ where
             .expect("Failed to get jwt secret extension")
             .clone();
 
+        let pool = ext
+            .get::<PgPool>()
+            .expect("Failed to get PgPool to check jwt claims")
+            .clone();
+
         let jar = CookieJar::from_request(req)
             .await
             .context("Failed to fetch cookie jar")?;
@@ -51,9 +56,24 @@ where
             &DecodingKey::from_secret(jwt_key.expose_secret().as_bytes()),
             &validation,
         );
+
         let data = data.map_err(|_| AuthError::InvalidToken)?;
 
-        Ok(data.claims)
+        let res = query!(
+            r#"
+                select * from jwt_blacklist
+                where token_id = $1;
+            "#,
+            data.claims.jti
+        )
+        .fetch_optional(&pool)
+        .await
+        .context("Failed to verify token with the blacklist")?;
+
+        match res {
+            Some(_) => Err(AuthError::InvalidToken),
+            None => Ok(data.claims),
+        }
     }
 }
 

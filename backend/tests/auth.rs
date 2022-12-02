@@ -1,15 +1,11 @@
-﻿use backend::models::LoginCredentials;
-use backend::utils::auth::{errors::AuthError, login_user, try_register_user};
-use nanoid::nanoid;
+﻿use nanoid::nanoid;
 use reqwest::StatusCode;
-use secrecy::SecretString;
 use serde_json::json;
 mod tools;
 
 mod auth {
     use super::*;
     use backend::utils::auth::{errors::AuthError, login_user, try_register_user};
-    use reqwest::Response;
     use secrecy::SecretString;
     use sqlx::PgPool;
 
