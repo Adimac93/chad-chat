@@ -60,10 +60,10 @@
     }
   }
 
-  onDestroy(() => {
-    socket.webSocket.close();
-    socket = null;
-  });
+  // onDestroy(() => {
+  //   socket.webSocket.close();
+  //   socket = null;
+  // });
 </script>
 
 <div>

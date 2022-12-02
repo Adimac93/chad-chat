@@ -28,7 +28,7 @@ export interface InvitationInfo {
 }
 
 export const getInvitationInfo = async (id: string): Promise<InvitationInfo | undefined> => {
-	console.log(`/api/api/groups/info/${id}`);
+	console.log(`/api/groups/info/${id}`);
 	const res = await fetch(`/api/groups/info/${id}`, {
 		method: 'GET',
 	});
