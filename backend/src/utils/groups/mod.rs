@@ -7,6 +7,7 @@ use errors::*;
 use futures::FutureExt;
 use serde_json::{json, Value};
 use sqlx::{query, query_as, Acquire, Executor, PgPool, Postgres, Transaction};
+use tracing::debug;
 use uuid::Uuid;
 
 pub async fn try_add_user_to_group<'c>(
@@ -15,6 +16,7 @@ pub async fn try_add_user_to_group<'c>(
     group_id: &Uuid,
 ) -> Result<(), GroupError> {
     let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
+
     let res = query!(
         r#"
             select * from group_users 
@@ -63,6 +65,7 @@ pub async fn try_add_user_to_group<'c>(
     .context("Failed to fetch user nickname")?
     .nickname;
 
+    debug!("Adding user '{nickname}' to group ");
     query!(
         r#"
             insert into group_users (user_id, group_id, nickname)

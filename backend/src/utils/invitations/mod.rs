@@ -135,6 +135,10 @@ pub async fn try_join_group_by_code<'c>(
             try_add_user_to_group(&mut transaction, user_id, &record.group_id)
                 .await
                 .context("Failed to add user to group")?; // ? better error conversion possible
+            transaction
+                .commit()
+                .await
+                .context("Failed to commit transaction")?;
             return Ok(());
         }
         None => Err(InvitationError::InvalidCode),
