@@ -1,14 +1,14 @@
 ﻿use crate::{
-    models::{Claims, LoginCredentials, RegisterCredentials, RefreshClaims},
+    models::{Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
     utils::auth::{errors::AuthError, *},
     JwtSecret, RefreshJwtSecret,
 };
-use axum::{extract, http::StatusCode, Extension, Json};
+use axum::{extract, http::StatusCode, routing::get, Extension, Json};
 use axum::{routing::post, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
-use jsonwebtoken::{Validation, DecodingKey, decode};
-use secrecy::{SecretString, ExposeSecret};
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
@@ -46,10 +46,13 @@ async fn post_login_user(
     // returns if credentials are wrong
     let user_id = login_user(&pool, &user.login, SecretString::new(user.password)).await?;
 
-    let access_token = generate_jwt_token(user_id, &user.login, Duration::minutes(10), &jwt_key).await?;
+    let access_token =
+        generate_jwt_token(user_id, &user.login, Duration::minutes(10), &jwt_key).await?;
     let access_cookie = generate_cookie(access_token, JwtTokenType::Access).await;
 
-    let refresh_token = generate_refresh_jwt_token(user_id, &user.login, Duration::days(7), &refresh_jwt_key).await?;
+    let refresh_token =
+        generate_refresh_jwt_token(user_id, &user.login, Duration::days(7), &refresh_jwt_key)
+            .await?;
     let refresh_cookie = generate_cookie(refresh_token, JwtTokenType::Refresh).await;
 
     let jar = jar.add(access_cookie);
@@ -60,11 +63,11 @@ async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
     Ok(Json(json!({ "user id": claims.user_id })))
 }
 
-async fn post_user_logout (
+async fn post_user_logout(
     Extension(pool): Extension<PgPool>,
     Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
     Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
-    jar: CookieJar
+    jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
     let mut validation = Validation::default();
     validation.leeway = 5;
@@ -93,8 +96,17 @@ async fn post_user_logout (
         }
     };
 
-    let jar = jar.remove(Cookie::named("refresh-jwt"));
-    Ok(jar.remove(Cookie::named("jwt")))
+    debug!("Removing client cookies");
+    Ok(jar
+        .remove(remove_cookie("jwt"))
+        .remove(remove_cookie("refresh-jwt")))
+}
+
+fn remove_cookie(name: &str) -> Cookie {
+    Cookie::build(name, "")
+        .path("/")
+        .max_age(Duration::seconds(0))
+        .finish()
 }
 
 async fn post_refresh_user_token(
@@ -106,8 +118,9 @@ async fn post_refresh_user_token(
         refresh_claims.user_id,
         &refresh_claims.login,
         Duration::minutes(10),
-        &jwt_key
-    ).await?;
+        &jwt_key,
+    )
+    .await?;
 
     let cookie = generate_cookie(access_token, JwtTokenType::Access).await;
 
