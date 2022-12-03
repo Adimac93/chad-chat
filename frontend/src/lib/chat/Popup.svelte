@@ -30,7 +30,7 @@
 
 <style>
   .popup {
-    border: 1px solid #f9f9f9;
+    border: 0.1em solid #f9f9f9;
     background-color: #242424;
     border-radius: 8px;
     position: absolute;
@@ -60,5 +60,15 @@
   #icon {
     width: 25px;
     height: 25px;
+  }
+  @media (prefers-color-scheme: light) {
+    #icon {
+      fill: #213547;
+    }
+
+    .popup {
+      border: 0.1em solid #646cff;
+      background-color: white;
+    }
   }
 </style>
