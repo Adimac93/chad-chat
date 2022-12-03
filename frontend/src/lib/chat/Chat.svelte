@@ -14,18 +14,20 @@
   let chatBoxHeight: number;
   let isLoading = false;
   let chatAvailable = true;
-
-  let socket = new Socket();
-
   let groupId = "";
+  let isBlocked = true;
 
-  socket.webSocket.onclose = (e) => {
-    chatAvailable = false;
-    console.log("Reconnecting");
-    setInterval(() => {
-      socket.connect();
-    }, 10000);
-  };
+  let socket: Socket;
+  onMount(() => {
+    socket = new Socket();
+    socket.webSocket.onclose = (e) => {
+      chatAvailable = false;
+      console.log("Reconnecting");
+      setInterval(() => {
+        socket.connect();
+      }, 10000);
+    };
+  });
 
   afterUpdate(() => {
     if (isLoading) {
@@ -36,6 +38,7 @@
       console.log("scroll down");
       chatBox.scrollTo({ top: chatBox.scrollHeight });
     }
+    isBlocked = socket.isBlocked; // ?
   });
 
   function sendMessage(e: CustomEvent<string>) {
@@ -60,10 +63,10 @@
     }
   }
 
-  // onDestroy(() => {
-  //   socket.webSocket.close();
-  //   socket = null;
-  // });
+  onDestroy(() => {
+    socket.webSocket.close();
+    socket = null;
+  });
 </script>
 
 <div>
@@ -73,7 +76,7 @@
   <Invitation bind:group_id={groupId} />
   <Groups on:groupSelect={changeGroup} />
   <div class="chatbox" bind:this={chatBox} on:scroll={parseScroll}>
-    {#if socket.isBlocked}
+    {#if isBlocked}
       <div>This is the beggining of your chad conversation</div>
     {/if}
     {#key $messages}

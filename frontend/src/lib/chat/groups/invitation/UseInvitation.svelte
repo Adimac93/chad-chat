@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { afterUpdate } from "svelte";
+  import { afterUpdate, createEventDispatcher } from "svelte";
+  import { request } from "../../../api/fetch";
 
   let name;
   let members;
@@ -9,19 +10,19 @@
 
   let isCorrect = false;
 
+  const dispatch = createEventDispatcher<{ join }>();
+
   async function getGroupInfo() {
-    let res = await fetch(`/api/groups/invitations/info`, {
+    const res = await request("/api/groups/invitations/info", {
       method: "POST",
-      headers: { "Content-type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: { code },
     });
     if (res.ok) {
       isCorrect = true;
-      const json = await res.json();
-      name = json.name as string;
-      members = json.members as number;
-    } else if (res.status == 400) {
-      error = (await res.json()).error_info;
+      name = res.data.name as string;
+      members = res.data.members as number;
+    } else {
+      error = res.data.error_info;
       setTimeout(() => {
         error = "";
       }, 5000);
@@ -29,16 +30,22 @@
     }
   }
   async function joinGroup() {
-    let res = await fetch(`/api/groups/invitations/join`, {
+    let res = await request(`/api/groups/invitations/join`, {
       method: "POST",
-      headers: { "Content-type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: { code },
     });
+
     if (res.ok) {
+      dispatch("join");
     } else {
-      const json = await res.json();
+      error = res.data.error_info;
+      setTimeout(() => {
+        error = "";
+      }, 5000);
+      code = "";
     }
   }
+
   $: checkCode(code);
 
   const checkCode = (text: string) => {

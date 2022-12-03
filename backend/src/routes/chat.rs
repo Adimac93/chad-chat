@@ -178,8 +178,8 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                         return;
                     };
                 } else {
-                    error!("Cannot send message - group not selected");
-                    return;
+                    info!("Cannot send message - group not selected");
+                    continue;
                 }
             }
             ChatAction::RequestMessages { loaded } => {
@@ -224,11 +224,13 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
             }
             ChatAction::GroupInvite { group_id } => {
                 let Ok(is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await else {
+                    error!("Failed to check whether a user is a group member (during sending a group invite)");
                     return;
                 };
                 if is_member {}
             }
             ChatAction::Close => {
+                debug!("WebSocket closed explicitly");
                 return;
             }
         }

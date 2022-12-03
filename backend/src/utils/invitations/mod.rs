@@ -2,7 +2,7 @@ pub mod errors;
 use anyhow::Context;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, Acquire, Executor, PgPool, Postgres, Transaction};
+use sqlx::{query, Acquire, PgPool, Postgres};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -87,7 +87,6 @@ pub async fn try_create_group_invitation_with_code(
 
 pub async fn fetch_group_info_by_code(
     pool: &PgPool,
-    user_id: &Uuid,
     code: &str,
 ) -> Result<GroupInfo, InvitationError> {
     let mut transaction = pool.begin().await.context("Failed to begin transaction")?;
@@ -135,6 +134,10 @@ pub async fn try_join_group_by_code<'c>(
             try_add_user_to_group(&mut transaction, user_id, &record.group_id)
                 .await
                 .context("Failed to add user to group")?; // ? better error conversion possible
+            transaction
+                .commit()
+                .await
+                .context("Failed to commit transaction")?;
             return Ok(());
         }
         None => Err(InvitationError::InvalidCode),
@@ -173,7 +176,7 @@ impl TryFrom<i32> for Uses {
             3 => Ok(Uses::TwentyFive),
             4 => Ok(Uses::Fifty),
             5 => Ok(Uses::OneHundred),
-            n => Err(InvitationError::UnsupportedVariant),
+            _n => Err(InvitationError::UnsupportedVariant),
         }
     }
 }
@@ -210,7 +213,7 @@ impl TryFrom<i32> for Expiration {
             3 => Ok(Expiration::HalfDay),
             4 => Ok(Expiration::Day),
             5 => Ok(Expiration::Week),
-            n => Err(InvitationError::UnsupportedVariant),
+            _n => Err(InvitationError::UnsupportedVariant),
         }
     }
 }

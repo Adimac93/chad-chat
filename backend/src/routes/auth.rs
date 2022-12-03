@@ -3,7 +3,7 @@
     utils::auth::{errors::AuthError, *},
     JwtSecret, RefreshJwtSecret,
 };
-use axum::{extract, http::StatusCode, routing::get, Extension, Json};
+use axum::{extract, http::StatusCode, Extension, Json};
 use axum::{routing::post, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
@@ -14,26 +14,35 @@ use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
 
+pub const JWT_ACCESS_TOKEN_EXPIRATION: Duration = Duration::minutes(5);
+pub const JWT_REFRESH_TOKEN_EXPIRATION: Duration = Duration::days(7);
+
 pub fn router() -> Router {
     Router::new()
         .route("/register", post(post_register_user))
         .route("/login", post(post_login_user))
-        .route("/user-validation", post(protected_zone))
+        .route("/validate", post(protected_zone))
         .route("/logout", post(post_user_logout))
-        .route("/refresh-token", post(post_refresh_user_token))
+        .route("/refresh", post(post_refresh_user_token))
 }
 
 async fn post_register_user(
     Extension(pool): Extension<PgPool>,
-    user: extract::Json<RegisterCredentials>,
-) -> Result<(), AuthError> {
-    try_register_user(
+    register_credentials: extract::Json<RegisterCredentials>,
+    Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
+    Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
+    jar: CookieJar,
+) -> Result<CookieJar, AuthError> {
+    let user_id = try_register_user(
         &pool,
-        user.login.trim(),
-        SecretString::new(user.password.trim().to_string()),
-        &user.nickname,
+        register_credentials.login.trim(),
+        SecretString::new(register_credentials.password.trim().to_string()),
+        &register_credentials.nickname,
     )
-    .await
+    .await?;
+
+    let login_credentials = LoginCredentials::new(&register_credentials.login, &register_credentials.password);
+    Ok(login_user(user_id, login_credentials, jwt_key, refresh_jwt_key, jar).await?)
 }
 
 async fn post_login_user(
@@ -44,19 +53,9 @@ async fn post_login_user(
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
     // returns if credentials are wrong
-    let user_id = login_user(&pool, &user.login, SecretString::new(user.password)).await?;
+    let user_id = verify_user_credentials(&pool, &user.login, SecretString::new(user.password.clone())).await?;
 
-    let access_token =
-        generate_jwt_token(user_id, &user.login, Duration::minutes(10), &jwt_key).await?;
-    let access_cookie = generate_cookie(access_token, JwtTokenType::Access).await;
-
-    let refresh_token =
-        generate_refresh_jwt_token(user_id, &user.login, Duration::days(7), &refresh_jwt_key)
-            .await?;
-    let refresh_cookie = generate_cookie(refresh_token, JwtTokenType::Refresh).await;
-
-    let jar = jar.add(access_cookie);
-    Ok(jar.add(refresh_cookie))
+    Ok(login_user(user_id, user, jwt_key, refresh_jwt_key, jar).await?)
 }
 
 async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
@@ -117,7 +116,7 @@ async fn post_refresh_user_token(
     let access_token = generate_jwt_token(
         refresh_claims.user_id,
         &refresh_claims.login,
-        Duration::minutes(10),
+        JWT_ACCESS_TOKEN_EXPIRATION,
         &jwt_key,
     )
     .await?;

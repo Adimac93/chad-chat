@@ -5,7 +5,7 @@ mod tools;
 
 mod auth {
     use super::*;
-    use backend::utils::auth::{errors::AuthError, login_user, try_register_user};
+    use backend::utils::auth::{errors::AuthError, try_register_user, verify_user_credentials};
     use secrecy::SecretString;
     use sqlx::PgPool;
 
@@ -181,7 +181,7 @@ mod auth {
 
     #[sqlx::test(fixtures("user"))]
     async fn login_health_check(db: PgPool) {
-        let res = login_user(
+        let res = verify_user_credentials(
             &db,
             "some_user",
             SecretString::new("#strong#_#pass#".to_string()),
@@ -196,7 +196,7 @@ mod auth {
 
     #[sqlx::test(fixtures("user"))]
     async fn login_missing_credential_0(db: PgPool) {
-        let res = login_user(&db, "some_user", SecretString::new("   ".to_string())).await;
+        let res = verify_user_credentials(&db, "some_user", SecretString::new("   ".to_string())).await;
 
         match res {
             Err(AuthError::MissingCredential) => (),
@@ -206,7 +206,7 @@ mod auth {
 
     #[sqlx::test(fixtures("user"))]
     async fn login_missing_credential_1(db: PgPool) {
-        let res = login_user(
+        let res = verify_user_credentials(
             &db,
             "    ",
             SecretString::new("#strong#_#pass#".to_string()),
@@ -221,7 +221,7 @@ mod auth {
 
     #[sqlx::test(fixtures("user"))]
     async fn login_missing_credential_2(db: PgPool) {
-        let res = login_user(&db, "    ", SecretString::new("  ".to_string())).await;
+        let res = verify_user_credentials(&db, "    ", SecretString::new("  ".to_string())).await;
 
         match res {
             Err(AuthError::MissingCredential) => (),
@@ -231,7 +231,7 @@ mod auth {
 
     #[sqlx::test(fixtures("user"))]
     async fn login_no_user_found(db: PgPool) {
-        let res = login_user(
+        let res = verify_user_credentials(
             &db,
             "different_user",
             SecretString::new("#strong#_#pass#".to_string()),
@@ -246,7 +246,7 @@ mod auth {
 
     #[sqlx::test(fixtures("user"))]
     async fn login_wrong_password(db: PgPool) {
-        let res = login_user(
+        let res = verify_user_credentials(
             &db,
             "some_user",
             SecretString::new("#wrong#_#pass#".to_string()),
@@ -270,8 +270,7 @@ mod auth {
             "nickname": format!("Chad")
         });
 
-        let res = app_data
-            .client()
+        let res = client
             .post(format!("http://{}/auth/register", app_data.addr))
             .json(&payload)
             .send()
@@ -280,17 +279,19 @@ mod auth {
 
         assert_eq!(res.status(), StatusCode::OK);
 
-        let res = client
-            .post(format!("http://{}/auth/login", app_data.addr))
-            .json(&payload)
-            .send()
-            .await
-            .unwrap();
+        // not required anymore
 
-        assert_eq!(res.status(), StatusCode::OK);
+        // let res = client
+        //     .post(format!("http://{}/auth/login", app_data.addr))
+        //     .json(&payload)
+        //     .send()
+        //     .await
+        //     .unwrap();
+
+        // assert_eq!(res.status(), StatusCode::OK);
 
         let res = client
-            .post(format!("http://{}/auth/user-validation", app_data.addr))
+            .post(format!("http://{}/auth/validate", app_data.addr))
             .send()
             .await
             .unwrap();
@@ -306,7 +307,7 @@ mod auth {
         assert_eq!(res.status(), StatusCode::OK);
 
         let res = client
-            .post(format!("http://{}/auth/user-validation", app_data.addr))
+            .post(format!("http://{}/auth/validate", app_data.addr))
             .send()
             .await
             .unwrap();
