@@ -33,7 +33,7 @@ export async function request(url: RequestInfo | URL, options?: RequestInformati
     }
 
     const res = await fetch(url, reqOptions);
-    const data = await res.json()
+    const data = await parseJSON(res)
 
     if (res.status == 200) {
         return {data, ok: true};
@@ -42,7 +42,7 @@ export async function request(url: RequestInfo | URL, options?: RequestInformati
         const isRefreshed = await tryRefreshToken()
         if (isRefreshed) {
             const res = await fetch(url, reqOptions);
-            const data = await res.json()
+            const data = await parseJSON(res)
             if (res.status == 200) return {data, ok: true};
         }
         // ask for login
@@ -58,4 +58,14 @@ export async function request(url: RequestInfo | URL, options?: RequestInformati
 async function tryRefreshToken() {
     const res = await fetch("/api/auth/refresh",{method: "POST"})
     return res.ok
+}
+
+async function parseJSON(res: Response) {
+    try {
+        const json = await res.json()
+        return json
+    } catch (e) {
+        //console.log(e)
+        return {}
+    }
 }
