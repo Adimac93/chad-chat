@@ -110,50 +110,6 @@
     },
     "query": "\n            select * from users where login = $1\n        "
   },
-  "51069c484e2795c5ed04b9a01c6daf89752979c121a49207398e7b6e0d9c3047": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Varchar"
-        },
-        {
-          "name": "expiration_date",
-          "ordinal": 1,
-          "type_info": "Timestamptz"
-        },
-        {
-          "name": "uses_left",
-          "ordinal": 2,
-          "type_info": "Int4"
-        },
-        {
-          "name": "user_id",
-          "ordinal": 3,
-          "type_info": "Uuid"
-        },
-        {
-          "name": "group_id",
-          "ordinal": 4,
-          "type_info": "Uuid"
-        }
-      ],
-      "nullable": [
-        false,
-        true,
-        true,
-        false,
-        false
-      ],
-      "parameters": {
-        "Left": [
-          "Text"
-        ]
-      }
-    },
-    "query": "\n            update group_invitations\n            set uses_left = uses_left - 1\n            where id = $1\n            returning *\n        "
-  },
   "5204b400b2901e87f15367f7f70f14da16a584d878867f915b356a5ce27b2f5e": {
     "describe": {
       "columns": [],
@@ -359,6 +315,28 @@
       }
     },
     "query": "\n            select nickname from group_users\n            where user_id = $1 and group_id = $2\n        "
+  },
+  "8e24b88c3484003e23d2810dbff1c4eb649cc5281380aabd579dd3b857efd663": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Varchar",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            insert into users (login, password, nickname)\n            values ($1, $2, $3)\n            returning (id)\n        "
   },
   "8f8b480fa3e22487b8de761372a05abe1e03e1432978b1b96bc404615f896d1e": {
     "describe": {
@@ -575,19 +553,5 @@
       }
     },
     "query": "\n                select * from jwt_blacklist\n                where token_id = $1;\n            "
-  },
-  "fd0f9c97c9e39fbb5a8bcf0927f51c48b5a59e308b063f83cceb8d01e2b9ee1f": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Varchar",
-          "Varchar",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n            insert into users (login, password, nickname)\n            values ($1, $2, $3)\n        "
   }
 }
