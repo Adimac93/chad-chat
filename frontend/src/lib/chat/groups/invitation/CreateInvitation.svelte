@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Popup from "../../Popup.svelte";
+  import { request } from "../../../api/fetch";
   export let group_id: string;
 
   const expirationChoice = [
@@ -23,25 +23,22 @@
   let expiration_index;
   let usses_index;
   let code = "";
+  let error;
 
   async function copyToClipboard(text: string) {
     await navigator.clipboard.writeText(text);
   }
 
   async function createGroupInvitation() {
-    let res = await fetch(`/api/groups/invitations/create`, {
+    const res = await request("/api/groups/invitations/create", {
       method: "POST",
-      headers: { "Content-type": "application/json" },
-      body: JSON.stringify({
-        group_id,
-        expiration_index,
-        usses_index,
-      }),
+      body: { group_id, expiration_index, usses_index },
     });
     if (res.ok) {
-      const json = await res.json();
-      code = json.code as string;
+      code = res.data.code as string;
       await copyToClipboard(code);
+    } else {
+      error = res.data.error_info;
     }
   }
 </script>
@@ -69,4 +66,5 @@
       ><strong>Create invitation</strong></button
     >
   {/if}
+  <div>{error}</div>
 </div>
