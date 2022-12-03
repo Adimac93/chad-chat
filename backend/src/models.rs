@@ -1,4 +1,4 @@
-﻿use crate::{utils::auth::errors::*, JwtSecret};
+﻿use crate::{utils::auth::errors::*, utils::auth::JwtTokenType, JwtSecret, RefreshJwtSecret};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -11,7 +11,7 @@ use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, PgPool};
 use std::collections::{HashMap, HashSet};
-use time::OffsetDateTime;
+use time::{OffsetDateTime, Duration};
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 use validator::Validate;
@@ -22,6 +22,17 @@ pub struct Claims {
     pub user_id: Uuid,
     pub login: String,
     pub exp: u64,
+}
+
+impl Claims {
+    pub fn new(user_id: Uuid, login: &str, duration: Duration) -> Self {
+        Self {
+            jti: Uuid::new_v4(),
+            user_id,
+            login: login.to_string(),
+            exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
+        }   
+    }
 }
 
 #[async_trait]
@@ -54,6 +65,78 @@ where
         let data = decode::<Claims>(
             cookie.value(),
             &DecodingKey::from_secret(jwt_key.expose_secret().as_bytes()),
+            &validation,
+        );
+
+        let data = data.map_err(|_| AuthError::InvalidToken)?;
+
+        let res = query!(
+            r#"
+                select * from jwt_blacklist
+                where token_id = $1;
+            "#,
+            data.claims.jti
+        )
+        .fetch_optional(&pool)
+        .await
+        .context("Failed to verify token with the blacklist")?;
+
+        match res {
+            Some(_) => Err(AuthError::InvalidToken),
+            None => Ok(data.claims),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RefreshClaims {
+    pub jti: Uuid,
+    pub user_id: Uuid,
+    pub login: String,
+    pub exp: u64,
+}
+
+impl RefreshClaims {
+    pub fn new(user_id: Uuid, login: &str, duration: Duration) -> Self {
+        Self {
+            jti: Uuid::new_v4(),
+            user_id,
+            login: login.to_string(),
+            exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
+        }
+    }
+}
+
+#[async_trait]
+impl<B> FromRequest<B> for RefreshClaims
+where
+    B: Send,
+{
+    type Rejection = AuthError;
+
+    async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let ext = req.extensions();
+        let RefreshJwtSecret(refresh_jwt_key) = ext
+            .get::<RefreshJwtSecret>()
+            .expect("Failed to get jwt secret extension")
+            .clone();
+
+        let pool = ext
+            .get::<PgPool>()
+            .expect("Failed to get PgPool to check jwt claims")
+            .clone();
+
+        let jar = CookieJar::from_request(req)
+            .await
+            .context("Failed to fetch cookie jar")?;
+
+        let cookie = jar.get("refresh-jwt").ok_or(AuthError::InvalidToken)?;
+        let mut validation = Validation::default();
+        validation.leeway = 5;
+
+        let data = decode::<RefreshClaims>(
+            cookie.value(),
+            &DecodingKey::from_secret(refresh_jwt_key.expose_secret().as_bytes()),
             &validation,
         );
 

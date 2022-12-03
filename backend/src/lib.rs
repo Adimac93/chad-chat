@@ -41,11 +41,15 @@ pub async fn app(pool: PgPool) -> Router {
         .nest("/chat", routes::chat::router())
         .layer(Extension(pool))
         .layer(Extension(JwtSecret(config.app.jwt_key)))
+        .layer(Extension(RefreshJwtSecret(config.app.refresh_jwt_key)))
         .layer(cors)
 }
 
 #[derive(Clone)]
 pub struct JwtSecret(pub Secret<String>);
+
+#[derive(Clone)]
+pub struct RefreshJwtSecret(pub Secret<String>);
 
 async fn home_page() -> impl IntoResponse {
     // TODO: api docs, info
