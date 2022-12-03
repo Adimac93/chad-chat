@@ -1,6 +1,0 @@
-[app]
-database_url = "postgresql://postgres:@localhost:5432/chad_chat"
-host = "127.0.0.1"
-port = 3000
-jwt_key = "SECRET"
-origin = "http://localhost:5173"
