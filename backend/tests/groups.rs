@@ -9,8 +9,6 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 mod groups {
-    use sqlx::{Postgres, Transaction};
-
     use super::*;
 
     #[sqlx::test(fixtures("users", "groups", "group_users"))]

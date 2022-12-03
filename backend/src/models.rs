@@ -1,8 +1,8 @@
-﻿use crate::{utils::auth::errors::*, utils::auth::JwtTokenType, JwtSecret, RefreshJwtSecret};
+﻿use crate::{utils::auth::errors::*, JwtSecret, RefreshJwtSecret};
 use anyhow::Context;
 use axum::{
     async_trait,
-    extract::{self, FromRequest}, Extension,
+    extract::{self, FromRequest},
 };
 use axum_extra::extract::CookieJar;
 use dashmap::DashMap;
@@ -165,6 +165,16 @@ pub struct LoginCredentials {
     pub login: String,
     pub password: String,
 }
+
+impl LoginCredentials {
+    pub fn new(login: &str, password: &str) -> Self {
+        Self {
+            login: login.into(),
+            password: password.into(),
+        }
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct RegisterCredentials {
