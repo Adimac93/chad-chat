@@ -14,13 +14,16 @@ use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
 
+const JWT_ACCESS_TOKEN_EXPIRATION: Duration = Duration::minutes(5);
+const JWT_REFRESH_TOKEN_EXPIRATION: Duration = Duration::days(7);
+
 pub fn router() -> Router {
     Router::new()
         .route("/register", post(post_register_user))
         .route("/login", post(post_login_user))
-        .route("/user-validation", post(protected_zone))
+        .route("/validate", post(protected_zone))
         .route("/logout", post(post_user_logout))
-        .route("/refresh-token", post(post_refresh_user_token))
+        .route("/refresh", post(post_refresh_user_token))
 }
 
 async fn post_register_user(
@@ -47,12 +50,16 @@ async fn post_login_user(
     let user_id = login_user(&pool, &user.login, SecretString::new(user.password)).await?;
 
     let access_token =
-        generate_jwt_token(user_id, &user.login, Duration::minutes(10), &jwt_key).await?;
+        generate_jwt_token(user_id, &user.login, JWT_ACCESS_TOKEN_EXPIRATION, &jwt_key).await?;
     let access_cookie = generate_cookie(access_token, JwtTokenType::Access).await;
 
-    let refresh_token =
-        generate_refresh_jwt_token(user_id, &user.login, Duration::days(7), &refresh_jwt_key)
-            .await?;
+    let refresh_token = generate_refresh_jwt_token(
+        user_id,
+        &user.login,
+        JWT_REFRESH_TOKEN_EXPIRATION,
+        &refresh_jwt_key,
+    )
+    .await?;
     let refresh_cookie = generate_cookie(refresh_token, JwtTokenType::Refresh).await;
 
     let jar = jar.add(access_cookie);
@@ -117,7 +124,7 @@ async fn post_refresh_user_token(
     let access_token = generate_jwt_token(
         refresh_claims.user_id,
         &refresh_claims.login,
-        Duration::minutes(10),
+        JWT_ACCESS_TOKEN_EXPIRATION,
         &jwt_key,
     )
     .await?;
