@@ -1,18 +1,5 @@
 {
   "db": "PostgreSQL",
-  "000e6fcca9caf0689b984c84c614287396616f7fcd06e97edb60adfba80927dd": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Left": [
-          "Varchar",
-          "Varchar"
-        ]
-      }
-    },
-    "query": "\n            insert into users (login, password)\n            values ($1, $2)\n        "
-  },
   "0beafd8b199ca4d8bab4d484e4fc38a80eeda2a8b730cbaa9286c3e6465db0a5": {
     "describe": {
       "columns": [
@@ -25,9 +12,15 @@
           "name": "group_id",
           "ordinal": 1,
           "type_info": "Uuid"
+        },
+        {
+          "name": "nickname",
+          "ordinal": 2,
+          "type_info": "Varchar"
         }
       ],
       "nullable": [
+        false,
         false,
         false
       ],
@@ -66,6 +59,19 @@
     },
     "query": "\n            select groups.id, groups.name from group_users\n            join groups on groups.id = group_users.group_id\n            where user_id = $1\n        "
   },
+  "11353284c6e1827122f6375294da490c22337964f3804742b46ec07723e0caf1": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Timestamptz"
+        ]
+      }
+    },
+    "query": "\n            insert into jwt_blacklist (token_id, expiry)\n            values ($1, $2)\n        "
+  },
   "2e49d78f4391e503e4e99010f12223dfc0d4380fd70e7dc3665c837ab9af8e6e": {
     "describe": {
       "columns": [
@@ -83,9 +89,15 @@
           "name": "password",
           "ordinal": 2,
           "type_info": "Varchar"
+        },
+        {
+          "name": "nickname",
+          "ordinal": 3,
+          "type_info": "Varchar"
         }
       ],
       "nullable": [
+        false,
         false,
         false,
         false
@@ -97,6 +109,66 @@
       }
     },
     "query": "\n            select * from users where login = $1\n        "
+  },
+  "51069c484e2795c5ed04b9a01c6daf89752979c121a49207398e7b6e0d9c3047": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "expiration_date",
+          "ordinal": 1,
+          "type_info": "Timestamptz"
+        },
+        {
+          "name": "uses_left",
+          "ordinal": 2,
+          "type_info": "Int4"
+        },
+        {
+          "name": "user_id",
+          "ordinal": 3,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "group_id",
+          "ordinal": 4,
+          "type_info": "Uuid"
+        }
+      ],
+      "nullable": [
+        false,
+        true,
+        true,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            update group_invitations\n            set uses_left = uses_left - 1\n            where id = $1\n            returning *\n        "
+  },
+  "5204b400b2901e87f15367f7f70f14da16a584d878867f915b356a5ce27b2f5e": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid",
+          "Varchar",
+          "Timestamptz",
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n            insert into group_invitations\n            (\n            user_id, group_id,\n            id, expiration_date, uses_left\n            )\n            values ($1, $2, $3, $4, $5)\n        "
   },
   "5947c98a070c3696182f8e167122554ad7041b1d72270050b48eb56e29cfaa50": {
     "describe": {
@@ -124,6 +196,38 @@
     },
     "query": "\n            select * from groups\n            where id = $1\n        "
   },
+  "5dedb1cac2b1fe92564ee852b113f11c58d7f879d9e43b2352896e589d389bcd": {
+    "describe": {
+      "columns": [
+        {
+          "name": "name",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "group_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "members_count",
+          "ordinal": 2,
+          "type_info": "Int8"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        null
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            select groups.name, groups.id as group_id, count(*) as members_count from group_invitations\n            join groups on groups.id = group_invitations.group_id\n            join group_users on groups.id = group_users.group_id\n            where group_invitations.id = $1\n            group by groups.id\n        "
+  },
   "61f63190e41c2273c24c4dc1508687882c57af6f940afc7a0435ae43af702036": {
     "describe": {
       "columns": [
@@ -144,10 +248,88 @@
     },
     "query": "\n            select login from users where id = $1\n        "
   },
-  "708ad8d5a03ff3b7818612f0af212c4e0188fbf25625528fb29d3dc68e66ed3f": {
+  "6a1d6808dab86ffdb68971965a39715dc00b893ef77eb5824f43d5bf92bed4b7": {
     "describe": {
-      "columns": [],
-      "nullable": [],
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "login",
+          "ordinal": 1,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "password",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        },
+        {
+          "name": "nickname",
+          "ordinal": 3,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select * from users\n            where id = $1\n        "
+  },
+  "702102b015c172cc867cc57034777b52ae44dee82bfa02e56e9b46676f874c69": {
+    "describe": {
+      "columns": [
+        {
+          "name": "nickname",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select (nickname) from users\n            where id = $1\n        "
+  },
+  "70998b3f36a07a58d73bcca459850753dc29c76d5234bbe91e64629e9d4012ff": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "group_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "nickname",
+          "ordinal": 2,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
       "parameters": {
         "Left": [
           "Uuid",
@@ -155,7 +337,48 @@
         ]
       }
     },
-    "query": "\n            insert into group_users (user_id, group_id)\n            values ($1, $2)\n        "
+    "query": "\n            select * from group_users \n            where user_id = $1 and group_id = $2\n        "
+  },
+  "7b05b2be869e3e453d6751abda47225b8d0183a1d49b9b0b7bb2a7632f831265": {
+    "describe": {
+      "columns": [
+        {
+          "name": "nickname",
+          "ordinal": 0,
+          "type_info": "Varchar"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid"
+        ]
+      }
+    },
+    "query": "\n            select nickname from group_users\n            where user_id = $1 and group_id = $2\n        "
+  },
+  "8f8b480fa3e22487b8de761372a05abe1e03e1432978b1b96bc404615f896d1e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "group_id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            select group_id from group_invitations\n            where id = $1\n        "
   },
   "a9ac57cc0a1f7ca964b990c8361a2ffdca199921ce48b572aebbba2454c7da90": {
     "describe": {
@@ -182,6 +405,66 @@
       }
     },
     "query": "\n            insert into groups (name)\n            values ($1)\n            returning *\n        "
+  },
+  "ac6e920aa46eb0c041b8622dc383b6b505e3a752753cf534e09cbf58a6d262b8": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Uuid",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            insert into group_users (user_id, group_id, nickname)\n            values ($1, $2, $3)\n        "
+  },
+  "cbe100fefa2d2cb997e7d31bd68bf5989ec2ab4e10e56911d3fa124f67070b4f": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "group_id",
+          "ordinal": 1,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "content",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "id",
+          "ordinal": 3,
+          "type_info": "Int4"
+        },
+        {
+          "name": "sent_at",
+          "ordinal": 4,
+          "type_info": "Timestamptz"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Uuid",
+          "Int8",
+          "Int8"
+        ]
+      }
+    },
+    "query": "\n            select * from messages\n            where group_id = $1\n            order by id desc\n            limit $2 offset $3\n        "
   },
   "d1dbd29e4010ae3abe68ab140e70707e433b37e3f23928bb571645f20490b137": {
     "describe": {
@@ -267,18 +550,18 @@
     },
     "query": "\n            select g.name,count(user_id) from group_users\n            join groups g on group_users.group_id = g.id\n            where group_id = $1\n            group by g.name\n        "
   },
-  "f09385f08ebe168d3e1d4efadcfa268380e82c746c8dd7cb44b30f5740815842": {
+  "f4d7a24968802373b17b8537e8dea4b9fbf89f6035bb6fcf01974096acf0cb05": {
     "describe": {
       "columns": [
         {
-          "name": "user_id",
+          "name": "token_id",
           "ordinal": 0,
           "type_info": "Uuid"
         },
         {
-          "name": "group_id",
+          "name": "expiry",
           "ordinal": 1,
-          "type_info": "Uuid"
+          "type_info": "Timestamptz"
         }
       ],
       "nullable": [
@@ -287,11 +570,24 @@
       ],
       "parameters": {
         "Left": [
-          "Uuid",
           "Uuid"
         ]
       }
     },
-    "query": "\n        select * from group_users \n        where user_id = $1 and group_id = $2\n    "
+    "query": "\n                select * from jwt_blacklist\n                where token_id = $1;\n            "
+  },
+  "fd0f9c97c9e39fbb5a8bcf0927f51c48b5a59e308b063f83cceb8d01e2b9ee1f": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Varchar",
+          "Varchar",
+          "Varchar"
+        ]
+      }
+    },
+    "query": "\n            insert into users (login, password, nickname)\n            values ($1, $2, $3)\n        "
   }
 }
