@@ -1,8 +1,8 @@
 <script lang="ts">
   import Auth from "./lib/auth/Auth.svelte";
   import Logout from "./lib/auth/Logout.svelte";
-  import Register from "./lib/auth/Register.svelte";
   import Chat from "./lib/chat/Chat.svelte";
+  import Footer from "./lib/components/Footer.svelte";
   import { isAuthorized } from "./lib/stores";
   import TextButton from "./lib/TextButton.svelte";
 
@@ -40,3 +40,4 @@
     <Auth bind:type={auth} />
   {/if}
 </main>
+<Footer />

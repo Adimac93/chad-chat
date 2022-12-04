@@ -23,7 +23,7 @@
   let expiration_index;
   let usses_index;
   let code = "";
-  let error;
+  let error = "";
 
   async function copyToClipboard(text: string) {
     await navigator.clipboard.writeText(text);
@@ -38,7 +38,7 @@
       code = res.data.code as string;
       await copyToClipboard(code);
     } else {
-      error = res.data.error_info;
+      error = res.data.error_info || "Group not selected";
     }
   }
 </script>
