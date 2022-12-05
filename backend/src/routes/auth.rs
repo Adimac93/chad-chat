@@ -12,7 +12,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
-use tracing::debug;
+use tracing::{info, debug};
 
 pub const JWT_ACCESS_TOKEN_EXPIRATION: Duration = Duration::minutes(5);
 pub const JWT_REFRESH_TOKEN_EXPIRATION: Duration = Duration::days(7);
@@ -42,7 +42,11 @@ async fn post_register_user(
     .await?;
 
     let login_credentials = LoginCredentials::new(&register_credentials.login, &register_credentials.password);
-    Ok(login_user(user_id, login_credentials, jwt_key, refresh_jwt_key, jar).await?)
+    let jar = login_user(user_id, &login_credentials, jwt_key, refresh_jwt_key, jar).await?;
+
+    info!("User registered successfully");
+
+    Ok(jar)
 }
 
 async fn post_login_user(
@@ -55,7 +59,11 @@ async fn post_login_user(
     // returns if credentials are wrong
     let user_id = verify_user_credentials(&pool, &user.login, SecretString::new(user.password.clone())).await?;
 
-    Ok(login_user(user_id, user, jwt_key, refresh_jwt_key, jar).await?)
+    let jar = login_user(user_id, &user, jwt_key, refresh_jwt_key, jar).await?;
+
+    info!("User {} ({}) logged in successfully", user_id, &user.login);
+
+    Ok(jar)
 }
 
 async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
@@ -95,6 +103,7 @@ async fn post_user_logout(
         }
     };
 
+    info!("User logged out successfully");
     debug!("Removing client cookies");
     Ok(jar
         .remove(remove_cookie("jwt"))
@@ -122,6 +131,8 @@ async fn post_refresh_user_token(
     .await?;
 
     let cookie = generate_cookie(access_token, JwtTokenType::Access).await;
+
+    info!("User's access token refreshed successfully");
 
     Ok(jar.add(cookie))
 }
