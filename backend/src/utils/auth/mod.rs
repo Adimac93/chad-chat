@@ -108,12 +108,11 @@ pub async fn verify_user_credentials (
 
 pub async fn login_user (
     user_id: Uuid,
-    user: LoginCredentials,
+    user: &LoginCredentials,
     jwt_key: Secret<String>,
     refresh_jwt_key: Secret<String>,
     jar: CookieJar
 ) -> Result<CookieJar, AuthError> {
-    debug!("Trying to send jwt tokens to user");
     let access_token =
         generate_jwt_token(user_id, &user.login, JWT_ACCESS_TOKEN_EXPIRATION, &jwt_key).await?;
     let access_cookie = generate_cookie(access_token, JwtTokenType::Access).await;
@@ -123,7 +122,6 @@ pub async fn login_user (
             .await?;
     let refresh_cookie = generate_cookie(refresh_token, JwtTokenType::Refresh).await;
 
-    debug!("Cookies should be sent successfully");
     let jar = jar.add(access_cookie);
     Ok(jar.add(refresh_cookie))
 }

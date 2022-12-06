@@ -20,6 +20,8 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
+const MAX_MESSAGE_LENGTH: usize = 2000;
+
 pub fn router() -> Router {
     Router::new()
         .route("/websocket", get(chat_handler))
@@ -62,19 +64,19 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
             ChatAction::ChangeGroup { group_id } => {
                 // Security checks
                 let Ok(is_group) = check_if_group_exists(&pool,&group_id).await else {
-                    error!("Cannot check if group exists");
+                    error!("ws closed: Cannot check if group {} exists", &group_id);
                     return;
                 };
                 if !is_group {
-                    info!("Non existing group");
+                    info!("ws closed: Non existing group");
                     return;
                 }
                 let Ok(is_group_member) = check_if_group_member(&pool,&claims.user_id,&group_id).await else {
-                    error!("Cannot check if user is a group member");
+                    error!("ws closed: Cannot check if user {} ({}) is a group {} member", &claims.user_id, &claims.login, &group_id);
                     return;
                 };
                 if !is_group_member {
-                    info!("User isn't a group member");
+                    info!("ws closed: User isn't a group member");
                     return;
                 }
                 // Save currend group id
@@ -82,7 +84,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
 
                 // Load messages
                 let Ok(messages) = fetch_last_messages_in_range(&pool,&group_id,10,0).await else {
-                    error!("Cannot fetch group messages");
+                    error!("ws closed: Cannot fetch group {} messages", &group_id);
                     return;
                 };
 
@@ -90,7 +92,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 for message in messages.into_iter() {
                     let Ok(nickname) = get_group_nickname(&pool, &message.user_id,&group_id).await else {
                         // ?User deleted account
-                        error!("Failed to get user by id");
+                        error!("ws closed: Failed to get user by id: {}", &message.user_id);
                         return;
                     };
 
@@ -106,7 +108,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 let msg = serde_json::to_string(&payload).unwrap();
 
                 if sender.lock().await.send(Message::Text(msg)).await.is_err() {
-                    error!("Failed to load messages");
+                    error!("ws closed: Failed to load fetched messages");
                     break;
                 }
 
@@ -139,22 +141,22 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                             .await
                             .is_err()
                         {
-                            debug!("Error while seding message to client");
+                            error!("ws closed: Error while seding message to client");
                             break;
                         }
                     }
                 }));
             }
             ChatAction::SendMessage { content } => {
-                if content.len() > 2000 {
-                    debug!("Message too long");
-                    return;
+                if content.len() > MAX_MESSAGE_LENGTH {
+                    debug!("Message too long: the message length is {}, which is greater than {}", content.len(), MAX_MESSAGE_LENGTH);
+                    continue;
                 }
                 if let Some(group_id) = current_group_id {
                     if let Some(tx) = ctx.clone() {
                         let Ok(nickname) = get_group_nickname(&pool, &claims.user_id,&group_id).await else {
                             // ?User deleted account
-                            error!("Failed to get user by id");
+                            error!("ws closed: Failed to get user by id: {}", &claims.user_id);
                             return;
                         };
                         let payload = SocketMessage::Message(UserMessage {
@@ -175,6 +177,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                         }
                     }
                     let Ok(_) = create_message(&pool, &claims.user_id, &group_id, &content).await else {
+                        error!("ws closed: Failed to save the message in the database");
                         return;
                     };
                 } else {
@@ -188,7 +191,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     info!("Requested messages");
                     let Ok(messages) = fetch_last_messages_in_range(&pool,&group_id,10,loaded).await else {
                         
-                        error!("Cannot fetch group messages");
+                        error!("ws closed: Cannot fetch group messages");
                         return;
                     };
                     
@@ -197,7 +200,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     for message in messages.into_iter() {
                         let Ok(nickname) = get_group_nickname(&pool, &message.user_id,&group_id).await else {
                         // ?User deleted account
-                        error!("Failed to get nickname by id");
+                        error!("ws closed: Failed to get nickname by user id {} and group id {}", &message.user_id, &group_id);
                         return;
                     };
 
@@ -211,30 +214,36 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     trace!("{payload_messages:#?}");
                     // Send messages json object
                     let payload = SocketMessage::LoadRequested(payload_messages);
-                    let msg = serde_json::to_string(&payload).unwrap();
+                    let Ok(msg) = serde_json::to_string(&payload) else {
+                        error!("ws closed: Failed to convert a message to its json form");
+                        return;
+                    };
 
                     if sender.lock().await.send(Message::Text(msg)).await.is_err() {
                         error!("Failed to load messages");
                         break;
                     }
                 } else {
-                    error!("Cannot fetch requested messages - group not selected");
-                    return;
+                    debug!("Cannot fetch requested messages - group not selected");
+                    continue;
                 }
             }
             ChatAction::GroupInvite { group_id } => {
-                let Ok(is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await else {
+                let Ok(_is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await else {
                     error!("Failed to check whether a user is a group member (during sending a group invite)");
                     return;
                 };
-                if is_member {}
+
+                // TODO: a feature to send group invites in chat
             }
             ChatAction::Close => {
-                debug!("WebSocket closed explicitly");
+                info!("WebSocket closed explicitly");
                 return;
             }
         }
     }
+
+    debug!("ws closed: User left the message loop");
 }
 
 #[derive(Serialize, Deserialize)]
@@ -260,9 +269,9 @@ impl TryFrom<Message> for ChatAction {
                 Ok(action)
             },
            
-            Message::Binary(_) => Err(format!("Binary")),
-            Message::Ping(_) => Err(format!("Ping")),
-            Message::Pong(_) => Err(format!("Pong")),
+            Message::Binary(_) => Err(format!("Binary message type is not supported")),
+            Message::Ping(_) => Err(format!("Ping message type is not supported")),
+            Message::Pong(_) => Err(format!("Pong message type is not supported")),
             Message::Close(frame) => {
                 match frame {
                     Some(frame) => {

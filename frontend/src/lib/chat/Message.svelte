@@ -1,6 +1,6 @@
 <script lang="ts">
   export let message: MessageModel;
-  let date = new Date(message.sat).toLocaleTimeString();
+  let date = new Date(message.sat * 1000).toLocaleTimeString();
   let sender = message.sender;
   let content = message.content;
 </script>

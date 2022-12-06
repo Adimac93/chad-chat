@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
+use tracing::info;
 
 pub fn router() -> Router {
     Router::new()
@@ -26,7 +27,11 @@ async fn get_user_groups(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
 ) -> Result<Json<Value>, GroupError> {
-    query_user_groups(&pool, &claims.user_id).await
+    let res = query_user_groups(&pool, &claims.user_id).await?;
+
+    info!("Queried user groups successfully");
+
+    Ok(res)
 }
 
 async fn post_create_group(
@@ -35,7 +40,11 @@ async fn post_create_group(
     group: Json<NewGroup>,
 ) -> Result<(), GroupError> {
     tracing::trace!("JWT: {:#?}", claims);
-    create_group(&pool, group.name.trim(), claims.user_id).await
+    let res = create_group(&pool, group.name.trim(), claims.user_id).await?;
+
+    info!("Group {} created successfully", group.name);
+
+    Ok(res)
 }
 
 async fn post_add_user_to_group(
@@ -44,7 +53,11 @@ async fn post_add_user_to_group(
     Json(GroupUser { user_id, group_id }): Json<GroupUser>,
 ) -> Result<(), GroupError> {
     tracing::trace!("JWT: {:#?}", claims);
-    try_add_user_to_group(&pool, &user_id, &group_id).await
+    let res = try_add_user_to_group(&pool, &user_id, &group_id).await?;
+
+    info!("Added user {} to group {} successfully", &user_id, &group_id);
+
+    Ok(res)
 }
 
 async fn post_create_group_invitation_link(
