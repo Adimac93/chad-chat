@@ -1,7 +1,8 @@
 <script lang="ts">
   const days = Math.round(
-    (new Date().getTime() - new Date(2022, 11, 2).getTime()) / 8_640_000
+    (new Date().getTime() - new Date("2022-11-02").getTime()) / 84_600_000
   );
+  // what? new Date(year, monthIndex ???, day)
 </script>
 
 <footer>
