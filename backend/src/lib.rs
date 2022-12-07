@@ -4,10 +4,19 @@ pub mod models;
 pub mod routes;
 pub mod utils;
 
+use std::io;
+
 use axum::{
-    extract::Path, http::header::CONTENT_TYPE, http::HeaderValue, http::StatusCode,
-    response::IntoResponse, routing::get, Extension, Json, Router,
+    extract::Path,
+    handler::Handler,
+    http::header::CONTENT_TYPE,
+    http::StatusCode,
+    http::{HeaderValue, Method, Uri},
+    response::IntoResponse,
+    routing::get,
+    Extension, Json, Router,
 };
+use axum_extra::routing::SpaRouter;
 use configuration::get_config;
 use secrecy::Secret;
 use serde_json::json;
@@ -32,17 +41,22 @@ pub async fn app(pool: PgPool) -> Router {
         routes::groups::router().nest("/invitations", routes::invitations::router()),
     );
 
-    Router::new()
-        .route("/", get(home_page))
-        .route("/:slug", get(not_found).post(not_found))
-        .route("/health", get(health_check))
+    let spa = SpaRouter::new("/assets", "../frontend/dist/assets")
+        .index_file("../index.html")
+        .handle_error(not_found);
+
+    let api = Router::new()
         .nest("/auth", routes::auth::router())
-        .merge(groups)
         .nest("/chat", routes::chat::router())
+        .merge(groups)
         .layer(Extension(pool))
         .layer(Extension(JwtSecret(config.app.jwt_key)))
         .layer(Extension(RefreshJwtSecret(config.app.refresh_jwt_key)))
-        .layer(cors)
+        // .route("/:slug", get(not_found).post(not_found))
+        .route("/health", get(health_check))
+        .layer(cors);
+
+    Router::new().nest("/api", api).merge(spa)
 }
 
 #[derive(Clone)]
@@ -56,9 +70,8 @@ async fn home_page() -> impl IntoResponse {
     Json(json!({"info":"docs"}))
 }
 
-async fn not_found(Path(slug): Path<String>) -> impl IntoResponse {
-    let message = format!("endpoint '{slug}' isn't used");
-    (StatusCode::NOT_FOUND, Json(json!({ "info": message })))
+async fn not_found(method: Method, uri: Uri, err: io::Error) -> String {
+    format!("Method {method} for route {uri} caused error {err}")
 }
 
 async fn health_check(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
