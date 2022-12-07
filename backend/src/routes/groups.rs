@@ -29,7 +29,7 @@ async fn get_user_groups(
 ) -> Result<Json<Value>, GroupError> {
     let res = query_user_groups(&pool, &claims.user_id).await?;
 
-    debug!("User {} ({}) groups successfully", &claims.user_id, &claims.login);
+    debug!("Queried user {} ({}) groups successfully", &claims.user_id, &claims.login);
 
     Ok(res)
 }

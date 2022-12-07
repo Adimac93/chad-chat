@@ -20,7 +20,7 @@ use validator::Validate;
 pub trait AuthToken {
     async fn generate_cookie<'a>(token: String) -> Cookie<'a>;
     async fn generate_jwt_token(user_id: Uuid, login: &str, duration: Duration, key: &Secret<String>) -> Result<String, AuthError>;
-    async fn get_jwt_secret(ext: &Extensions) -> Secret<String>;
+    async fn get_jwt_key(ext: &Extensions) -> Secret<String>;
     async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError>;
     async fn decode_jwt_token(token: &str, key: Secret<String>) -> Result<Self, AuthError> where Self: Sized;
     async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError>;
@@ -28,7 +28,7 @@ pub trait AuthToken {
 
 #[async_trait]
 impl AuthToken for Claims {
-    async fn get_jwt_secret(ext: &Extensions) -> Secret<String> {
+    async fn get_jwt_key(ext: &Extensions) -> Secret<String> {
         let JwtSecret(jwt_key) = ext
             .get::<JwtSecret>()
             .expect("Failed to get jwt secret extension")
@@ -98,7 +98,7 @@ impl AuthToken for Claims {
 
 #[async_trait]
 impl AuthToken for RefreshClaims {
-    async fn get_jwt_secret(ext: &Extensions) -> Secret<String> {
+    async fn get_jwt_key(ext: &Extensions) -> Secret<String> {
         let RefreshJwtSecret(jwt_key) = ext
             .get::<RefreshJwtSecret>()
             .expect("Failed to get jwt secret extension")
@@ -236,11 +236,7 @@ B: Send {
     // get extensions
     let ext = req.extensions();
 
-    // get extensions - (refresh) jwt key
-    let JwtSecret(jwt_key) = ext
-        .get::<JwtSecret>()
-        .expect("Failed to get jwt secret extension")
-        .clone();
+    let jwt_key = T::get_jwt_key(ext).await;
 
     // get extensions - PgPool
     let pool = ext
