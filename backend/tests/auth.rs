@@ -271,7 +271,7 @@ mod auth {
         });
 
         let res = client
-            .post(format!("http://{}/auth/register", app_data.addr))
+            .post(format!("http://{}/api/auth/register", app_data.addr))
             .json(&payload)
             .send()
             .await
@@ -279,19 +279,8 @@ mod auth {
 
         assert_eq!(res.status(), StatusCode::OK);
 
-        // not required anymore
-
-        // let res = client
-        //     .post(format!("http://{}/auth/login", app_data.addr))
-        //     .json(&payload)
-        //     .send()
-        //     .await
-        //     .unwrap();
-
-        // assert_eq!(res.status(), StatusCode::OK);
-
         let res = client
-            .post(format!("http://{}/auth/validate", app_data.addr))
+            .post(format!("http://{}/api/auth/validate", app_data.addr))
             .send()
             .await
             .unwrap();
@@ -299,7 +288,7 @@ mod auth {
         assert_eq!(res.status(), StatusCode::OK);
 
         let res = client
-            .post(format!("http://{}/auth/logout", app_data.addr))
+            .post(format!("http://{}/api/auth/logout", app_data.addr))
             .send()
             .await
             .unwrap();
@@ -307,7 +296,7 @@ mod auth {
         assert_eq!(res.status(), StatusCode::OK);
 
         let res = client
-            .post(format!("http://{}/auth/validate", app_data.addr))
+            .post(format!("http://{}/api/auth/validate", app_data.addr))
             .send()
             .await
             .unwrap();

@@ -7,8 +7,6 @@ pub mod utils;
 use std::io;
 
 use axum::{
-    extract::Path,
-    handler::Handler,
     http::header::CONTENT_TYPE,
     http::StatusCode,
     http::{HeaderValue, Method, Uri},

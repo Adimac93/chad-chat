@@ -1,5 +1,5 @@
 ﻿use crate::{
-    models::{Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
+    models::{Claims, LoginCredentials, RefreshClaims, RegisterCredentials, AuthToken},
     utils::auth::{errors::AuthError, *},
     JwtSecret, RefreshJwtSecret,
 };
@@ -122,7 +122,7 @@ async fn post_refresh_user_token(
     refresh_claims: RefreshClaims,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
-    let access_token = generate_jwt_token(
+    let access_token = Claims::generate_jwt_token(
         refresh_claims.user_id,
         &refresh_claims.login,
         JWT_ACCESS_TOKEN_EXPIRATION,
@@ -131,7 +131,7 @@ async fn post_refresh_user_token(
     .await?;
 
     debug!("Generating a cookie");
-    let cookie = generate_cookie(access_token, JwtTokenType::Access).await;
+    let cookie = Claims::generate_cookie(access_token).await;
 
     debug!("User {} ({})'s access token refreshed successfully", &refresh_claims.user_id, &refresh_claims.login);
 

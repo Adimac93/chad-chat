@@ -2,12 +2,12 @@
 use anyhow::Context;
 use axum::{
     async_trait,
-    extract::{self, FromRequest},
+    extract::{self, FromRequest, RequestParts}, http::Extensions,
 };
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
 use dashmap::DashMap;
-use jsonwebtoken::{decode, DecodingKey, Validation};
-use secrecy::ExposeSecret;
+use jsonwebtoken::{decode, DecodingKey, Validation, encode, Header, EncodingKey};
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use sqlx::{query, PgPool};
 use std::collections::{HashMap, HashSet};
@@ -15,6 +15,157 @@ use time::{OffsetDateTime, Duration};
 use tokio::sync::{broadcast, RwLock};
 use uuid::Uuid;
 use validator::Validate;
+
+#[async_trait]
+pub trait AuthToken {
+    async fn generate_cookie<'a>(token: String) -> Cookie<'a>;
+    async fn generate_jwt_token(user_id: Uuid, login: &str, duration: Duration, key: &Secret<String>) -> Result<String, AuthError>;
+    async fn get_jwt_secret(ext: &Extensions) -> Secret<String>;
+    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError>;
+    async fn decode_jwt_token(token: &str, key: Secret<String>) -> Result<Self, AuthError> where Self: Sized;
+    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError>;
+}
+
+#[async_trait]
+impl AuthToken for Claims {
+    async fn get_jwt_secret(ext: &Extensions) -> Secret<String> {
+        let JwtSecret(jwt_key) = ext
+            .get::<JwtSecret>()
+            .expect("Failed to get jwt secret extension")
+            .clone();
+
+        jwt_key
+    }
+
+    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError> {
+        jar.get("jwt").ok_or(AuthError::InvalidToken).cloned()
+    }
+
+    async fn decode_jwt_token(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
+        // decode token - validation setup
+        let mut validation = Validation::default();
+        validation.leeway = 5;
+
+        // decode token - try to decode token with a provided jwt key
+        let data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(key.expose_secret().as_bytes()),
+            &validation,
+        ).map_err(|_e| AuthError::InvalidToken)?;
+
+        Ok(data.claims)
+    }
+
+    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError> {
+        // verify blacklist
+        Ok(query!(
+            r#"
+                select * from jwt_blacklist
+                where token_id = $1;
+            "#,
+            self.jti
+        )
+        .fetch_optional(pool)
+        .await
+        .context("Failed to verify token with the blacklist")?.is_some())
+    }
+
+    async fn generate_cookie<'a>(token: String) -> Cookie<'a> {
+        Cookie::build(String::from("jwt"), token)
+            .http_only(true)
+            .secure(true)
+            .same_site(SameSite::Strict)
+            .path("/")
+            .finish()
+    }
+
+    async fn generate_jwt_token(
+        user_id: Uuid,
+        login: &str,
+        duration: Duration,
+        key: &Secret<String>
+    ) -> Result<String, AuthError> {
+        let claims = Claims::new(user_id, login, duration);
+    
+        Ok(encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(key.expose_secret().as_bytes()),
+        )
+        .context("Failed to encrypt token")?)
+    }
+}
+
+#[async_trait]
+impl AuthToken for RefreshClaims {
+    async fn get_jwt_secret(ext: &Extensions) -> Secret<String> {
+        let RefreshJwtSecret(jwt_key) = ext
+            .get::<RefreshJwtSecret>()
+            .expect("Failed to get jwt secret extension")
+            .clone();
+
+        jwt_key
+    }
+
+    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError> {
+        jar.get("refresh-jwt").ok_or(AuthError::InvalidToken).cloned()
+    }
+
+    async fn decode_jwt_token(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
+        // decode token - validation setup
+        let mut validation = Validation::default();
+        validation.leeway = 5;
+
+        // decode token - try to decode token with a provided jwt key
+        let data = decode::<RefreshClaims>(
+            token,
+            &DecodingKey::from_secret(key.expose_secret().as_bytes()),
+            &validation,
+        ).map_err(|_e| AuthError::InvalidToken)?;
+
+        Ok(data.claims)
+    }
+
+    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError> {
+        // verify blacklist
+        Ok(query!(
+            r#"
+                select * from jwt_blacklist
+                where token_id = $1;
+            "#,
+            self.jti
+        )
+        .fetch_optional(pool)
+        .await
+        .context("Failed to verify token with the blacklist")?.is_some())
+    }
+
+    async fn generate_cookie<'a>(token: String) -> Cookie<'a> {
+        Cookie::build(String::from("refresh-jwt"), token)
+            .http_only(true)
+            .secure(true)
+            .same_site(SameSite::Strict)
+            .path("/")
+            .finish()
+    }
+
+    async fn generate_jwt_token(
+        user_id: Uuid,
+        login: &str,
+        duration: Duration,
+        key: &Secret<String>
+    ) -> Result<String, AuthError> {
+        let refresh_claims = RefreshClaims::new(user_id, login, duration);
+    
+        Ok(encode(
+            &Header::default(),
+            &refresh_claims,
+            &EncodingKey::from_secret(key.expose_secret().as_bytes()),
+        )
+        .context("Failed to encrypt token")?)
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
@@ -43,48 +194,7 @@ where
     type Rejection = AuthError;
 
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let ext = req.extensions();
-        let JwtSecret(jwt_key) = ext
-            .get::<JwtSecret>()
-            .expect("Failed to get jwt secret extension")
-            .clone();
-
-        let pool = ext
-            .get::<PgPool>()
-            .expect("Failed to get PgPool to check jwt claims")
-            .clone();
-
-        let jar = CookieJar::from_request(req)
-            .await
-            .context("Failed to fetch cookie jar")?;
-
-        let cookie = jar.get("jwt").ok_or(AuthError::InvalidToken)?;
-        let mut validation = Validation::default();
-        validation.leeway = 5;
-
-        let data = decode::<Claims>(
-            cookie.value(),
-            &DecodingKey::from_secret(jwt_key.expose_secret().as_bytes()),
-            &validation,
-        );
-
-        let data = data.map_err(|_| AuthError::InvalidToken)?;
-
-        let res = query!(
-            r#"
-                select * from jwt_blacklist
-                where token_id = $1;
-            "#,
-            data.claims.jti
-        )
-        .fetch_optional(&pool)
-        .await
-        .context("Failed to verify token with the blacklist")?;
-
-        match res {
-            Some(_) => Err(AuthError::InvalidToken),
-            None => Ok(data.claims),
-        }
+        verify_token::<Self, B>(req).await
     }
 }
 
@@ -115,48 +225,43 @@ where
     type Rejection = AuthError;
 
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let ext = req.extensions();
-        let RefreshJwtSecret(refresh_jwt_key) = ext
-            .get::<RefreshJwtSecret>()
-            .expect("Failed to get jwt secret extension")
-            .clone();
+        verify_token::<Self, B>(req).await
+    }
+}
 
-        let pool = ext
-            .get::<PgPool>()
-            .expect("Failed to get PgPool to check jwt claims")
-            .clone();
+async fn verify_token<T, B>(req: &mut RequestParts<B>) -> Result<T, AuthError>
+where 
+T: AuthToken,
+B: Send {
+    // get extensions
+    let ext = req.extensions();
 
-        let jar = CookieJar::from_request(req)
-            .await
-            .context("Failed to fetch cookie jar")?;
+    // get extensions - (refresh) jwt key
+    let JwtSecret(jwt_key) = ext
+        .get::<JwtSecret>()
+        .expect("Failed to get jwt secret extension")
+        .clone();
 
-        let cookie = jar.get("refresh-jwt").ok_or(AuthError::InvalidToken)?;
-        let mut validation = Validation::default();
-        validation.leeway = 5;
+    // get extensions - PgPool
+    let pool = ext
+        .get::<PgPool>()
+        .expect("Failed to get PgPool to check jwt claims")
+        .clone();
 
-        let data = decode::<RefreshClaims>(
-            cookie.value(),
-            &DecodingKey::from_secret(refresh_jwt_key.expose_secret().as_bytes()),
-            &validation,
-        );
-
-        let data = data.map_err(|_| AuthError::InvalidToken)?;
-
-        let res = query!(
-            r#"
-                select * from jwt_blacklist
-                where token_id = $1;
-            "#,
-            data.claims.jti
-        )
-        .fetch_optional(&pool)
+    // get extensions - CookieJar
+    let jar = CookieJar::from_request(req)
         .await
-        .context("Failed to verify token with the blacklist")?;
+        .context("Failed to fetch cookie jar")?;
 
-        match res {
-            Some(_) => Err(AuthError::InvalidToken),
-            None => Ok(data.claims),
-        }
+    let cookie = T::get_jwt_cookie(jar).await?;
+
+    let claims = T::decode_jwt_token(cookie.value(), jwt_key).await?;
+
+    let res = claims.check_if_in_blacklist(&pool).await?;
+
+    match res {
+        true => Err(AuthError::InvalidToken),
+        false => Ok(claims),
     }
 }
 
