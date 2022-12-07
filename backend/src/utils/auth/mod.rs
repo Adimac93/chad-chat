@@ -115,11 +115,15 @@ pub async fn login_user (
 ) -> Result<CookieJar, AuthError> {
     let access_token =
         generate_jwt_token(user_id, &user.login, JWT_ACCESS_TOKEN_EXPIRATION, &jwt_key).await?;
+    
+    debug!("Generating a cookie");
     let access_cookie = generate_cookie(access_token, JwtTokenType::Access).await;
 
     let refresh_token =
         generate_refresh_jwt_token(user_id, &user.login, JWT_REFRESH_TOKEN_EXPIRATION, &refresh_jwt_key)
             .await?;
+    
+    debug!("Generating a cookie");
     let refresh_cookie = generate_cookie(refresh_token, JwtTokenType::Refresh).await;
 
     let jar = jar.add(access_cookie);
@@ -132,7 +136,6 @@ pub async fn generate_jwt_token(
     duration: Duration,
     key: &Secret<String>
 ) -> Result<String, Error> {
-    debug!("Trying to generate jwt token");
     let claims = Claims::new(user_id, login, duration);
 
     encode(
@@ -149,7 +152,6 @@ pub async fn generate_refresh_jwt_token(
     duration: Duration,
     key: &Secret<String>
 ) -> Result<String, Error> {
-    debug!("Trying to generate refresh jwt token");
     let claims = RefreshClaims::new(user_id, login, duration);
 
     encode(
@@ -180,7 +182,6 @@ pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<()
 }
 
 pub async fn generate_cookie<'a>(token: String, token_type: JwtTokenType) -> Cookie<'a> {
-    debug!("Generating a cookie");
     Cookie::build(String::from(token_type), token)
         .http_only(true)
         .secure(true)
