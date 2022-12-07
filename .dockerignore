@@ -19,4 +19,6 @@ Dockerfile
 .gitignore
 **/configuration
 *md
+dist
+node_modules
 
