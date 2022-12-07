@@ -3,7 +3,7 @@ interface MessageModel {
     sat: number;
     content: string;
 }
-  
+
 interface Group {
     id: string;
     name: string;
