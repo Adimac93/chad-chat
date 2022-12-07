@@ -48,12 +48,12 @@ pub async fn app(pool: PgPool) -> Router {
     let api = Router::new()
         .nest("/auth", routes::auth::router())
         .nest("/chat", routes::chat::router())
+        .route("/health", get(health_check))
         .merge(groups)
         .layer(Extension(pool))
         .layer(Extension(JwtSecret(config.app.jwt_key)))
         .layer(Extension(RefreshJwtSecret(config.app.refresh_jwt_key)))
         // .route("/:slug", get(not_found).post(not_found))
-        .route("/health", get(health_check))
         .layer(cors);
 
     Router::new().nest("/api", api).merge(spa)
