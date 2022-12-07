@@ -8,6 +8,7 @@
   import { beforeUpdate, afterUpdate } from "svelte";
   import { messages } from "../stores";
   import Invitation from "./groups/invitation/Invitation.svelte";
+  import { tryRefreshToken } from "../api/fetch";
 
   let groupName = "";
   let chatBox: HTMLElement;
@@ -20,12 +21,16 @@
   let socket: Socket;
   onMount(() => {
     socket = new Socket();
-    socket.webSocket.onclose = (e) => {
-      chatAvailable = false;
-      console.log("Reconnecting");
-      setInterval(() => {
-        socket.connect();
-      }, 10000);
+    socket.webSocket.onclose = async (e) => {
+      const isOk = await tryRefreshToken();
+      if (isOk) {
+        console.log("Reconnecting");
+        setInterval(() => {
+          socket.connect();
+        }, 1000);
+      } else {
+        chatAvailable = false;
+      }
     };
   });
 
@@ -64,7 +69,7 @@
   }
 
   onDestroy(() => {
-    socket.webSocket.close();
+    socket.disconnect();
     socket = null;
   });
 </script>
