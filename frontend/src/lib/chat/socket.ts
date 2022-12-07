@@ -58,7 +58,7 @@ export class Socket {
     }
     connect() {
         console.log("Connecting");
-        this.webSocket = new WebSocket(`wss://${window.location.host}/chat/websocket`) 
+        this.webSocket = new WebSocket(`wss://${window.location.host}/api/chat/websocket`) 
     }
 
     private socketSend(payload: any) {

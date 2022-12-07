@@ -13,6 +13,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use tracing::debug;
 
 pub fn router() -> Router {
     Router::new()
@@ -28,7 +29,9 @@ async fn post_generate_group_invitation_code(
 ) -> Result<Json<Value>, InvitationError> {
     let invitation =
         try_create_group_invitation_with_code(&pool, &claims.user_id, invitation).await?;
-    Ok(Json(json!({ "code": invitation })))
+
+    debug!("User {} ({}) created a group invitation successfully", &claims.user_id, &claims.login);
+    Ok(Json(json!({ "code": &invitation })))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -41,8 +44,11 @@ async fn post_fetch_group_info_by_code(
     Extension(pool): Extension<PgPool>,
     Json(payload): Json<JoinGroupCode>,
 ) -> Result<Json<GroupInfo>, InvitationError> {
+    let res = fetch_group_info_by_code(&pool, &payload.code).await?;
+
+    debug!("Group's info fetched successfully");
     Ok(Json(
-        fetch_group_info_by_code(&pool, &payload.code).await?,
+        res,
     ))
 }
 
@@ -51,5 +57,8 @@ async fn post_join_group_by_code(
     Extension(pool): Extension<PgPool>,
     Json(payload): Json<JoinGroupCode>,
 ) -> Result<(), InvitationError> {
-    Ok(try_join_group_by_code(&pool, &claims.user_id, &payload.code).await?)
+    try_join_group_by_code(&pool, &claims.user_id, &payload.code).await?;
+
+    debug!("User {} ({}) joined a group successfully", &claims.user_id, &claims.login);
+    Ok(())
 }

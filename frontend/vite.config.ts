@@ -12,13 +12,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       },
-      "/chat/websocket": {
-        target: "wss://chad-chat-api.up.railway.app",
-        secure: false,
+      "/api/chat/websocket": {
+        target: "ws://127.0.0.1:3000",
         changeOrigin: true,
         ws: true,
       }
-      
     }
   }
 })
