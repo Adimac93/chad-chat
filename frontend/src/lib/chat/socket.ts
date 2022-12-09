@@ -53,7 +53,7 @@ export class Socket {
     }
     connect() {
         console.log("Connecting");
-        this.webSocket = new WebSocket(`ws://${window.location.host}/api/chat/websocket`);
+        this.webSocket = new WebSocket(`wss://${window.location.host}/api/chat/websocket`);
     }
     disconnect() {
         console.log("Disconnecting");
