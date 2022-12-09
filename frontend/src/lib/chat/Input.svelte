@@ -2,6 +2,7 @@
     import { createEventDispatcher } from "svelte";
 
     export let groupName: string;
+    export let isDisabled: boolean;
 
     const dispatch = createEventDispatcher<{ message: string }>();
 
@@ -15,6 +16,7 @@
 </script>
 
 <input
+    disabled={isDisabled}
     on:keydown={onEnterKeyDown}
     bind:value={content}
     type="text"

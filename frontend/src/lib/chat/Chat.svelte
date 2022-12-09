@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Socket } from "./socket";
+    import { isBlocked } from "../api/socket";
+    import { changeGroup, sendMessage,requestMessageLoad} from "../api/socket"
     import Groups from "./groups/Groups.svelte";
 
     import { onDestroy, onMount } from "svelte";
@@ -8,7 +9,6 @@
     import { beforeUpdate, afterUpdate } from "svelte";
     import { messages } from "../stores";
     import Invitation from "./groups/invitation/Invitation.svelte";
-    import { tryRefreshToken } from "../api/fetch";
 
     let groupName = "";
     let chatBox: HTMLElement;
@@ -16,61 +16,47 @@
     let isLoading = false;
     let chatAvailable = true;
     let groupId = "";
-    let isBlocked = true;
 
-    let socket: Socket;
     onMount(() => {
-        socket = new Socket();
-        socket.webSocket.onclose = async (e) => {
-            const isOk = await tryRefreshToken();
-            if (isOk) {
-                console.log("Reconnecting");
-                setInterval(() => {
-                    socket.connect();
-                }, 1000);
-            } else {
-                chatAvailable = false;
-            }
-        };
+        console.log("Chat mounted to the DOM");
+       
     });
 
     afterUpdate(() => {
         if (isLoading) {
-            console.log("scroll up");
+            console.log("Chat scrolling up");
             chatBox.scrollTo({ top: chatBox.scrollHeight - chatBoxHeight });
-            socket.isBlocked = socket.isBlocked;
         } else {
-            console.log("scroll down");
+            console.log("Chat scrolling down");
             chatBox.scrollTo({ top: chatBox.scrollHeight });
         }
-        isBlocked = socket.isBlocked; // ?
     });
 
-    function sendMessage(e: CustomEvent<string>) {
+    function sendMessageAction(e: CustomEvent<string>) {
         isLoading = false;
         const message = e.detail;
-        socket.sendMessage(message);
+        sendMessage(message);
     }
 
-    function changeGroup(e: CustomEvent<Group>) {
+    function changeGroupAction(e: CustomEvent<Group>) {
         isLoading = false;
-        const group = e.detail;
-        groupId = group.id;
-        groupName = group.name;
-        socket.changeGroup(groupId);
+        const {id,name} = e.detail;
+        groupId = id;
+        groupName = name;
+        changeGroup(groupId);
     }
 
     function parseScroll() {
         isLoading = true;
-        if (chatBox.scrollTop == 0) {
+        if (chatBox.scrollTop == 0 && !$isBlocked) {
             chatBoxHeight = chatBox.scrollHeight;
-            socket.requestMessageLoad();
+            requestMessageLoad();
         }
     }
 
     onDestroy(() => {
-        socket.disconnect();
-        socket = null;
+        console.log("Chat destroyed");
+        
     });
 </script>
 
@@ -79,9 +65,9 @@
         <div>Connection interrupted, try refreshing page</div>
     {/if}
     <Invitation bind:group_id={groupId} />
-    <Groups on:groupSelect={changeGroup} />
+    <Groups on:groupSelect={changeGroupAction} />
     <div class="chatbox" bind:this={chatBox} on:scroll={parseScroll}>
-        {#if isBlocked}
+        {#if $isBlocked}
             <div>This is the beggining of your chad conversation</div>
         {/if}
         {#key $messages}
@@ -90,7 +76,7 @@
             {/each}
         {/key}
     </div>
-    <Input on:message={sendMessage} {groupName} />
+    <Input isDisabled={!chatAvailable} on:message={sendMessageAction} {groupName} />
 
     <style>
         .chatbox {
