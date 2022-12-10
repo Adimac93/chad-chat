@@ -6,6 +6,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum InvitationError {
+    #[error("Invitation is expired")]
+    InvitationExpired,
     #[error("Unsupported invitation variant")]
     UnsupportedVariant,
     #[error("Invalid group invitation code")]
@@ -17,6 +19,7 @@ pub enum InvitationError {
 impl IntoResponse for InvitationError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
+            InvitationError::InvitationExpired => StatusCode::BAD_REQUEST,
             InvitationError::UnsupportedVariant => StatusCode::BAD_REQUEST,
             InvitationError::InvalidCode => StatusCode::BAD_REQUEST,
             InvitationError::Unexpected(e) => {

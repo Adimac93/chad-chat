@@ -2,7 +2,7 @@ pub mod errors;
 use anyhow::Context;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, Acquire, PgPool, Postgres};
+use sqlx::{query, Acquire, PgPool, Postgres, query_as};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -17,7 +17,7 @@ use super::groups::try_add_user_to_group;
 pub struct GroupInvitationCreate {
     group_id: Uuid,
     expiration_index: Option<i32>,
-    ussage_index: Option<i32>,
+    usage_index: Option<i32>,
 }
 
 impl TryFrom<GroupInvitationCreate> for GroupInvitation {
@@ -27,7 +27,7 @@ impl TryFrom<GroupInvitationCreate> for GroupInvitation {
             Some(i) => Some(Expiration::try_from(i)?),
             None => None,
         };
-        let uses = match value.ussage_index {
+        let uses = match value.usage_index {
             Some(i) => Some(Uses::try_from(i)?),
             None => None,
         };
@@ -118,32 +118,93 @@ pub async fn try_join_group_by_code<'c>(
     code: &str,
 ) -> Result<(), InvitationError> {
     let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
-    let res = query!(
+    let Some(invitation) = query_as!(
+        GroupInvitation,
         r#"
-            select group_id from group_invitations
+            select group_id, expiration_date, id, uses_left from group_invitations
             where id = $1
         "#,
         code
     )
     .fetch_optional(&mut transaction)
     .await
-    .context("Failed to find group invitation")?;
+    .context("Failed to find group invitation")? else {
+        return Err(InvitationError::InvalidCode)
+    };
 
-    match res {
-        Some(record) => {
-            try_add_user_to_group(&mut transaction, user_id, &record.group_id)
-                .await
-                .context("Failed to add user to group")?; // ? better error conversion possible
+    match invitation.uses_left {
+        Some(use_number) if use_number <= 0 => {
+            let _res = query!(
+                r"
+                    delete from group_invitations
+                    where id = $1
+                ",
+                invitation.id
+            )
+            .execute(&mut transaction)
+            .await
+            .context("Failed to delete expired group invitation")?;
+
             transaction
                 .commit()
                 .await
                 .context("Failed to commit transaction")?;
-            return Ok(());
-        }
-        None => Err(InvitationError::InvalidCode),
+
+            return Err(InvitationError::InvitationExpired);
+        },
+        _ => (),
     }
+
+    match invitation.expiration_date {
+        Some(expiry) if expiry < OffsetDateTime::now_utc() => {
+            let _res = query!(
+                r"
+                    delete from group_invitations
+                    where id = $1
+                ",
+                invitation.id
+            )
+            .execute(&mut transaction)
+            .await
+            .context("Failed to delete expired group invitation")?;
+
+            transaction
+                .commit()
+                .await
+                .context("Failed to commit transaction")?;
+
+            return Err(InvitationError::InvitationExpired);
+        },
+        _ => (),
+    }
+
+    try_add_user_to_group(&mut transaction, user_id, &invitation.group_id)
+        .await
+        .context("Failed to add user to group")?; // ? better error conversion possible
+
+    if let Some(use_number) = invitation.uses_left {
+        let _res = query!(
+            r"
+                update group_invitations
+                set uses_left = $1
+                where id = $2
+            ",
+            use_number - 1,
+            invitation.id,
+        )
+        .execute(&mut transaction)
+        .await
+        .context("Failed to update group invitation uses_left field")?;
+    }
+    
+    transaction
+        .commit()
+        .await
+        .context("Failed to commit transaction")?;
+    return Ok(());
 }
 
+#[derive(Debug)]
 enum Uses {
     One,
     Five,
