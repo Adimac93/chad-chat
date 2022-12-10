@@ -111,13 +111,13 @@ pub async fn login_user (
     jar: CookieJar
 ) -> Result<CookieJar, AuthError> {
     let access_token =
-        Claims::generate_jwt_token(user_id, &user.login, JWT_ACCESS_TOKEN_EXPIRATION, &jwt_key).await?;
+        Claims::generate_jwt(user_id, &user.login, JWT_ACCESS_TOKEN_EXPIRATION, &jwt_key).await?;
     
     debug!("Generating a cookie");
     let access_cookie = Claims::generate_cookie(access_token).await;
 
     let refresh_token =
-        RefreshClaims::generate_jwt_token(user_id, &user.login, JWT_REFRESH_TOKEN_EXPIRATION, &refresh_jwt_key)
+        RefreshClaims::generate_jwt(user_id, &user.login, JWT_REFRESH_TOKEN_EXPIRATION, &refresh_jwt_key)
             .await?;
     
     debug!("Generating a cookie");

@@ -19,11 +19,12 @@ use validator::Validate;
 #[async_trait]
 pub trait AuthToken {
     async fn generate_cookie<'a>(token: String) -> Cookie<'a>;
-    async fn generate_jwt_token(user_id: Uuid, login: &str, duration: Duration, key: &Secret<String>) -> Result<String, AuthError>;
+    async fn generate_jwt(user_id: Uuid, login: &str, duration: Duration, key: &Secret<String>) -> Result<String, AuthError>;
     async fn get_jwt_key(ext: &Extensions) -> Secret<String>;
     async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError>;
-    async fn decode_jwt_token(token: &str, key: Secret<String>) -> Result<Self, AuthError> where Self: Sized;
+    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError> where Self: Sized;
     async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError>;
+    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AuthError>;
 }
 
 #[async_trait]
@@ -41,7 +42,7 @@ impl AuthToken for Claims {
         jar.get("jwt").ok_or(AuthError::InvalidToken).cloned()
     }
 
-    async fn decode_jwt_token(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
+    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
         // decode token - validation setup
         let mut validation = Validation::default();
         validation.leeway = 5;
@@ -79,7 +80,7 @@ impl AuthToken for Claims {
             .finish()
     }
 
-    async fn generate_jwt_token(
+    async fn generate_jwt(
         user_id: Uuid,
         login: &str,
         duration: Duration,
@@ -93,6 +94,25 @@ impl AuthToken for Claims {
             &EncodingKey::from_secret(key.expose_secret().as_bytes()),
         )
         .context("Failed to encrypt token")?)
+    }
+
+    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AuthError> {
+        let exp = OffsetDateTime::from_unix_timestamp(self.exp as i64)
+            .context("Failed to convert timestamp to date and time with the timezone")?;
+    
+        let _res = query!(
+            r#"
+                insert into jwt_blacklist (token_id, expiry)
+                values ($1, $2)
+            "#,
+            self.jti,
+            exp,
+        )
+        .execute(pool)
+        .await
+        .context("Failed to add token to the blacklist")?;
+        
+        Ok(())
     }
 }
 
@@ -111,7 +131,7 @@ impl AuthToken for RefreshClaims {
         jar.get("refresh-jwt").ok_or(AuthError::InvalidToken).cloned()
     }
 
-    async fn decode_jwt_token(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
+    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
         // decode token - validation setup
         let mut validation = Validation::default();
         validation.leeway = 5;
@@ -149,7 +169,7 @@ impl AuthToken for RefreshClaims {
             .finish()
     }
 
-    async fn generate_jwt_token(
+    async fn generate_jwt(
         user_id: Uuid,
         login: &str,
         duration: Duration,
@@ -163,6 +183,25 @@ impl AuthToken for RefreshClaims {
             &EncodingKey::from_secret(key.expose_secret().as_bytes()),
         )
         .context("Failed to encrypt token")?)
+    }
+
+    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AuthError> {
+        let exp = OffsetDateTime::from_unix_timestamp(self.exp as i64)
+            .context("Failed to convert timestamp to date and time with the timezone")?;
+    
+        let _res = query!(
+            r#"
+                insert into jwt_blacklist (token_id, expiry)
+                values ($1, $2)
+            "#,
+            self.jti,
+            exp,
+        )
+        .execute(pool)
+        .await
+        .context("Failed to add token to the blacklist")?;
+        
+        Ok(())
     }
 }
 
@@ -251,7 +290,7 @@ B: Send {
 
     let cookie = T::get_jwt_cookie(jar).await?;
 
-    let claims = T::decode_jwt_token(cookie.value(), jwt_key).await?;
+    let claims = T::decode_jwt(cookie.value(), jwt_key).await?;
 
     let res = claims.check_if_in_blacklist(&pool).await?;
 

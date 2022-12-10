@@ -87,19 +87,19 @@ async fn post_user_logout(
         );
 
         if let Ok(token_data) = data {
-            add_token_to_blacklist(&pool, &token_data.claims).await?;
+            let _ = &token_data.claims.add_token_to_blacklist(&pool).await?;
         }
     };
 
     if let Some(refresh_token_cookie) = jar.get("refresh-jwt") {
-        let data = decode::<Claims>(
+        let data = decode::<RefreshClaims>(
             refresh_token_cookie.value(),
             &DecodingKey::from_secret(refresh_jwt_key.expose_secret().as_bytes()),
             &validation,
         );
 
         if let Ok(token_data) = data {
-            add_token_to_blacklist(&pool, &token_data.claims).await?;
+            let _ = &token_data.claims.add_token_to_blacklist(&pool).await?;
         }
     };
 
@@ -122,7 +122,7 @@ async fn post_refresh_user_token(
     refresh_claims: RefreshClaims,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
-    let access_token = Claims::generate_jwt_token(
+    let access_token = Claims::generate_jwt(
         refresh_claims.user_id,
         &refresh_claims.login,
         JWT_ACCESS_TOKEN_EXPIRATION,
