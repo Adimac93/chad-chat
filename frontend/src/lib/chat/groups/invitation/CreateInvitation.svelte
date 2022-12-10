@@ -14,7 +14,7 @@
     ];
 
     let expiration_index;
-    let usses_index;
+    let usage_index;
     let code = "";
     let error = "";
 
@@ -23,9 +23,16 @@
     }
 
     async function createGroupInvitation() {
+        console.debug({ group_id, expiration_index, usage_index });
         const res = await request("/api/groups/invitations/create", {
             method: "POST",
-            body: { group_id, expiration_index, usses_index },
+            body: {
+                group_id,
+                expiration_index:
+                expiration_index == expirationChoice.length - 1 ? null : expiration_index,
+                usage_index: 
+                usage_index == usesChoices.length - 1 ? null : usage_index,
+            },
         });
         if (res.ok) {
             code = res.data.code as string;
@@ -38,14 +45,14 @@
 
 <div class="card">
     <div>Expire after</div>
-    <select bind:value={expiration_index}>
+    <select bind:value={expiration_index} disabled={!!code}>
         {#each expirationChoice as exp, i}
             <option value={i}>{exp}</option>
         {/each}
     </select>
 
     <div>Max number of uses</div>
-    <select bind:value={usses_index}>
+    <select bind:value={usage_index} disabled={!!code}>
         {#each usesChoices as uses, i}
             <option value={i}>{uses}</option>
         {/each}
