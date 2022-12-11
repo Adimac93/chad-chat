@@ -49,8 +49,8 @@ pub async fn app(pool: PgPool) -> Router {
         .route("/health", get(health_check))
         .merge(groups)
         .layer(Extension(pool))
-        .layer(Extension(JwtSecret(config.app.jwt_key)))
-        .layer(Extension(RefreshJwtSecret(config.app.refresh_jwt_key)))
+        .layer(Extension(JwtSecret(config.app.access_jwt_secret)))
+        .layer(Extension(RefreshJwtSecret(config.app.refresh_jwt_secret)))
         // .route("/:slug", get(not_found).post(not_found))
         .layer(cors);
 

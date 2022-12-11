@@ -13,8 +13,8 @@ pub struct ApplicationSettings {
     pub database_url: Secret<String>,
     pub host: String,
     pub port: u16,
-    pub jwt_key: Secret<String>,
-    pub refresh_jwt_key: Secret<String>,
+    pub access_jwt_secret: Secret<String>,
+    pub refresh_jwt_secret: Secret<String>,
     pub origin: String,
 }
 
@@ -80,8 +80,8 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                 app: ApplicationSettings {
                     host: "0.0.0.0".into(),
                     port: get_env("PORT").parse::<u16>().expect("Invalid port number"),
-                    jwt_key: Secret::from(get_env("JWT_SECRET")),
-                    refresh_jwt_key: Secret::from(get_env("REFRESH_JWT_SECRET")),
+                    access_jwt_secret: Secret::from(get_env("ACCESS_JWT_SECRET")),
+                    refresh_jwt_secret: Secret::from(get_env("REFRESH_JWT_SECRET")),
                     database_url: Secret::from(get_env("DATABASE_URL")),
                     origin: get_env("FRONTEND_URL"),
                 },

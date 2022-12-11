@@ -1,7 +1,7 @@
 pub mod additions;
 pub mod errors;
 use crate::{
-    models::{Claims, LoginCredentials, RegisterCredentials, RefreshClaims, AuthToken},
+    models::{AuthToken, Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
     routes::auth::{JWT_ACCESS_TOKEN_EXPIRATION, JWT_REFRESH_TOKEN_EXPIRATION},
 };
 use anyhow::Context;
@@ -10,11 +10,10 @@ use axum_extra::extract::CookieJar;
 use errors::*;
 use secrecy::{ExposeSecret, Secret, SecretString};
 use sqlx::{query, PgPool};
-use tracing::info;
-use tracing::debug;
+use time::OffsetDateTime;
+use tracing::{debug, trace};
 use uuid::Uuid;
 use validator::Validate;
-use time::OffsetDateTime;
 
 pub async fn try_register_user(
     pool: &PgPool,
@@ -69,12 +68,10 @@ pub async fn try_register_user(
     .context("Failed to create a new user")?
     .id;
 
-    info!("{user_id:?}");
-
     Ok(user_id)
 }
 
-pub async fn verify_user_credentials (
+pub async fn verify_user_credentials(
     pool: &PgPool,
     login: &str,
     password: SecretString,
@@ -103,28 +100,36 @@ pub async fn verify_user_credentials (
     }
 }
 
-pub async fn login_user (
+pub async fn login_user(
     user_id: Uuid,
     user: &LoginCredentials,
-    jwt_key: Secret<String>,
-    refresh_jwt_key: Secret<String>,
-    jar: CookieJar
+    access_jwt_secret: Secret<String>,
+    refresh_jwt_secret: Secret<String>,
+    jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
-    let access_token =
-        Claims::generate_jwt(user_id, &user.login, JWT_ACCESS_TOKEN_EXPIRATION, &jwt_key).await?;
-    
-    debug!("Generating a cookie");
+    let access_token = Claims::generate_jwt(
+        user_id,
+        &user.login,
+        JWT_ACCESS_TOKEN_EXPIRATION,
+        &access_jwt_secret,
+    )
+    .await?;
+
     let access_cookie = Claims::generate_cookie(access_token).await;
+    trace!("Access JWT: {access_cookie:#?}");
 
-    let refresh_token =
-        RefreshClaims::generate_jwt(user_id, &user.login, JWT_REFRESH_TOKEN_EXPIRATION, &refresh_jwt_key)
-            .await?;
-    
-    debug!("Generating a cookie");
+    let refresh_token = RefreshClaims::generate_jwt(
+        user_id,
+        &user.login,
+        JWT_REFRESH_TOKEN_EXPIRATION,
+        &refresh_jwt_secret,
+    )
+    .await?;
+
     let refresh_cookie = RefreshClaims::generate_cookie(refresh_token).await;
+    trace!("Refresh JWT: {refresh_cookie:#?}");
 
-    let jar = jar.add(access_cookie);
-    Ok(jar.add(refresh_cookie))
+    Ok(jar.add(access_cookie).add(refresh_cookie))
 }
 
 pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<(), AuthError> {
@@ -142,6 +147,7 @@ pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<()
     .execute(pool)
     .await
     .context("Failed to add token to the blacklist")?;
-    
+
+    trace!("Adding token to blacklist");
     Ok(())
 }

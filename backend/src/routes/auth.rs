@@ -1,5 +1,5 @@
 ﻿use crate::{
-    models::{Claims, LoginCredentials, RefreshClaims, RegisterCredentials, AuthToken},
+    models::{AuthToken, Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
     utils::auth::{errors::AuthError, *},
     JwtSecret, RefreshJwtSecret,
 };
@@ -41,10 +41,14 @@ async fn post_register_user(
     )
     .await?;
 
-    let login_credentials = LoginCredentials::new(&register_credentials.login, &register_credentials.password);
+    let login_credentials =
+        LoginCredentials::new(&register_credentials.login, &register_credentials.password);
     let jar = login_user(user_id, &login_credentials, jwt_key, refresh_jwt_key, jar).await?;
 
-    debug!("User {} ({}) registered successfully", user_id, &register_credentials.login);
+    debug!(
+        "User {} ({}) registered successfully",
+        user_id, &register_credentials.login
+    );
 
     Ok(jar)
 }
@@ -57,11 +61,19 @@ async fn post_login_user(
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
     // returns if credentials are wrong
-    let user_id = verify_user_credentials(&pool, &login_credentials.login, SecretString::new(login_credentials.password.clone())).await?;
+    let user_id = verify_user_credentials(
+        &pool,
+        &login_credentials.login,
+        SecretString::new(login_credentials.password.clone()),
+    )
+    .await?;
 
     let jar = login_user(user_id, &login_credentials, jwt_key, refresh_jwt_key, jar).await?;
 
-    debug!("User {} ({}) logged in successfully", user_id, &login_credentials.login);
+    debug!(
+        "User {} ({}) logged in successfully",
+        user_id, &login_credentials.login
+    );
 
     Ok(jar)
 }
@@ -104,7 +116,7 @@ async fn post_user_logout(
     };
 
     debug!("User logged out successfully");
-    debug!("Removing client cookies");
+
     Ok(jar
         .remove(remove_cookie("jwt"))
         .remove(remove_cookie("refresh-jwt")))
@@ -130,10 +142,12 @@ async fn post_refresh_user_token(
     )
     .await?;
 
-    debug!("Generating a cookie");
     let cookie = Claims::generate_cookie(access_token).await;
 
-    debug!("User {} ({})'s access token refreshed successfully", &refresh_claims.user_id, &refresh_claims.login);
+    debug!(
+        "User {} ({})'s access token refreshed successfully",
+        &refresh_claims.user_id, &refresh_claims.login
+    );
 
     Ok(jar.add(cookie))
 }
