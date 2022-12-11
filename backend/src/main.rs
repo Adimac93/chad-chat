@@ -21,7 +21,7 @@ async fn main() {
     info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(
-            app(get_database_pool(&config.app.database_url.expose_secret()).await)
+            app(get_database_pool(config.database).await)
                 .await
                 .into_make_service(),
         )

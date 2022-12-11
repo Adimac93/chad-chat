@@ -10,8 +10,8 @@ use axum::{
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::sync::Arc;
-use uuid::Uuid;
 use tracing::debug;
+use uuid::Uuid;
 
 pub fn router() -> Router {
     Router::new()
@@ -29,7 +29,10 @@ async fn get_user_groups(
 ) -> Result<Json<Value>, GroupError> {
     let res = query_user_groups(&pool, &claims.user_id).await?;
 
-    debug!("Queried user {} ({}) groups successfully", &claims.user_id, &claims.login);
+    debug!(
+        "Queried user {} ({}) groups successfully",
+        &claims.user_id, &claims.login
+    );
 
     Ok(res)
 }
@@ -55,7 +58,10 @@ async fn post_add_user_to_group(
     tracing::trace!("JWT: {:#?}", claims);
     let res = try_add_user_to_group(&pool, &user_id, &group_id).await?;
 
-    debug!("Added user {} ({}) to group {} successfully", &user_id, &claims.login, &group_id);
+    debug!(
+        "Added user {} ({}) to group {} successfully",
+        &user_id, &claims.login, &group_id
+    );
 
     Ok(res)
 }

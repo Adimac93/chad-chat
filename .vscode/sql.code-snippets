@@ -1,0 +1,17 @@
+{
+    "Default UUID": {
+        "scope": "sql",
+        "prefix": "id",
+        "body": "id uuid not null default gen_random_uuid() primary key,\n"
+    },
+    "User id": {
+        "scope": "sql",
+        "prefix": "uid",
+        "body": ["user_id uuid not null,", "foreign key (user_id) references users(id),"]
+    },
+    "New table": {
+        "scope": "sql",
+        "prefix": "table",
+        "body": ["create table $1 (", "\t$2", ");"]
+    }
+}

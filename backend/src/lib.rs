@@ -20,6 +20,7 @@ use secrecy::Secret;
 use serde_json::json;
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
+use tracing::debug;
 
 pub async fn app(pool: PgPool) -> Router {
     let config = get_config().expect("Failed to read configuration");
@@ -51,7 +52,6 @@ pub async fn app(pool: PgPool) -> Router {
         .layer(Extension(pool))
         .layer(Extension(JwtSecret(config.app.access_jwt_secret)))
         .layer(Extension(RefreshJwtSecret(config.app.refresh_jwt_secret)))
-        // .route("/:slug", get(not_found).post(not_found))
         .layer(cors);
 
     Router::new().nest("/api", api).merge(spa)
@@ -69,7 +69,9 @@ async fn home_page() -> impl IntoResponse {
 }
 
 async fn not_found(method: Method, uri: Uri, err: io::Error) -> String {
-    format!("Method {method} for route {uri} caused error {err}")
+    let msg = format!("Method {method} for route {uri} caused error {err}");
+    debug!("{msg}");
+    msg
 }
 
 async fn health_check(Extension(pool): Extension<PgPool>) -> impl IntoResponse {

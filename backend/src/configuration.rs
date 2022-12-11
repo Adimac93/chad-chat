@@ -1,16 +1,17 @@
 use config::{Config, ConfigError};
-use secrecy::Secret;
+use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use std::net::SocketAddr;
+use tracing::info;
 
 #[derive(Deserialize, Clone)]
 pub struct Settings {
     pub app: ApplicationSettings,
+    pub database: DatabaseSettings,
 }
 
 #[derive(Deserialize, Clone)]
 pub struct ApplicationSettings {
-    pub database_url: Secret<String>,
     pub host: String,
     pub port: u16,
     pub access_jwt_secret: Secret<String>,
@@ -28,11 +29,65 @@ impl ApplicationSettings {
 
 #[derive(Deserialize, Clone)]
 pub struct DatabaseSettings {
-    pub username: String,
-    pub password: Secret<String>,
-    pub port: u16,
-    pub host: String,
-    pub database_name: String,
+    database_url: Option<Secret<String>>,
+    fields: Option<DatabaseFields>,
+    is_migrating: Option<bool>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct DatabaseFields {
+    username: String,
+    password: Secret<String>,
+    port: u16,
+    host: String,
+    database_name: String,
+}
+
+impl DatabaseFields {
+    fn compose(&self) -> String {
+        format!(
+            "postgresql://{}:{}@{}:{}/{}",
+            self.username,
+            self.password.expose_secret(),
+            self.host,
+            self.port,
+            self.database_name
+        )
+    }
+}
+
+impl DatabaseSettings {
+    pub fn get_connection_string(&self) -> String {
+        // database_url -> fields -> .env
+        match &self.database_url {
+            Some(url) => {
+                info!("Database url using toml 'database_url'");
+                url.expose_secret().to_string()
+            }
+            None => match &self.fields {
+                Some(fields) => {
+                    info!("Database url using toml 'fields'");
+                    fields.compose()
+                }
+                None => {
+                    info!("Database url using environment variable");
+                    get_env("DATABASE_URL")
+                }
+            },
+        }
+    }
+
+    pub fn is_migrating(&self) -> bool {
+        self.is_migrating.unwrap_or(true)
+    }
+
+    fn production() -> Self {
+        Self {
+            database_url: None,
+            fields: None,
+            is_migrating: Some(true),
+        }
+    }
 }
 
 enum Environment {
@@ -82,9 +137,9 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                     port: get_env("PORT").parse::<u16>().expect("Invalid port number"),
                     access_jwt_secret: Secret::from(get_env("ACCESS_JWT_SECRET")),
                     refresh_jwt_secret: Secret::from(get_env("REFRESH_JWT_SECRET")),
-                    database_url: Secret::from(get_env("DATABASE_URL")),
                     origin: get_env("FRONTEND_URL"),
                 },
+                database: DatabaseSettings::production(),
             };
             return Ok(settings);
         }

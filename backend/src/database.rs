@@ -1,13 +1,17 @@
-﻿use sqlx::PgPool;
+﻿use secrecy::ExposeSecret;
+use sqlx::{migrate, PgPool};
 
-pub async fn get_database_pool(url: &str) -> PgPool {
-    let pool = PgPool::connect(url)
+use crate::configuration::DatabaseSettings;
+
+pub async fn get_database_pool(config: DatabaseSettings) -> PgPool {
+    let pool = PgPool::connect(&config.get_connection_string())
         .await
         .expect("Cannot establish database connection");
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("Migration error");
-
+    if config.is_migrating() {
+        migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("Auto migration failed");
+    }
     pool
 }

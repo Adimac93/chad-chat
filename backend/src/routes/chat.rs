@@ -50,13 +50,12 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
     while let Some(Ok(message)) = receiver.next().await {
         // Decode message
 
-        
         let action = match ChatAction::try_from(message) {
             Ok(action) => action,
             Err(e) => {
                 debug!("ws closed: Invalid action {e}");
                 return;
-            },
+            }
         };
 
         // Interpret message
@@ -76,7 +75,10 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     return;
                 };
                 if !is_group_member {
-                    info!("ws closed: User {} ({}) isn't a group member", &claims.user_id, &claims.login);
+                    info!(
+                        "ws closed: User {} ({}) isn't a group member",
+                        &claims.user_id, &claims.login
+                    );
                     return;
                 }
                 // Save currend group id
@@ -149,7 +151,11 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
             }
             ChatAction::SendMessage { content } => {
                 if content.len() > MAX_MESSAGE_LENGTH {
-                    debug!("Message too long: the message length is {}, which is greater than {}", content.len(), MAX_MESSAGE_LENGTH);
+                    debug!(
+                        "Message too long: the message length is {}, which is greater than {}",
+                        content.len(),
+                        MAX_MESSAGE_LENGTH
+                    );
                     continue;
                 }
                 if let Some(group_id) = current_group_id {
@@ -162,7 +168,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                         let payload = SocketMessage::Message(UserMessage {
                             content: content.to_string(),
                             sat: OffsetDateTime::now_utc().unix_timestamp(),
-                            sender: nickname
+                            sender: nickname,
                         });
                         debug!("Sent: {payload:#?}");
                         let msg = serde_json::to_string(&payload).unwrap();
@@ -170,10 +176,10 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                         match res {
                             Ok(count) => {
                                 debug!("Active transmitters: {count}");
-                            },
+                            }
                             Err(e) => {
                                 error!("{e}")
-                            },
+                            }
                         }
                     }
                     let Ok(_) = create_message(&pool, &claims.user_id, &group_id, &content).await else {
@@ -181,7 +187,10 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                         return;
                     };
                 } else {
-                    debug!("Cannot send message from user {} ({}) - group not selected", &claims.user_id, &claims.login);
+                    debug!(
+                        "Cannot send message from user {} ({}) - group not selected",
+                        &claims.user_id, &claims.login
+                    );
                     continue;
                 }
             }
@@ -207,7 +216,7 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                             sat: message.sent_at.unix_timestamp(),
                         })
                     }
-                    
+
                     trace!("{payload_messages:#?}");
                     // Send messages json object
                     let payload = SocketMessage::LoadRequested(payload_messages);
@@ -217,7 +226,10 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     };
 
                     if sender.lock().await.send(Message::Text(msg)).await.is_err() {
-                        error!("Failed to load messages for user {} ({})", &claims.user_id, &claims.login);
+                        error!(
+                            "Failed to load messages for user {} ({})",
+                            &claims.user_id, &claims.login
+                        );
                         return;
                     }
                 } else {
@@ -249,7 +261,7 @@ enum ChatAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RequestMessages { loaded: i64 },
-    Close
+    Close,
 }
 
 // {"ChangeGroup" : {"group_id": "asd-asdasd-asd-asd"}}
@@ -262,26 +274,27 @@ impl TryFrom<Message> for ChatAction {
     fn try_from(value: Message) -> Result<Self, Self::Error> {
         match value {
             Message::Text(text) => {
-                let action = serde_json::from_str::<ChatAction>(&text).map_err(|e| e.to_string())?;
+                let action =
+                    serde_json::from_str::<ChatAction>(&text).map_err(|e| e.to_string())?;
                 Ok(action)
-            },
-           
+            }
+
             Message::Binary(_) => Err(format!("Binary message type is not supported")),
             Message::Ping(_) => Err(format!("Ping message type is not supported")),
             Message::Pong(_) => Err(format!("Pong message type is not supported")),
             Message::Close(frame) => {
                 match frame {
                     Some(frame) => {
-                        trace!("Code: {} Reason: {}",frame.code,frame.reason);
-                    },
+                        trace!("Code: {} Reason: {}", frame.code, frame.reason);
+                    }
                     None => {
                         trace!("Closed without frame")
                     }
                 }
-                
+
                 debug!("Closing socket");
                 Ok(ChatAction::Close)
-            },
+            }
         }
     }
 }
