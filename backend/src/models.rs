@@ -318,7 +318,7 @@ impl LoginCredentials {
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct RegisterCredentials {
-    #[validate(length(min = 4, max = 20), does_not_contain = " ")]
+    #[validate(length(min = 4, max = 20, message = "Invalid username length"), does_not_contain(pattern = " ", message = "Username contains spaces"))]
     pub login: String,
     pub password: String,
     pub nickname: String,
