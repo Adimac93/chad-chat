@@ -12,7 +12,7 @@ mod service {
 
         let res = app_data
             .client()
-            .get(format!("http://{}/health", app_data.addr))
+            .get(format!("http://{}/api/health", app_data.addr))
             .send()
             .await
             .unwrap();

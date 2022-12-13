@@ -1,6 +1,6 @@
--- Add migration script here
+-- Add up migration script here
 create table user_friends (
-    primary key (friend_to_id, firend_of_id),
+    primary key (user_id, friend_id),
     note varchar not null,
     user_id uuid not null,
     friend_id uuid not null,

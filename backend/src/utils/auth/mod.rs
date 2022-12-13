@@ -15,6 +15,14 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 use validator::Validate;
 
+#[derive(sqlx::Type, Debug)]
+#[sqlx(type_name = "status", rename_all = "snake_case")]
+pub enum ActivityStatus {
+    Online,
+    Offline,
+    Idle,
+}
+
 pub async fn try_register_user(
     pool: &PgPool,
     login: &str,
@@ -23,7 +31,7 @@ pub async fn try_register_user(
 ) -> Result<Uuid, AuthError> {
     let user = query!(
         r#"
-            select * from users where login = $1
+            select id from users where login = $1
         "#,
         login
     )
@@ -55,13 +63,14 @@ pub async fn try_register_user(
 
     let user_id = query!(
         r#"
-            insert into users (login, password, nickname)
-            values ($1, $2, $3)
+            insert into users (login, password, nickname, activity_status)
+            values ($1, $2, $3, $4)
             returning (id)
         "#,
         login,
         hashed_pass,
-        nickname
+        nickname,
+        ActivityStatus::Online as ActivityStatus,
     )
     .fetch_one(pool)
     .await
@@ -83,7 +92,7 @@ pub async fn verify_user_credentials(
 
     let res = query!(
         r#"
-            select * from users where login = $1
+            select id, password from users where login = $1
         "#,
         login
     )

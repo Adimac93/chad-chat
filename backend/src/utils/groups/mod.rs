@@ -197,7 +197,7 @@ pub async fn check_if_user_exists<'c>(
 ) -> Result<bool, GroupError> {
     let res = query!(
         r#"
-            select * from users
+            select id from users
             where id = $1
         "#,
         user_id

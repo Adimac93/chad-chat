@@ -1,4 +1,4 @@
--- Add migration script here
+-- Add up migration script here
 create table users(
     id uuid not null default gen_random_uuid() primary key,
     login varchar unique not null,

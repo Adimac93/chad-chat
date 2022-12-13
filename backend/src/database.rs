@@ -1,5 +1,4 @@
-﻿use secrecy::ExposeSecret;
-use sqlx::{migrate, PgPool};
+﻿use sqlx::{migrate, PgPool};
 
 use crate::configuration::DatabaseSettings;
 

@@ -1,4 +1,4 @@
--- Add migration script here
+-- Add up migration script here
 create table group_invitations (
     id varchar unique not null primary key,
     expiration_date timestamptz,
