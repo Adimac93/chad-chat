@@ -1,5 +1,5 @@
+use crate::app_errors::AppError;
 use crate::models::{Claims, GroupInfo};
-use crate::utils::invitations::errors::InvitationError;
 use crate::utils::invitations::{
     fetch_group_info_by_code, try_create_group_invitation_with_code, try_join_group_by_code,
     GroupInvitationCreate,
@@ -26,7 +26,7 @@ async fn post_generate_group_invitation_code(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
     Json(invitation): Json<GroupInvitationCreate>,
-) -> Result<Json<Value>, InvitationError> {
+) -> Result<Json<Value>, AppError> {
     let invitation =
         try_create_group_invitation_with_code(&pool, &claims.user_id, invitation).await?;
 
@@ -43,7 +43,7 @@ async fn post_fetch_group_info_by_code(
     _claims: Claims,
     Extension(pool): Extension<PgPool>,
     Json(payload): Json<JoinGroupCode>,
-) -> Result<Json<GroupInfo>, InvitationError> {
+) -> Result<Json<GroupInfo>, AppError> {
     let res = fetch_group_info_by_code(&pool, &payload.code).await?;
 
     debug!("Group's info fetched successfully");
@@ -56,7 +56,7 @@ async fn post_join_group_by_code(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
     Json(payload): Json<JoinGroupCode>,
-) -> Result<(), InvitationError> {
+) -> Result<(), AppError> {
     try_join_group_by_code(&pool, &claims.user_id, &payload.code).await?;
 
     debug!("User {} ({}) joined a group successfully", &claims.user_id, &claims.login);

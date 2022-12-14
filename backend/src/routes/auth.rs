@@ -1,7 +1,7 @@
 ﻿use crate::{
     models::{AuthToken, Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
-    utils::auth::{errors::AuthError, *},
-    JwtSecret, RefreshJwtSecret,
+    utils::auth::*,
+    JwtSecret, RefreshJwtSecret, app_errors::AppError,
 };
 use axum::{extract, http::StatusCode, Extension, Json};
 use axum::{routing::post, Router};
@@ -32,7 +32,7 @@ async fn post_register_user(
     Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
     Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
     jar: CookieJar,
-) -> Result<CookieJar, AuthError> {
+) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
         &pool,
         register_credentials.login.trim(),
@@ -59,7 +59,7 @@ async fn post_login_user(
     Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
     Json(login_credentials): extract::Json<LoginCredentials>,
     jar: CookieJar,
-) -> Result<CookieJar, AuthError> {
+) -> Result<CookieJar, AppError> {
     // returns if credentials are wrong
     let user_id = verify_user_credentials(
         &pool,
@@ -87,7 +87,7 @@ async fn post_user_logout(
     Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
     Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
     jar: CookieJar,
-) -> Result<CookieJar, AuthError> {
+) -> Result<CookieJar, AppError> {
     let mut validation = Validation::default();
     validation.leeway = 5;
 
@@ -133,7 +133,7 @@ async fn post_refresh_user_token(
     Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
     refresh_claims: RefreshClaims,
     jar: CookieJar,
-) -> Result<CookieJar, AuthError> {
+) -> Result<CookieJar, AppError> {
     let access_token = Claims::generate_jwt(
         refresh_claims.user_id,
         &refresh_claims.login,
