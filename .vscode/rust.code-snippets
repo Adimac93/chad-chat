@@ -1,13 +1,50 @@
 {
-    "sql unit test": {
-        "scope": "rust",
-        "prefix": "sqltest",
-        "body": [
-            "#[sqlx::test]",
-            "pub async fn $1(pool: PgPool) {",
-            "    let app_data = tools::AppData::new(pool).await;",
-            "$2",
-            "}"
-        ]
-    }
+  "sql unit test": {
+    "scope": "rust",
+    "prefix": "sqltest",
+    "body": [
+      "#[sqlx::test]",
+      "pub async fn $1(pool: PgPool) {",
+      "    let app_data = tools::AppData::new(pool).await;",
+      "$2",
+      "}"
+    ]
+  },
+  "router": {
+    "scope": "rust",
+    "prefix": "router",
+    "body": ["pub fn router() -> Router {", "\tRouter::new()", "\t\t$1", "}"]
+  },
+  "query": {
+    "scope": "rust",
+    "prefix": "query",
+    "body": ["query!(", "\tr#\"", "\t\t$1", "\t\"#", ")"]
+  },
+  "query as": {
+    "scope": "rust",
+    "prefix": "query_as",
+    "body": ["query_as!(", "\t$1,", "\tr#\"", "\t\t$2", "\t\"#", ")"]
+  },
+  "error": {
+    "scope": "rust",
+    "prefix": "error",
+    "body": [
+      "#[derive(Error, Debug)]",
+      "pub enum ${1:Name} {",
+      "\t#[error(\"${2:Error message}\")]",
+      "\t${3:ErrorField},",
+      "\t#[error(transparent)]",
+      "\tUnexpected(#[from] anyhow::Error),",
+      "}"
+    ]
+  },
+  "database function": {
+    "scope": "rust",
+    "prefix": "db_fn",
+    "body": [
+      "async fn ${1:name}<'c>(conn: impl Acquire<'c, Database = Postgres>) -> Result<${2:ok},${3:error}> {",
+      "\t${4|todo!(),unimplemented!()|}",
+      "}"
+    ]
+  }
 }
