@@ -2,12 +2,12 @@
 create table users(
     id uuid not null default gen_random_uuid() primary key,
     login varchar unique not null,
-    password varchar not null
+    password text not null
 );
 
 create table groups(
     id uuid not null default gen_random_uuid() primary key,
-    name varchar not null
+    name text not null
 );
 
 create table group_users(

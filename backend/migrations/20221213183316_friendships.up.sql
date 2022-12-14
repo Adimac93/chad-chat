@@ -1,7 +1,7 @@
 -- Add up migration script here
 create table user_friends (
     primary key (user_id, friend_id),
-    note varchar not null,
+    note text not null,
     user_id uuid not null,
     friend_id uuid not null,
     foreign key (user_id) references users(id),

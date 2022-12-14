@@ -1,6 +1,6 @@
 -- Add up migration script here
 create table group_invitations (
-    id varchar unique not null primary key,
+    id text unique not null primary key,
     expiration_date timestamptz,
     uses_left int,
     user_id uuid not null,
