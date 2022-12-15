@@ -1,14 +1,18 @@
 {
   "sql unit test": {
     "scope": "rust",
-    "prefix": "sqltest",
+    "prefix": "utest",
     "body": [
       "#[sqlx::test]",
-      "pub async fn $1(pool: PgPool) {",
-      "    let app_data = tools::AppData::new(pool).await;",
-      "$2",
+      "pub async fn ${1: test_name}(db: PgPool) {",
+      "\t${2:todo!()}",
       "}"
     ]
+  },
+  "test app data": {
+    "scope": "rust",
+    "prefix": "app_data",
+    "body": "let app_data = tools::AppData::new(db).await;"
   },
   "router": {
     "scope": "rust",
