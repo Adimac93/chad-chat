@@ -292,7 +292,7 @@ mod auth {
             .send()
             .await
             .unwrap();
-
+            
         assert_eq!(res.status(), StatusCode::OK);
 
         let res = client

@@ -1,14 +1,13 @@
 pub mod additions;
 pub mod errors;
 use crate::{
-    models::{AuthToken, Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
-    routes::auth::{JWT_ACCESS_TOKEN_EXPIRATION, JWT_REFRESH_TOKEN_EXPIRATION},
+    models::{AuthToken, Claims, RefreshClaims, RegisterCredentials}, TokenExtensions,
 };
 use anyhow::Context;
 use argon2::verify_encoded;
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::{CookieJar, cookie::Cookie};
 use errors::*;
-use secrecy::{ExposeSecret, Secret, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::{query, PgPool};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
@@ -109,36 +108,41 @@ pub async fn verify_user_credentials(
     }
 }
 
-pub async fn login_user(
+pub async fn generate_token_cookies (
     user_id: Uuid,
-    user: &LoginCredentials,
-    access_jwt_secret: Secret<String>,
-    refresh_jwt_secret: Secret<String>,
+    login: &str,
+    ext: &TokenExtensions,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
-    let access_token = Claims::generate_jwt(
-        user_id,
-        &user.login,
-        JWT_ACCESS_TOKEN_EXPIRATION,
-        &access_jwt_secret,
-    )
-    .await?;
+    let access_cookie = generate_jwt_in_cookie::<Claims> (user_id, login, ext).await?;
 
-    let access_cookie = Claims::generate_cookie(access_token).await;
     trace!("Access JWT: {access_cookie:#?}");
 
-    let refresh_token = RefreshClaims::generate_jwt(
-        user_id,
-        &user.login,
-        JWT_REFRESH_TOKEN_EXPIRATION,
-        &refresh_jwt_secret,
-    )
-    .await?;
+    let refresh_cookie = generate_jwt_in_cookie::<RefreshClaims> (user_id, login, ext).await?;
 
-    let refresh_cookie = RefreshClaims::generate_cookie(refresh_token).await;
     trace!("Refresh JWT: {refresh_cookie:#?}");
 
     Ok(jar.add(access_cookie).add(refresh_cookie))
+}
+
+async fn generate_jwt_in_cookie<'a, T>(
+    user_id: Uuid,
+    login: &str,
+    ext: &TokenExtensions,
+) -> Result<Cookie<'a>, AuthError>
+where T: AuthToken {
+    let access_token = T::generate_jwt(
+        user_id,
+        login,
+        T::JWT_EXPIRATION,
+        &T::get_jwt_key(ext).await,
+    )
+    .await?;
+
+    let access_cookie = T::generate_cookie(access_token).await;
+    trace!("Access JWT: {access_cookie:#?}");
+
+    Ok(access_cookie)
 }
 
 pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<(), AuthError> {

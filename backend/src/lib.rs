@@ -13,7 +13,7 @@ use axum::{
     http::{HeaderValue, Method, Uri},
     response::IntoResponse,
     routing::get,
-    Extension, Json, Router,
+    Extension, Json, Router, extract::{FromRequest, self}, async_trait,
 };
 use axum_extra::routing::SpaRouter;
 use configuration::get_config;
@@ -22,6 +22,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 use tracing::debug;
+use utils::auth::errors::AuthError;
 
 pub async fn app(pool: PgPool) -> Router {
     let config = get_config().expect("Failed to read configuration");
@@ -51,8 +52,10 @@ pub async fn app(pool: PgPool) -> Router {
         .route("/health", get(health_check))
         .merge(groups)
         .layer(Extension(pool))
-        .layer(Extension(JwtSecret(config.app.access_jwt_secret)))
-        .layer(Extension(RefreshJwtSecret(config.app.refresh_jwt_secret)))
+        .layer(Extension(TokenExtensions {
+            access: JwtSecret(config.app.access_jwt_secret),
+            refresh: RefreshJwtSecret(config.app.refresh_jwt_secret),
+        }))
         .layer(cors);
 
     Router::new().nest("/api", api).merge(spa)
@@ -63,6 +66,27 @@ pub struct JwtSecret(pub Secret<String>);
 
 #[derive(Clone)]
 pub struct RefreshJwtSecret(pub Secret<String>);
+
+#[derive(Clone)]
+pub struct TokenExtensions {
+    access: JwtSecret,
+    refresh: RefreshJwtSecret,
+}
+
+#[async_trait]
+impl<B> FromRequest<B> for TokenExtensions
+where B: Send + Sync {
+    type Rejection = AuthError;
+
+    async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
+        Ok(req
+            .extensions()
+            .get::<Self>()
+            .expect("Failed to get jwt secret extension")
+            .clone()
+        )
+    }
+}
 
 async fn home_page() -> impl IntoResponse {
     // TODO: api docs, info

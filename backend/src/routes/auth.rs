@@ -1,9 +1,9 @@
 ﻿use crate::{
     models::{AuthToken, Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
     utils::auth::*,
-    JwtSecret, RefreshJwtSecret, app_errors::AppError,
+    app_errors::AppError, TokenExtensions,
 };
-use axum::{extract, http::StatusCode, Extension, Json};
+use axum::{extract, http::StatusCode, Extension, Json, debug_handler};
 use axum::{routing::post, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
@@ -13,9 +13,6 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
-
-pub const JWT_ACCESS_TOKEN_EXPIRATION: Duration = Duration::minutes(5);
-pub const JWT_REFRESH_TOKEN_EXPIRATION: Duration = Duration::days(7);
 
 pub fn router() -> Router {
     Router::new()
@@ -28,9 +25,8 @@ pub fn router() -> Router {
 
 async fn post_register_user(
     Extension(pool): Extension<PgPool>,
-    register_credentials: extract::Json<RegisterCredentials>,
-    Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
-    Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
+    Json(register_credentials): extract::Json<RegisterCredentials>,
+    token_ext: TokenExtensions,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
@@ -43,7 +39,7 @@ async fn post_register_user(
 
     let login_credentials =
         LoginCredentials::new(&register_credentials.login, &register_credentials.password);
-    let jar = login_user(user_id, &login_credentials, jwt_key, refresh_jwt_key, jar).await?;
+    let jar = generate_token_cookies (user_id, &login_credentials.login, &token_ext, jar).await?;
 
     debug!(
         "User {} ({}) registered successfully",
@@ -55,8 +51,7 @@ async fn post_register_user(
 
 async fn post_login_user(
     Extension(pool): Extension<PgPool>,
-    Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
-    Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
+    token_ext: TokenExtensions,
     Json(login_credentials): extract::Json<LoginCredentials>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
@@ -68,7 +63,7 @@ async fn post_login_user(
     )
     .await?;
 
-    let jar = login_user(user_id, &login_credentials, jwt_key, refresh_jwt_key, jar).await?;
+    let jar = generate_token_cookies (user_id, &login_credentials.login, &token_ext, jar).await?;
 
     debug!(
         "User {} ({}) logged in successfully",
@@ -84,8 +79,7 @@ async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
 
 async fn post_user_logout(
     Extension(pool): Extension<PgPool>,
-    Extension(RefreshJwtSecret(refresh_jwt_key)): Extension<RefreshJwtSecret>,
-    Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
+    Extension(token_extensions): Extension<TokenExtensions>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let mut validation = Validation::default();
@@ -94,7 +88,7 @@ async fn post_user_logout(
     if let Some(access_token_cookie) = jar.get("jwt") {
         let data = decode::<Claims>(
             access_token_cookie.value(),
-            &DecodingKey::from_secret(jwt_key.expose_secret().as_bytes()),
+            &DecodingKey::from_secret(token_extensions.access.0.expose_secret().as_bytes()),
             &validation,
         );
 
@@ -106,7 +100,7 @@ async fn post_user_logout(
     if let Some(refresh_token_cookie) = jar.get("refresh-jwt") {
         let data = decode::<RefreshClaims>(
             refresh_token_cookie.value(),
-            &DecodingKey::from_secret(refresh_jwt_key.expose_secret().as_bytes()),
+            &DecodingKey::from_secret(token_extensions.access.0.expose_secret().as_bytes()),
             &validation,
         );
 
@@ -129,25 +123,26 @@ fn remove_cookie(name: &str) -> Cookie {
         .finish()
 }
 
+#[debug_handler]
 async fn post_refresh_user_token(
-    Extension(JwtSecret(jwt_key)): Extension<JwtSecret>,
+    Extension(pool): Extension<PgPool>,
+    ext: TokenExtensions,
     refresh_claims: RefreshClaims,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
-    let access_token = Claims::generate_jwt(
+    let jar = generate_token_cookies (
         refresh_claims.user_id,
         &refresh_claims.login,
-        JWT_ACCESS_TOKEN_EXPIRATION,
-        &jwt_key,
-    )
-    .await?;
+        &ext,
+        jar
+    ).await?;
 
-    let cookie = Claims::generate_cookie(access_token).await;
+    refresh_claims.add_token_to_blacklist(&pool).await?;
 
     debug!(
         "User {} ({})'s access token refreshed successfully",
         &refresh_claims.user_id, &refresh_claims.login
     );
 
-    Ok(jar.add(cookie))
+    Ok(jar)
 }

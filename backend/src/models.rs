@@ -1,8 +1,8 @@
-﻿use crate::{utils::auth::errors::*, JwtSecret, RefreshJwtSecret};
+﻿use crate::{utils::auth::errors::*, JwtSecret, RefreshJwtSecret, TokenExtensions};
 use anyhow::Context;
 use axum::{
     async_trait,
-    extract::{self, FromRequest, RequestParts}, http::Extensions,
+    extract::{self, FromRequest, RequestParts},
 };
 use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
 use dashmap::DashMap;
@@ -18,9 +18,11 @@ use validator::Validate;
 
 #[async_trait]
 pub trait AuthToken {
+    const JWT_EXPIRATION: Duration;
+    
     async fn generate_cookie<'a>(token: String) -> Cookie<'a>;
     async fn generate_jwt(user_id: Uuid, login: &str, duration: Duration, key: &Secret<String>) -> Result<String, AuthError>;
-    async fn get_jwt_key(ext: &Extensions) -> Secret<String>;
+    async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String>;
     async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError>;
     async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError> where Self: Sized;
     async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError>;
@@ -29,11 +31,10 @@ pub trait AuthToken {
 
 #[async_trait]
 impl AuthToken for Claims {
-    async fn get_jwt_key(ext: &Extensions) -> Secret<String> {
-        let JwtSecret(jwt_key) = ext
-            .get::<JwtSecret>()
-            .expect("Failed to get jwt secret extension")
-            .clone();
+    const JWT_EXPIRATION: Duration = Duration::seconds(15);
+
+    async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String> {
+        let JwtSecret(jwt_key) = ext.access.clone();
 
         jwt_key
     }
@@ -118,11 +119,10 @@ impl AuthToken for Claims {
 
 #[async_trait]
 impl AuthToken for RefreshClaims {
-    async fn get_jwt_key(ext: &Extensions) -> Secret<String> {
-        let RefreshJwtSecret(jwt_key) = ext
-            .get::<RefreshJwtSecret>()
-            .expect("Failed to get jwt secret extension")
-            .clone();
+    const JWT_EXPIRATION: Duration = Duration::days(7);
+
+    async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String> {
+        let RefreshJwtSecret(jwt_key) = ext.refresh.clone();
 
         jwt_key
     }
@@ -274,8 +274,10 @@ T: AuthToken,
 B: Send {
     // get extensions
     let ext = req.extensions();
+    
+    let token_ext = ext.get::<TokenExtensions>().expect("Can't find token extensions").clone();
 
-    let jwt_key = T::get_jwt_key(ext).await;
+    let jwt_key = T::get_jwt_key(&token_ext).await;
 
     // get extensions - PgPool
     let pool = ext
