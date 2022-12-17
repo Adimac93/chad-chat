@@ -2,9 +2,7 @@ use anyhow::Context;
 use sqlx::{query_as, PgPool};
 use uuid::Uuid;
 
-use crate::models::MessageModel;
-
-use super::errors::ChatError;
+use super::{errors::ChatError, models::MessageModel};
 
 pub async fn fetch_last_messages_in_range(
     pool: &PgPool,

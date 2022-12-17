@@ -2,11 +2,12 @@
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
 use crate::utils::chat::*;
-use crate::utils::groups::*;
 use crate::utils::groups::models::GroupUser;
+use crate::utils::groups::*;
 
-use axum::TypedHeader;
+use axum::headers::SecWebsocketKey;
 use axum::http::HeaderMap;
+use axum::TypedHeader;
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
@@ -23,7 +24,6 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
-use axum::headers::SecWebsocketKey;
 
 const MAX_MESSAGE_LENGTH: usize = 2000;
 
@@ -34,7 +34,7 @@ pub fn router() -> Router {
 }
 
 async fn chat_handler(
-    TypedHeader(key): TypedHeader<SecWebsocketKey>,
+    // can't get value TypedHeader(key): TypedHeader<SecWebsocketKey>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
     claims: Claims,
@@ -44,7 +44,13 @@ async fn chat_handler(
     ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, headers))
 }
 
-pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claims, pool: PgPool, headers: HeaderMap) {
+pub async fn chat_socket(
+    stream: WebSocket,
+    state: Arc<ChatState>,
+    claims: Claims,
+    pool: PgPool,
+    headers: HeaderMap,
+) {
     // let connection_id = Uuid::new_v4();
     let Some(key_header) = headers.get("sec-websocket-key") else {
         return;
@@ -135,12 +141,18 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     .groups
                     .entry(group_id)
                     .and_modify(|group_tx| {
-                        group_tx.users.entry(claims.user_id)
-                        .and_modify(|user_connections| {
-                            user_connections.insert(connection_id.clone(), sender.clone());
-                        });
+                        group_tx
+                            .users
+                            .entry(claims.user_id)
+                            .and_modify(|user_connections| {
+                                user_connections.insert(connection_id.clone(), sender.clone());
+                            });
                     })
-                    .or_insert(GroupTransmitter::new(claims.user_id, connection_id.clone(), sender.clone()));
+                    .or_insert(GroupTransmitter::new(
+                        claims.user_id,
+                        connection_id.clone(),
+                        sender.clone(),
+                    ));
 
                 // Group channels
                 let tx = group.tx.clone();
@@ -271,34 +283,39 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                 if let Some(tx) = ctx.clone() {
                     match check_if_group_member(&pool, &user_id, &group_id).await {
                         Ok(false) => {
-                            debug!("Cannot remove user {} from group {} - user is not a group member", &user_id, &group_id);
+                            debug!(
+                                "Cannot remove user {} from group {} - user is not a group member",
+                                &user_id, &group_id
+                            );
                             continue;
-                        },
+                        }
                         Err(_) => {
                             error!("ws closed: Failed to check whether a user {} is a group {} member (during user removal)", &user_id, &group_id);
                             return;
                         }
                         _ => (),
                     };
-    
+
                     let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
                         error!("ws closed: Failed to remove user {} from a group {}", &user_id, &group_id);
                         return;
                     };
-    
+
                     let payload = SocketMessage::RemoveUser(GroupUser { user_id, group_id });
                     let Ok(msg) = serde_json::to_string(&payload) else {
                         error!("ws closed: Failed to convert a message to its json form");
                         return;
                     };
-    
+
                     let res = tx.send(msg);
                     if res.is_err() {
                         debug!("Failed to send user removal message to connected users");
                         continue;
                     }
                 } else {
-                    debug!("Cannot send user removal message to connected users - group not selected");
+                    debug!(
+                        "Cannot send user removal message to connected users - group not selected"
+                    );
                     continue;
                 }
             }
@@ -310,8 +327,6 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
     }
 
     debug!("ws closed: User left the message loop");
-
-    
 }
 
 #[derive(Serialize, Deserialize)]
