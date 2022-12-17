@@ -1,9 +1,9 @@
+pub mod app_errors;
 pub mod configuration;
 pub mod database;
 pub mod models;
 pub mod routes;
 pub mod utils;
-pub mod app_errors;
 
 use std::io;
 

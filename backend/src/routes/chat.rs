@@ -1,5 +1,6 @@
-﻿use crate::models::{ChatState, Claims, GroupTransmitter};
+﻿use crate::utils::auth::models::Claims;
 use crate::utils::chat::messages::fetch_last_messages_in_range;
+use crate::utils::chat::models::*;
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 

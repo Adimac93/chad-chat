@@ -1,19 +1,20 @@
 pub mod errors;
+pub mod models;
+
 use anyhow::Context;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, Acquire, PgPool, Postgres, query_as};
+use sqlx::{query, query_as, Acquire, PgPool, Postgres};
 use time::{Duration, OffsetDateTime};
+use tracing::debug;
 use uuid::Uuid;
-
-use crate::models::GroupInfo;
 
 use self::errors::InvitationError;
 
-use super::groups::try_add_user_to_group;
+use super::groups::{models::GroupInfo, try_add_user_to_group};
 
 // Frontend payload
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct GroupInvitationCreate {
     group_id: Uuid,
     expiration_index: Option<i32>,
@@ -62,6 +63,7 @@ pub async fn try_create_group_invitation_with_code(
     user_id: &Uuid,
     invitation: GroupInvitationCreate,
 ) -> Result<String, InvitationError> {
+    debug!("{invitation:#?}");
     let invitation = GroupInvitation::try_from(invitation)?;
     query!(
         r#"
@@ -151,7 +153,7 @@ pub async fn try_join_group_by_code<'c>(
                 .context("Failed to commit transaction")?;
 
             return Err(InvitationError::InvitationExpired);
-        },
+        }
         _ => (),
     }
 
@@ -174,7 +176,7 @@ pub async fn try_join_group_by_code<'c>(
                 .context("Failed to commit transaction")?;
 
             return Err(InvitationError::InvitationExpired);
-        },
+        }
         _ => (),
     }
 
@@ -196,7 +198,7 @@ pub async fn try_join_group_by_code<'c>(
         .await
         .context("Failed to update group invitation uses_left field")?;
     }
-    
+
     transaction
         .commit()
         .await

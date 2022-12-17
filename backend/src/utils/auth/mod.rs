@@ -1,20 +1,22 @@
 pub mod additions;
 pub mod errors;
-use crate::{
-    models::{AuthToken, Claims, RefreshClaims, RegisterCredentials}, TokenExtensions,
-};
+pub mod models;
+
+use crate::TokenExtensions;
 use anyhow::Context;
 use argon2::verify_encoded;
-use axum_extra::extract::{CookieJar, cookie::Cookie};
+use axum_extra::extract::{cookie::Cookie, CookieJar};
 use errors::*;
+use models::*;
 use secrecy::{ExposeSecret, SecretString};
+use serde::{Deserialize, Serialize};
 use sqlx::{query, PgPool};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(sqlx::Type, Debug)]
+#[derive(sqlx::Type, Debug, Serialize, Deserialize)]
 #[sqlx(type_name = "status", rename_all = "snake_case")]
 pub enum ActivityStatus {
     Online,
@@ -108,17 +110,17 @@ pub async fn verify_user_credentials(
     }
 }
 
-pub async fn generate_token_cookies (
+pub async fn generate_token_cookies(
     user_id: Uuid,
     login: &str,
     ext: &TokenExtensions,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
-    let access_cookie = generate_jwt_in_cookie::<Claims> (user_id, login, ext).await?;
+    let access_cookie = generate_jwt_in_cookie::<Claims>(user_id, login, ext).await?;
 
     trace!("Access JWT: {access_cookie:#?}");
 
-    let refresh_cookie = generate_jwt_in_cookie::<RefreshClaims> (user_id, login, ext).await?;
+    let refresh_cookie = generate_jwt_in_cookie::<RefreshClaims>(user_id, login, ext).await?;
 
     trace!("Refresh JWT: {refresh_cookie:#?}");
 
@@ -130,7 +132,9 @@ async fn generate_jwt_in_cookie<'a, T>(
     login: &str,
     ext: &TokenExtensions,
 ) -> Result<Cookie<'a>, AuthError>
-where T: AuthToken {
+where
+    T: AuthToken,
+{
     let access_token = T::generate_jwt(
         user_id,
         login,

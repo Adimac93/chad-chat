@@ -1,5 +1,6 @@
 ﻿use crate::app_errors::AppError;
-use crate::models::{Claims, GroupUser, InvitationState, NewGroup};
+use crate::utils::auth::models::Claims;
+use crate::utils::groups::models::{GroupUser, NewGroup};
 use crate::utils::groups::*;
 use axum::Router;
 use axum::{
@@ -9,14 +10,10 @@ use axum::{
 };
 use serde_json::Value;
 use sqlx::PgPool;
-use std::sync::Arc;
 use tracing::debug;
 
 pub fn router() -> Router {
-    Router::new()
-        .route("/", get(get_user_groups).post(post_create_group))
-        .route("/add-user", post(post_add_user_to_group))
-        .layer(Extension(Arc::new(InvitationState::new())))
+    Router::new().route("/", get(get_user_groups).post(post_create_group))
 }
 
 async fn get_user_groups(
@@ -39,25 +36,9 @@ async fn post_create_group(
     group: Json<NewGroup>,
 ) -> Result<(), AppError> {
     tracing::trace!("JWT: {:#?}", claims);
-    let res = create_group(&pool, group.name.trim(), claims.user_id).await?;
+    create_group(&pool, group.name.trim(), claims.user_id).await?;
 
     debug!("Group {} created successfully", group.name);
 
-    Ok(res)
-}
-
-async fn post_add_user_to_group(
-    claims: Claims,
-    Extension(pool): Extension<PgPool>,
-    Json(GroupUser { user_id, group_id }): Json<GroupUser>,
-) -> Result<(), AppError> {
-    tracing::trace!("JWT: {:#?}", claims);
-    let res = try_add_user_to_group(&pool, &user_id, &group_id).await?;
-
-    debug!(
-        "Added user {} ({}) to group {} successfully",
-        &user_id, &claims.login, &group_id
-    );
-
-    Ok(res)
+    Ok(())
 }

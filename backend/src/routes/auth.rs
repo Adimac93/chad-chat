@@ -1,9 +1,6 @@
-﻿use crate::{
-    models::{AuthToken, Claims, LoginCredentials, RefreshClaims, RegisterCredentials},
-    utils::auth::*,
-    app_errors::AppError, TokenExtensions,
-};
-use axum::{extract, http::StatusCode, Extension, Json, debug_handler};
+﻿use crate::utils::auth::models::*;
+use crate::{app_errors::AppError, utils::auth::*, TokenExtensions};
+use axum::{debug_handler, extract, http::StatusCode, Extension, Json};
 use axum::{routing::post, Router};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
@@ -39,7 +36,7 @@ async fn post_register_user(
 
     let login_credentials =
         LoginCredentials::new(&register_credentials.login, &register_credentials.password);
-    let jar = generate_token_cookies (user_id, &login_credentials.login, &token_ext, jar).await?;
+    let jar = generate_token_cookies(user_id, &login_credentials.login, &token_ext, jar).await?;
 
     debug!(
         "User {} ({}) registered successfully",
@@ -63,7 +60,7 @@ async fn post_login_user(
     )
     .await?;
 
-    let jar = generate_token_cookies (user_id, &login_credentials.login, &token_ext, jar).await?;
+    let jar = generate_token_cookies(user_id, &login_credentials.login, &token_ext, jar).await?;
 
     debug!(
         "User {} ({}) logged in successfully",
@@ -130,12 +127,8 @@ async fn post_refresh_user_token(
     refresh_claims: RefreshClaims,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
-    let jar = generate_token_cookies (
-        refresh_claims.user_id,
-        &refresh_claims.login,
-        &ext,
-        jar
-    ).await?;
+    let jar =
+        generate_token_cookies(refresh_claims.user_id, &refresh_claims.login, &ext, jar).await?;
 
     refresh_claims.add_token_to_blacklist(&pool).await?;
 

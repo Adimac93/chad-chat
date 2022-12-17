@@ -1,6 +1,7 @@
 pub mod errors;
+pub mod models;
 
-use crate::models::{Group, GroupInfo};
+use self::models::*;
 use anyhow::Context;
 use axum::Json;
 use errors::*;

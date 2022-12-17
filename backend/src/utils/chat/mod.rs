@@ -1,7 +1,7 @@
 pub mod errors;
 pub mod messages;
+pub mod models;
 
-use crate::models::GroupTransmitter;
 use anyhow::Context;
 use errors::*;
 use sqlx::{query, PgPool};
@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use tokio::sync::broadcast::{Receiver, Sender};
 use tracing::debug;
 use uuid::Uuid;
+
+use self::models::GroupTransmitter;
 
 pub fn subscribe(
     groups: &mut HashMap<Uuid, GroupTransmitter>,
