@@ -5,6 +5,8 @@ use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::groups::models::GroupUser;
 
+use axum::TypedHeader;
+use axum::http::HeaderMap;
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
@@ -21,6 +23,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
+use axum::headers::SecWebsocketKey;
 
 const MAX_MESSAGE_LENGTH: usize = 2000;
 
@@ -31,15 +34,26 @@ pub fn router() -> Router {
 }
 
 async fn chat_handler(
+    TypedHeader(key): TypedHeader<SecWebsocketKey>,
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
     claims: Claims,
     Extension(state): Extension<Arc<ChatState>>,
     Extension(pool): Extension<PgPool>,
 ) -> Response {
-    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool))
+    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, headers))
 }
 
-pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claims, pool: PgPool) {
+pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claims, pool: PgPool, headers: HeaderMap) {
+    // let connection_id = Uuid::new_v4();
+    let Some(key_header) = headers.get("sec-websocket-key") else {
+        return;
+    };
+    let Ok(connection_id) = key_header.to_str() else {
+        return;
+    };
+    let connection_id = connection_id.to_string();
+
     // By splitting we can send and receive at the same time.
     let (sender, mut receiver) = stream.split();
     let sender = Arc::new(Mutex::new(sender));
@@ -121,9 +135,12 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                     .groups
                     .entry(group_id)
                     .and_modify(|group_tx| {
-                        group_tx.users.insert(claims.user_id);
+                        group_tx.users.entry(claims.user_id)
+                        .and_modify(|user_connections| {
+                            user_connections.insert(connection_id.clone(), sender.clone());
+                        });
                     })
-                    .or_insert(GroupTransmitter::new());
+                    .or_insert(GroupTransmitter::new(claims.user_id, connection_id.clone(), sender.clone()));
 
                 // Group channels
                 let tx = group.tx.clone();
@@ -293,6 +310,8 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
     }
 
     debug!("ws closed: User left the message loop");
+
+    
 }
 
 #[derive(Serialize, Deserialize)]

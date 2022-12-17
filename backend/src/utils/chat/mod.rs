@@ -12,27 +12,27 @@ use uuid::Uuid;
 
 use self::models::GroupTransmitter;
 
-pub fn subscribe(
-    groups: &mut HashMap<Uuid, GroupTransmitter>,
-    group_id: Uuid,
-    user_id: Uuid,
-    username: &String,
-) -> (Sender<String>, Receiver<String>) {
-    let group = groups
-        .entry(group_id)
-        .and_modify(|val| {
-            val.users.insert(user_id);
-        })
-        .or_insert(GroupTransmitter::new());
+// pub fn subscribe(
+//     groups: &mut HashMap<Uuid, GroupTransmitter>,
+//     group_id: Uuid,
+//     user_id: Uuid,
+//     username: &String,
+// ) -> (Sender<String>, Receiver<String>) {
+//     let group = groups
+//         .entry(group_id)
+//         .and_modify(|val| {
+//             val.users.insert(user_id);
+//         })
+//         .or_insert(GroupTransmitter::new());
 
-    let rx = group.tx.subscribe();
+//     let rx = group.tx.subscribe();
 
-    // Send joined message to all subscribers.
-    let msg = format!("{} joined.", username);
-    debug!("{}", msg);
-    let _ = group.tx.send(msg);
-    (group.tx.clone(), rx)
-}
+//     // Send joined message to all subscribers.
+//     let msg = format!("{} joined.", username);
+//     debug!("{}", msg);
+//     let _ = group.tx.send(msg);
+//     (group.tx.clone(), rx)
+// }
 
 pub async fn get_group_nickname(
     pool: &PgPool,
