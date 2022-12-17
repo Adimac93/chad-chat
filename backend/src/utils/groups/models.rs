@@ -12,7 +12,7 @@ pub struct Group {
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GroupUser {
     pub user_id: Uuid,
     pub group_id: Uuid,

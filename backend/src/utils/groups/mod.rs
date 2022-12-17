@@ -233,3 +233,23 @@ pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo,
         members: res.count.unwrap_or(0),
     })
 }
+
+pub async fn try_remove_user_from_group(
+    pool: &PgPool,
+    user_id: Uuid,
+    group_id: Uuid,
+) -> Result<(), GroupError> {
+    let _ = query!(
+        r#"
+            delete from group_users
+            where user_id = $1 and group_id = $2
+        "#,
+        user_id,
+        group_id
+    )
+    .execute(pool)
+    .await
+    .context("Failed to remove user from the group")?;
+
+    Ok(())
+}

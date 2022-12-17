@@ -3,6 +3,7 @@ use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
 use crate::utils::chat::*;
 use crate::utils::groups::*;
+use crate::utils::groups::models::GroupUser;
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
@@ -172,7 +173,10 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
                             sender: nickname,
                         });
                         debug!("Sent: {payload:#?}");
-                        let msg = serde_json::to_string(&payload).unwrap();
+                        let Ok(msg) = serde_json::to_string(&payload) else {
+                            error!("ws closed: Failed to convert a message to its json form");
+                            return;
+                        };
                         let res = tx.send(msg);
                         match res {
                             Ok(count) => {
@@ -246,6 +250,41 @@ pub async fn chat_socket(stream: WebSocket, state: Arc<ChatState>, claims: Claim
 
                 // TODO: a feature to send group invites in chat
             }
+            ChatAction::RemoveUser { user_id, group_id } => {
+                if let Some(tx) = ctx.clone() {
+                    match check_if_group_member(&pool, &user_id, &group_id).await {
+                        Ok(false) => {
+                            debug!("Cannot remove user {} from group {} - user is not a group member", &user_id, &group_id);
+                            continue;
+                        },
+                        Err(_) => {
+                            error!("ws closed: Failed to check whether a user {} is a group {} member (during user removal)", &user_id, &group_id);
+                            return;
+                        }
+                        _ => (),
+                    };
+    
+                    let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
+                        error!("ws closed: Failed to remove user {} from a group {}", &user_id, &group_id);
+                        return;
+                    };
+    
+                    let payload = SocketMessage::RemoveUser(GroupUser { user_id, group_id });
+                    let Ok(msg) = serde_json::to_string(&payload) else {
+                        error!("ws closed: Failed to convert a message to its json form");
+                        return;
+                    };
+    
+                    let res = tx.send(msg);
+                    if res.is_err() {
+                        debug!("Failed to send user removal message to connected users");
+                        continue;
+                    }
+                } else {
+                    debug!("Cannot send user removal message to connected users - group not selected");
+                    continue;
+                }
+            }
             ChatAction::Close => {
                 info!("WebSocket closed explicitly");
                 return;
@@ -261,6 +300,7 @@ enum ChatAction {
     ChangeGroup { group_id: Uuid },
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
+    RemoveUser { user_id: Uuid, group_id: Uuid },
     RequestMessages { loaded: i64 },
     Close,
 }
@@ -305,6 +345,7 @@ enum SocketMessage {
     LoadMessages(Vec<UserMessage>),
     LoadRequested(Vec<UserMessage>),
     GroupInvite,
+    RemoveUser(GroupUser),
     Message(UserMessage),
 }
 

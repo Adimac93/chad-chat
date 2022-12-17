@@ -1,11 +1,11 @@
 ﻿use crate::app_errors::AppError;
 use crate::utils::auth::models::Claims;
-use crate::utils::groups::models::{GroupUser, NewGroup};
 use crate::utils::groups::*;
+use crate::utils::groups::models::NewGroup;
 use axum::Router;
 use axum::{
     extract::Json,
-    routing::{get, post},
+    routing::get,
     Extension,
 };
 use serde_json::Value;
@@ -13,7 +13,9 @@ use sqlx::PgPool;
 use tracing::debug;
 
 pub fn router() -> Router {
-    Router::new().route("/", get(get_user_groups).post(post_create_group))
+    Router::new()
+        .route("/", get(get_user_groups).post(post_create_group))
+        // .route("/leave", post(leave_group))
 }
 
 async fn get_user_groups(
@@ -36,9 +38,18 @@ async fn post_create_group(
     group: Json<NewGroup>,
 ) -> Result<(), AppError> {
     tracing::trace!("JWT: {:#?}", claims);
-    create_group(&pool, group.name.trim(), claims.user_id).await?;
+    let res = create_group(&pool, group.name.trim(), claims.user_id).await?;
 
     debug!("Group {} created successfully", group.name);
 
-    Ok(())
+    Ok(res)
 }
+
+// async fn leave_group(
+//     claims: Claims,
+//     Extension(pool): Extension<PgPool>,
+//     Json(group_id): Json<Uuid>,
+//  ) -> Result<(), AppError> {
+//     tracing::trace!("JWT: {:#?}", claims);
+//     Ok(try_remove_user_from_group(&pool, claims.user_id, group_id).await?)
+// }
