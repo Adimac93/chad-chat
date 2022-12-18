@@ -2,12 +2,9 @@
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
 use crate::utils::chat::*;
-use crate::utils::groups::models::GroupUser;
 use crate::utils::groups::*;
 
-use axum::headers::SecWebsocketKey;
 use axum::http::HeaderMap;
-use axum::TypedHeader;
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
@@ -105,12 +102,11 @@ pub async fn chat_socket(
                 }
                 // Remove user from the earlier connection
                 if let Some(previous_group_id) = current_group_id {
-                    state
+                    if let Some(mut group) = state
                         .groups
-                        .entry(previous_group_id)
-                        .and_modify(|group| {
-                            group.users.remove_user_connection(claims.user_id, connection_id.clone());
-                        });
+                        .get_mut(&previous_group_id) {
+                        group.users.remove_user_connection(claims.user_id, connection_id.clone()).await;
+                    }
                 }
 
                 // Save currend group id
@@ -147,17 +143,22 @@ pub async fn chat_socket(
                 }
 
                 // Fetch group transmitter or create one & add user as online member of group
-                let group = state
-                    .groups
-                    .entry(group_id)
-                    .and_modify(|group| {
-                        group.users.add_user_connection(claims.user_id, sender.clone(), connection_id.clone());
-                    })
-                    .or_insert(GroupTransmitter::new(
-                        claims.user_id,
-                        connection_id.clone(),
-                        UserSender::new(sender.clone()).await,
-                    ));
+                let group = match state.groups
+                    .get_mut(&group_id) {
+                    Some(mut group) => {
+                        group.users.add_user_connection(claims.user_id, sender.clone(), connection_id.clone()).await;
+                        group
+                    },
+                    None => {
+                        state.groups.entry(group_id).or_insert(
+                            GroupTransmitter::new(
+                                claims.user_id,
+                                connection_id.clone(),
+                                UserSender::new(sender.clone()).await,
+                            )
+                        )
+                    },
+                };
                 
                 // Group channels
                 let tx = group.tx.clone();
@@ -285,55 +286,29 @@ pub async fn chat_socket(
                 // TODO: a feature to send group invites in chat
             }
             ChatAction::RemoveUser { user_id, group_id } => {
-                if let Some(tx) = ctx.clone() {
-                    match check_if_group_member(&pool, &user_id, &group_id).await {
-                        Ok(false) => {
-                            debug!(
-                                "Cannot remove user {} from group {} - user is not a group member",
-                                &user_id, &group_id
-                            );
-                            continue;
-                        }
-                        Err(_) => {
-                            error!("ws closed: Failed to check whether a user {} is a group {} member (during user removal)", &user_id, &group_id);
-                            return;
-                        }
-                        _ => (),
-                    };
-
-                    let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
-                        error!("ws closed: Failed to remove user {} from a group {}", &user_id, &group_id);
-                        return;
-                    };
-
-                    let payload = SocketMessage::RemoveUser(GroupUser { user_id, group_id });
-                    let Ok(msg) = serde_json::to_string(&payload) else {
-                        error!("ws closed: Failed to convert a message to its json form");
-                        return;
-                    };
-
-                    if let Some(target) = state
-                        .groups
-                        .get(&group_id)
-                        .as_deref() {
-                        target
-                            .users
-                            .get_user(user_id);
+                match check_if_group_member(&pool, &user_id, &group_id).await {
+                    Ok(false) => {
+                        debug!(
+                            "Cannot remove user {} from group {} - user is not a group member",
+                            &user_id, &group_id
+                        );
+                        continue;
                     }
+                    Err(_) => {
+                        error!("ws closed: Failed to check whether a user {} is a group {} member (during user removal)", &user_id, &group_id);
+                        return;
+                    }
+                    _ => (),
+                };
 
-                    // if let Some(previous_group_id) = current_group_id {
-                    //     state
-                    //         .groups
-                    //         .entry(previous_group_id)
-                    //         .and_modify(|group| {
-                            
-                    //         });
-                    // }
-                } else {
-                    debug!(
-                        "Cannot send user removal message to connected users - group not selected"
-                    );
-                    continue;
+                let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
+                    error!("ws closed: Failed to remove user {} from a group {}", &user_id, &group_id);
+                    return;
+                };
+
+                if let Some(mut target) = state
+                    .get_target_group(group_id) {
+                        target.remove_all_user_connections_with_a_frame(user_id).await;
                 }
             }
             ChatAction::Close => {
@@ -346,12 +321,11 @@ pub async fn chat_socket(
     debug!("ws closed: User left the message loop");
 
     if let Some(previous_group_id) = current_group_id {
-        state
+        if let Some(mut group) = state
             .groups
-            .entry(previous_group_id)
-            .and_modify(|group| {
-                group.users.remove_user_connection(claims.user_id, connection_id.clone());
-            });
+            .get_mut(&previous_group_id) {
+            group.users.remove_user_connection(claims.user_id, connection_id.clone()).await;
+        }
     }
 }
 
@@ -405,7 +379,6 @@ enum SocketMessage {
     LoadMessages(Vec<UserMessage>),
     LoadRequested(Vec<UserMessage>),
     GroupInvite,
-    RemoveUser(GroupUser),
     Message(UserMessage),
 }
 
