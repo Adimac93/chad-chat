@@ -103,6 +103,16 @@ pub async fn chat_socket(
                     );
                     return;
                 }
+                // Remove user from the earlier connection
+                if let Some(previous_group_id) = current_group_id {
+                    state
+                        .groups
+                        .entry(previous_group_id)
+                        .and_modify(|group| {
+                            group.users.remove_user_connection(claims.user_id, connection_id.clone());
+                        });
+                }
+
                 // Save currend group id
                 current_group_id = Some(group_id);
 
@@ -140,20 +150,15 @@ pub async fn chat_socket(
                 let group = state
                     .groups
                     .entry(group_id)
-                    .and_modify(|group_tx| {
-                        group_tx
-                            .users
-                            .entry(claims.user_id)
-                            .and_modify(|user_connections| {
-                                user_connections.insert(connection_id.clone(), sender.clone());
-                            });
+                    .and_modify(|group| {
+                        group.users.add_user_connection(claims.user_id, sender.clone(), connection_id.clone());
                     })
                     .or_insert(GroupTransmitter::new(
                         claims.user_id,
                         connection_id.clone(),
-                        sender.clone(),
+                        UserSender::new(sender.clone()).await,
                     ));
-
+                
                 // Group channels
                 let tx = group.tx.clone();
                 let mut rx = tx.subscribe();
@@ -307,11 +312,23 @@ pub async fn chat_socket(
                         return;
                     };
 
-                    let res = tx.send(msg);
-                    if res.is_err() {
-                        debug!("Failed to send user removal message to connected users");
-                        continue;
+                    if let Some(target) = state
+                        .groups
+                        .get(&group_id)
+                        .as_deref() {
+                        target
+                            .users
+                            .get_user(user_id);
                     }
+
+                    // if let Some(previous_group_id) = current_group_id {
+                    //     state
+                    //         .groups
+                    //         .entry(previous_group_id)
+                    //         .and_modify(|group| {
+                            
+                    //         });
+                    // }
                 } else {
                     debug!(
                         "Cannot send user removal message to connected users - group not selected"
@@ -327,6 +344,15 @@ pub async fn chat_socket(
     }
 
     debug!("ws closed: User left the message loop");
+
+    if let Some(previous_group_id) = current_group_id {
+        state
+            .groups
+            .entry(previous_group_id)
+            .and_modify(|group| {
+                group.users.remove_user_connection(claims.user_id, connection_id.clone());
+            });
+    }
 }
 
 #[derive(Serialize, Deserialize)]

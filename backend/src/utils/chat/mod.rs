@@ -53,6 +53,7 @@ pub async fn get_group_nickname(
 
     Ok(res.nickname)
 }
+
 pub async fn get_user_login_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, ChatError> {
     let res = query!(
         r#"

@@ -1,7 +1,7 @@
 use uuid::Uuid;
 mod tools;
 use backend::{
-    models::MessageModel,
+    utils::chat::models::MessageModel,
     utils::chat::messages::{fetch_all_messages, fetch_last_messages_in_range},
 };
 use sqlx::PgPool;
