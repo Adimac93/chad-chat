@@ -12,22 +12,25 @@ use tokio::sync::{
     broadcast::{self, Receiver, Sender},
     Mutex,
 };
+use tracing::error;
 use uuid::Uuid;
 
+#[derive(Serialize, Deserialize)]
+pub struct KickMessage {
+    from: String,
+    reason: String,
+}
 #[derive(Clone)]
 pub struct UserSender(Arc<Mutex<SplitSink<WebSocket, Message>>>);
 
 impl UserSender {
-    async fn close(self) {
+    async fn kick(self, kick_message: &KickMessage) {
         let UserSender(sender) = self;
-        let _res = sender
-            .lock()
-            .await
-            .send(Message::Close(Some(CloseFrame {
-                code: 1000,
-                reason: "no reason".into(),
-            })))
-            .await;
+        let Ok(msg) = serde_json::to_string(kick_message) else {
+            error!("Failed to parse kick message");
+            return;
+        };
+        let res = sender.lock().await.send(Message::Text(msg)).await;
     }
 }
 
@@ -77,19 +80,52 @@ impl ChatState {
         group_id: &Uuid,
         user_id: &Uuid,
         connection_id: &str,
-    ) {
+    ) -> Option<UserSender> {
         if let Some(mut group) = self.groups.get_mut(group_id) {
-            group
+            return group
                 .users
                 .remove_user_connection(user_id, connection_id)
                 .await;
         }
+        None
     }
 
-    pub async fn remove_all_user_connections(&self, group_id: &Uuid, user_id: &Uuid) {
+    pub async fn remove_all_user_connections(
+        &self,
+        group_id: &Uuid,
+        user_id: &Uuid,
+        kick_message: &KickMessage,
+    ) {
         if let Some(mut group) = self.groups.get_mut(group_id) {
-            group.users.remove_all_user_connections(user_id).await;
+            group
+                .users
+                .remove_all_user_connections(user_id, kick_message)
+                .await;
         }
+    }
+
+    pub async fn change_user_connection(
+        &self,
+        user_id: &Uuid,
+        group_id: &Uuid,
+        new_group_id: &Uuid,
+        connection_id: &str,
+    ) -> Option<(Sender<String>, Receiver<String>)> {
+        if let Some(user_sender) = self
+            .remove_user_connection(group_id, user_id, connection_id)
+            .await
+        {
+            return Some(
+                self.add_user_connection(
+                    new_group_id.clone(),
+                    user_id.clone(),
+                    user_sender,
+                    connection_id.to_string(),
+                )
+                .await,
+            );
+        }
+        None
     }
 }
 
@@ -123,17 +159,22 @@ impl GroupChatState {
         )]))))
     }
 
-    async fn remove_user_connection(&mut self, user_id: &Uuid, connection_id: &str) {
+    async fn remove_user_connection(
+        &mut self,
+        user_id: &Uuid,
+        connection_id: &str,
+    ) -> Option<UserSender> {
         let GroupChatState(group_users) = self;
         if let Some(user_senders) = group_users.lock().await.get_mut(user_id) {
-            user_senders.remove_user_connection(connection_id).await;
+            return user_senders.remove_user_connection(connection_id).await;
         }
+        None
     }
 
-    async fn remove_all_user_connections(&mut self, user_id: &Uuid) {
+    async fn remove_all_user_connections(&mut self, user_id: &Uuid, kick_message: &KickMessage) {
         let GroupChatState(group_users) = self;
         if let Some(mut user_senders) = group_users.lock().await.remove(user_id) {
-            user_senders.remove_all_user_connections().await;
+            user_senders.remove_all_user_connections(kick_message).await;
         };
     }
 
@@ -168,18 +209,17 @@ impl UserChatState {
         )]))))
     }
 
-    async fn remove_user_connection(&mut self, connection_id: &str) {
+    async fn remove_user_connection(&mut self, connection_id: &str) -> Option<UserSender> {
         let UserChatState(user_senders) = self;
-        if let Some(user_sender) = user_senders.lock().await.remove(connection_id) {
-            user_sender.close().await;
-        };
+        user_senders.lock().await.remove(connection_id)
     }
 
-    async fn remove_all_user_connections(&mut self) {
+    async fn remove_all_user_connections(&mut self, kick_message: &KickMessage) {
         let UserChatState(user_senders) = self;
         let mut senders = user_senders.lock().await;
+
         for (_, sender) in senders.drain() {
-            sender.close().await
+            sender.kick(kick_message).await;
         }
     }
 

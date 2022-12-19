@@ -100,18 +100,35 @@ pub async fn chat_socket(
                     );
                     return;
                 }
-                // Remove user from the earlier connection
-                if let Some(previous_group_id) = current_group_id {
-                    state
-                        .remove_user_connection(&previous_group_id, &claims.user_id, &connection_id)
-                        .await;
-                }
-                if let Some(task) = recv_task {
-                    // Abort listening to other group message transmitter
+                
+                // Abort listening to other group message transmitter
+                if let Some(task) = recv_task {  
                     task.abort()
                 };
 
-                // Save current group id
+                // Remove user from the earlier connection and fetch new 
+                let (tx, mut rx) = match current_group_id {
+                    Some(previous_group_id) => {
+                        let Some(conn) = state
+                            .change_user_connection(
+                                &claims.user_id,
+                                &previous_group_id,
+                                &group_id,
+                                &connection_id,
+                            )
+                            .await
+                        else {
+                           break; 
+                        };
+                        conn
+                    },
+                    None => {
+                        state.add_user_connection(group_id, claims.user_id, sender.clone(), connection_id.clone()).await
+                    }
+                };
+
+                // Save current connection 
+                ctx = Some(tx);
                 current_group_id = Some(group_id);
 
                 // Load messages
@@ -143,21 +160,7 @@ pub async fn chat_socket(
                     error!("ws closed: Failed to load fetched messages");
                     return;
                 }
-
-                // Fetch group transmitter or create one & add user as online member of group
-                let (tx, mut rx) = state
-                    .add_user_connection(
-                        group_id,
-                        claims.user_id,
-                        sender.clone(),
-                        connection_id.clone(),
-                    )
-                    .await;
-
-                ctx = Some(tx);
-
-                // Send message to cliend side
-
+                
                 let sender_cloned = sender.clone();
                 recv_task = Some(tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
@@ -273,7 +276,11 @@ pub async fn chat_socket(
 
                 // TODO: a feature to send group invites in chat
             }
-            ChatAction::RemoveUser { user_id, group_id } => {
+            ChatAction::RemoveUser {
+                user_id,
+                group_id,
+                kick_message,
+            } => {
                 match check_if_group_member(&pool, &user_id, &group_id).await {
                     Ok(false) => {
                         debug!(
@@ -294,7 +301,9 @@ pub async fn chat_socket(
                     return;
                 };
 
-                state.remove_all_user_connections(&group_id, &user_id).await;
+                state
+                    .remove_all_user_connections(&group_id, &user_id, &kick_message)
+                    .await;
             }
             ChatAction::Close => {
                 info!("WebSocket closed explicitly");
@@ -314,11 +323,23 @@ pub async fn chat_socket(
 
 #[derive(Serialize, Deserialize)]
 enum ChatAction {
-    ChangeGroup { group_id: Uuid },
-    SendMessage { content: String },
-    GroupInvite { group_id: Uuid },
-    RemoveUser { user_id: Uuid, group_id: Uuid },
-    RequestMessages { loaded: i64 },
+    ChangeGroup {
+        group_id: Uuid,
+    },
+    SendMessage {
+        content: String,
+    },
+    GroupInvite {
+        group_id: Uuid,
+    },
+    RemoveUser {
+        user_id: Uuid,
+        group_id: Uuid,
+        kick_message: KickMessage,
+    },
+    RequestMessages {
+        loaded: i64,
+    },
     Close,
 }
 
