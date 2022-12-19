@@ -102,14 +102,16 @@ pub async fn chat_socket(
                 }
                 // Remove user from the earlier connection
                 if let Some(previous_group_id) = current_group_id {
-                    if let Some(mut group) = state
-                        .groups
-                        .get_mut(&previous_group_id) {
-                        group.users.remove_user_connection(claims.user_id, connection_id.clone()).await;
-                    }
+                    state
+                        .remove_user_connection(&previous_group_id, &claims.user_id, &connection_id)
+                        .await;
                 }
+                if let Some(task) = recv_task {
+                    // Abort listening to other group message transmitter
+                    task.abort()
+                };
 
-                // Save currend group id
+                // Save current group id
                 current_group_id = Some(group_id);
 
                 // Load messages
@@ -143,33 +145,19 @@ pub async fn chat_socket(
                 }
 
                 // Fetch group transmitter or create one & add user as online member of group
-                let group = match state.groups
-                    .get_mut(&group_id) {
-                    Some(mut group) => {
-                        group.users.add_user_connection(claims.user_id, sender.clone(), connection_id.clone()).await;
-                        group
-                    },
-                    None => {
-                        state.groups.entry(group_id).or_insert(
-                            GroupTransmitter::new(
-                                claims.user_id,
-                                connection_id.clone(),
-                                UserSender::new(sender.clone()).await,
-                            )
-                        )
-                    },
-                };
-                
-                // Group channels
-                let tx = group.tx.clone();
-                let mut rx = tx.subscribe();
+                let (tx, mut rx) = state
+                    .add_user_connection(
+                        group_id,
+                        claims.user_id,
+                        sender.clone(),
+                        connection_id.clone(),
+                    )
+                    .await;
+
                 ctx = Some(tx);
 
                 // Send message to cliend side
-                if let Some(task) = recv_task {
-                    // Abort listening to other group message transmitter
-                    task.abort()
-                };
+
                 let sender_cloned = sender.clone();
                 recv_task = Some(tokio::spawn(async move {
                     while let Ok(msg) = rx.recv().await {
@@ -306,10 +294,7 @@ pub async fn chat_socket(
                     return;
                 };
 
-                if let Some(mut target) = state
-                    .get_target_group(group_id) {
-                        target.remove_all_user_connections_with_a_frame(user_id).await;
-                }
+                state.remove_all_user_connections(&group_id, &user_id).await;
             }
             ChatAction::Close => {
                 info!("WebSocket closed explicitly");
@@ -321,11 +306,9 @@ pub async fn chat_socket(
     debug!("ws closed: User left the message loop");
 
     if let Some(previous_group_id) = current_group_id {
-        if let Some(mut group) = state
-            .groups
-            .get_mut(&previous_group_id) {
-            group.users.remove_user_connection(claims.user_id, connection_id.clone()).await;
-        }
+        state
+            .remove_user_connection(&previous_group_id, &claims.user_id, &connection_id)
+            .await;
     }
 }
 
