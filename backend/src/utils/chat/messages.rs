@@ -2,19 +2,22 @@ use anyhow::Context;
 use sqlx::{query_as, PgPool};
 use uuid::Uuid;
 
-use super::{errors::ChatError, models::MessageModel};
+use super::models::{GroupUserMessage, GroupUserMessageModel};
+
+use super::errors::ChatError;
 
 pub async fn fetch_last_messages_in_range(
     pool: &PgPool,
     group_id: &Uuid,
     limit: i64,
     offset: i64,
-) -> Result<Vec<MessageModel>, ChatError> {
-    let mut messages = query_as!(
-        MessageModel,
+) -> Result<Vec<GroupUserMessage>, ChatError> {
+    let messages = query_as!(
+        GroupUserMessageModel,
         r#"
-            select * from messages
-            where group_id = $1
+            select gu.nickname, m.content, m.sent_at from messages as m
+            join group_users gu on m.group_id = gu.group_id
+            where m.group_id = $1
             order by id desc
             limit $2 offset $3
         "#,
@@ -26,25 +29,15 @@ pub async fn fetch_last_messages_in_range(
     .await
     .context("Failed to fetch last messages")?;
 
-    messages.reverse();
-    Ok(messages)
-}
-
-pub async fn fetch_all_messages(
-    pool: &PgPool,
-    group_id: &Uuid,
-) -> Result<Vec<MessageModel>, ChatError> {
-    let messages = query_as!(
-        MessageModel,
-        r#"
-            select * from messages
-            where group_id = $1
-        "#,
-        group_id
-    )
-    .fetch_all(pool)
-    .await
-    .context("Failed to fetch last messages")?;
+    let messages = messages
+        .into_iter()
+        .rev()
+        .map(|msg| GroupUserMessage {
+            content: msg.content,
+            nickname: msg.nickname,
+            sat: msg.sent_at.unix_timestamp(),
+        })
+        .collect();
 
     Ok(messages)
 }

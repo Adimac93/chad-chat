@@ -1,7 +1,7 @@
 interface MessageModel {
-    sender: string;
-    sat: number;
+    nickname: string;
     content: string;
+    sat: number;
 }
 
 interface Group {

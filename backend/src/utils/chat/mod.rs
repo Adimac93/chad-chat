@@ -1,33 +1,12 @@
 pub mod errors;
 pub mod messages;
 pub mod models;
+pub mod socket;
 
 use anyhow::Context;
 use errors::*;
 use sqlx::{query, PgPool};
 use uuid::Uuid;
-
-// pub fn subscribe(
-//     groups: &mut HashMap<Uuid, GroupTransmitter>,
-//     group_id: Uuid,
-//     user_id: Uuid,
-//     username: &String,
-// ) -> (Sender<String>, Receiver<String>) {
-//     let group = groups
-//         .entry(group_id)
-//         .and_modify(|val| {
-//             val.users.insert(user_id);
-//         })
-//         .or_insert(GroupTransmitter::new());
-
-//     let rx = group.tx.subscribe();
-
-//     // Send joined message to all subscribers.
-//     let msg = format!("{} joined.", username);
-//     debug!("{}", msg);
-//     let _ = group.tx.send(msg);
-//     (group.tx.clone(), rx)
-// }
 
 pub async fn get_group_nickname(
     pool: &PgPool,

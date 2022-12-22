@@ -1,21 +1,16 @@
 ﻿use crate::app_errors::AppError;
 use crate::utils::auth::models::Claims;
-use crate::utils::groups::*;
 use crate::utils::groups::models::NewGroup;
+use crate::utils::groups::*;
 use axum::Router;
-use axum::{
-    extract::Json,
-    routing::get,
-    Extension,
-};
+use axum::{extract::Json, routing::get, Extension};
 use serde_json::Value;
 use sqlx::PgPool;
 use tracing::debug;
 
 pub fn router() -> Router {
-    Router::new()
-        .route("/", get(get_user_groups).post(post_create_group))
-        // .route("/leave", post(leave_group))
+    Router::new().route("/", get(get_user_groups).post(post_create_group))
+    // .route("/leave", post(leave_group))
 }
 
 async fn get_user_groups(

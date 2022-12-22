@@ -1,7 +1,7 @@
 <script lang="ts">
   export let message: MessageModel;
   const date = new Date(message.sat * 1000).toLocaleTimeString();
-  const sender = message.sender;
+  const sender = message.nickname;
 
   const parts: Array<Part> = [];
 

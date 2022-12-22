@@ -1,43 +1,16 @@
-use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use dashmap::DashMap;
-use futures::{stream::SplitSink, SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use time::OffsetDateTime;
-use tokio::sync::{
-    broadcast::{self, Receiver, Sender},
-    Mutex,
-};
-use tracing::error;
+use tokio::sync::Mutex;
 use uuid::Uuid;
+
+use super::socket::{GroupConnection, UserSender};
 
 #[derive(Serialize, Deserialize)]
 pub struct KickMessage {
     from: String,
     reason: String,
-}
-#[derive(Clone)]
-pub struct UserSender(Arc<Mutex<SplitSink<WebSocket, Message>>>);
-
-impl UserSender {
-    async fn kick(self, kick_message: &KickMessage) {
-        let UserSender(sender) = self;
-        let Ok(msg) = serde_json::to_string(kick_message) else {
-            error!("Failed to parse kick message");
-            return;
-        };
-        let res = sender.lock().await.send(Message::Text(msg)).await;
-    }
-}
-
-impl From<Arc<Mutex<SplitSink<WebSocket, Message>>>> for UserSender {
-    fn from(value: Arc<Mutex<SplitSink<WebSocket, Message>>>) -> Self {
-        Self(value)
-    }
 }
 
 pub struct ChatState {
@@ -45,10 +18,10 @@ pub struct ChatState {
 }
 
 impl ChatState {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
             groups: DashMap::new(),
-        }
+        })
     }
 
     pub async fn add_user_connection(
@@ -57,7 +30,7 @@ impl ChatState {
         user_id: Uuid,
         sender: impl Into<UserSender> + Clone,
         connection_id: String,
-    ) -> (Sender<String>, Receiver<String>) {
+    ) -> GroupConnection {
         let group = match self.groups.get_mut(&group_id) {
             Some(mut group) => {
                 group
@@ -72,7 +45,7 @@ impl ChatState {
                 sender.into(),
             )),
         };
-        group.emit()
+        group.conn.clone()
     }
 
     pub async fn remove_user_connection(
@@ -90,17 +63,9 @@ impl ChatState {
         None
     }
 
-    pub async fn remove_all_user_connections(
-        &self,
-        group_id: &Uuid,
-        user_id: &Uuid,
-        kick_message: &KickMessage,
-    ) {
+    pub async fn kick_user_from_group(&self, group_id: &Uuid, user_id: &Uuid) {
         if let Some(mut group) = self.groups.get_mut(group_id) {
-            group
-                .users
-                .remove_all_user_connections(user_id, kick_message)
-                .await;
+            group.users.remove_all_user_connections(user_id).await;
         }
     }
 
@@ -110,7 +75,7 @@ impl ChatState {
         group_id: &Uuid,
         new_group_id: &Uuid,
         connection_id: &str,
-    ) -> Option<(Sender<String>, Receiver<String>)> {
+    ) -> Option<GroupConnection> {
         if let Some(user_sender) = self
             .remove_user_connection(group_id, user_id, connection_id)
             .await
@@ -130,22 +95,17 @@ impl ChatState {
 }
 
 pub struct GroupTransmitter {
-    tx: broadcast::Sender<String>,
+    conn: GroupConnection,
     users: GroupChatState,
 }
 
 impl GroupTransmitter {
     // consider Arc tx and cloning
     fn new(user_id: Uuid, connection_id: String, sender: UserSender) -> Self {
-        let (tx, _rx) = broadcast::channel(100);
         Self {
-            tx,
+            conn: GroupConnection::new(100),
             users: GroupChatState::new(user_id, UserChatState::new(connection_id, sender)),
         }
-    }
-
-    fn emit(&self) -> (Sender<String>, Receiver<String>) {
-        (self.tx.clone(), self.tx.subscribe())
     }
 }
 /// Arc<DashMap<Uuid (group id), Group
@@ -171,10 +131,10 @@ impl GroupChatState {
         None
     }
 
-    async fn remove_all_user_connections(&mut self, user_id: &Uuid, kick_message: &KickMessage) {
+    async fn remove_all_user_connections(&mut self, user_id: &Uuid) {
         let GroupChatState(group_users) = self;
         if let Some(mut user_senders) = group_users.lock().await.remove(user_id) {
-            user_senders.remove_all_user_connections(kick_message).await;
+            user_senders.remove_all_user_connections().await;
         };
     }
 
@@ -214,13 +174,14 @@ impl UserChatState {
         user_senders.lock().await.remove(connection_id)
     }
 
-    async fn remove_all_user_connections(&mut self, kick_message: &KickMessage) {
+    async fn remove_all_user_connections(&mut self) -> Vec<UserSender> {
         let UserChatState(user_senders) = self;
         let mut senders = user_senders.lock().await;
 
-        for (_, sender) in senders.drain() {
-            sender.kick(kick_message).await;
-        }
+        senders
+            .drain()
+            .map(|(id, sender)| sender)
+            .collect::<Vec<UserSender>>()
     }
 
     async fn add_user_connection(&mut self, connection_id: String, sender: impl Into<UserSender>) {
@@ -232,18 +193,33 @@ impl UserChatState {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct UserMessage {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AddresedMessage {
     pub content: String,
     pub user_id: Uuid,
     pub group_id: Uuid,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct MessageModel {
-    pub id: i32,
+pub struct GroupUserMessageModel {
+    pub nickname: String,
     pub content: String,
-    pub user_id: Uuid,
-    pub group_id: Uuid,
     pub sent_at: OffsetDateTime,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GroupUserMessage {
+    pub nickname: String,
+    pub content: String,
+    pub sat: i64,
+}
+
+impl GroupUserMessage {
+    pub fn new(nickname: String, content: String) -> Self {
+        Self {
+            nickname,
+            content,
+            sat: OffsetDateTime::now_utc().unix_timestamp(),
+        }
+    }
 }

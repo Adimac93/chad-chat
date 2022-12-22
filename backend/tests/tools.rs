@@ -2,15 +2,15 @@
 use dotenv::dotenv;
 use reqwest::Client;
 use sqlx::PgPool;
-use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
 use std::net::{SocketAddr, TcpListener};
+use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
 pub async fn spawn_app(db: PgPool) -> SocketAddr {
     dotenv().ok();
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
     let addr = listener.local_addr().unwrap();
 
-    // panics when set for the second time - can't run multiple tests setting tracing subscriber
+    // !panics when set for the second time - can't run multiple tests setting tracing subscriber
 
     // tracing_subscriber::registry()
     //     .with(tracing_subscriber::EnvFilter::new(
