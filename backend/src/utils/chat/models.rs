@@ -1,198 +1,220 @@
+use super::socket::{GroupConnection, GroupSender, ServerAction, UserConnection, UserSender};
+use axum::extract::ws::WebSocket;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use sqlx::{query, PgPool};
 use std::{collections::HashMap, sync::Arc};
 use time::OffsetDateTime;
-use tokio::sync::Mutex;
+use tokio::{sync::RwLock, task::JoinHandle};
 use uuid::Uuid;
 
-use super::socket::{GroupConnection, UserSender};
-
-#[derive(Serialize, Deserialize)]
-pub struct KickMessage {
-    from: String,
-    reason: String,
+pub struct ChatState {
+    pub groups: Groups,
 }
 
-pub struct ChatState {
-    groups: DashMap<Uuid, GroupTransmitter>,
+pub struct UserController {
+    user_id: Uuid,
+    connection_id: String,
+    pub user_conn: UserConnection,
+    pub group_controller: Option<GroupController>, // should not be owned by struct (maybe RwLock)
+}
+
+impl UserController {
+    pub fn new(stream: WebSocket, user_id: Uuid, connection_id: String) -> Self {
+        Self {
+            user_id,
+            user_conn: UserConnection::new(stream),
+            connection_id,
+            group_controller: None,
+        }
+    }
+
+    pub fn get_group_controller(&self) -> &Option<GroupController> {
+        &self.group_controller
+    }
+}
+
+pub struct GroupController {
+    pub group_id: Uuid,
+    pub sender: GroupSender,
+}
+
+impl GroupController {
+    fn new(group_id: Uuid, sender: GroupSender) -> Self {
+        Self { group_id, sender }
+    }
+}
+pub struct Groups(DashMap<Uuid, GroupUserConnections>);
+
+impl Groups {
+    fn new() -> Self {
+        Self(DashMap::new())
+    }
+
+    pub async fn connect(&self, controller: &mut UserController, group_id: &Uuid) {
+        let Groups(groups) = self;
+        let mut group = groups
+            .entry(*group_id)
+            .or_insert(GroupUserConnections::new());
+
+        let group_conn = group.conn.emit();
+
+        // Start listening for new group messages
+        let conn = controller
+            .user_conn
+            .sender
+            .listen(group_conn.receiver)
+            .await;
+
+        // Mount group controller
+        controller.group_controller = Some(GroupController::new(*group_id, group_conn.sender));
+
+        // Register connection
+        group
+            .users
+            .connect(&controller.user_id, conn, controller.connection_id.clone())
+            .await;
+    }
+
+    pub async fn disconnect(&self, controller: &UserController) -> bool {
+        if let Some(group_controller) = &controller.get_group_controller() {
+            let Groups(groups) = self;
+            if let Some(mut group) = groups.get_mut(&group_controller.group_id) {
+                group
+                    .users
+                    .disconnect(&controller.user_id, controller.connection_id.clone())
+                    .await;
+                return true;
+            }
+        }
+        false
+    }
+
+    pub async fn kick(
+        &self,
+        pool: &PgPool,
+        user_id: &Uuid,
+        group_id: &Uuid,
+        kick_message: KickMessage,
+    ) -> bool {
+        let Groups(groups) = self;
+        if let Some(mut group) = groups.get_mut(group_id) {
+            group.users.disconnect_all(user_id, kick_message).await;
+            // todo: remove group controller for kicked user
+        }
+        query!(
+            r#"
+                delete from group_users
+                where group_id = $1 and user_id = $2
+            "#,
+            group_id,
+            user_id
+        )
+        .execute(pool)
+        .await
+        .is_ok()
+    }
 }
 
 impl ChatState {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            groups: DashMap::new(),
+            groups: Groups::new(),
         })
     }
-
-    pub async fn add_user_connection(
-        &self,
-        group_id: Uuid,
-        user_id: Uuid,
-        sender: impl Into<UserSender> + Clone,
-        connection_id: String,
-    ) -> GroupConnection {
-        let group = match self.groups.get_mut(&group_id) {
-            Some(mut group) => {
-                group
-                    .users
-                    .add_user_connection(user_id, sender, connection_id.clone())
-                    .await;
-                group
-            }
-            None => self.groups.entry(group_id).or_insert(GroupTransmitter::new(
-                user_id,
-                connection_id.clone(),
-                sender.into(),
-            )),
-        };
-        group.conn.clone()
-    }
-
-    pub async fn remove_user_connection(
-        &self,
-        group_id: &Uuid,
-        user_id: &Uuid,
-        connection_id: &str,
-    ) -> Option<UserSender> {
-        if let Some(mut group) = self.groups.get_mut(group_id) {
-            return group
-                .users
-                .remove_user_connection(user_id, connection_id)
-                .await;
-        }
-        None
-    }
-
-    pub async fn kick_user_from_group(&self, group_id: &Uuid, user_id: &Uuid) {
-        if let Some(mut group) = self.groups.get_mut(group_id) {
-            group.users.remove_all_user_connections(user_id).await;
-        }
-    }
-
-    pub async fn change_user_connection(
-        &self,
-        user_id: &Uuid,
-        group_id: &Uuid,
-        new_group_id: &Uuid,
-        connection_id: &str,
-    ) -> Option<GroupConnection> {
-        if let Some(user_sender) = self
-            .remove_user_connection(group_id, user_id, connection_id)
-            .await
-        {
-            return Some(
-                self.add_user_connection(
-                    new_group_id.clone(),
-                    user_id.clone(),
-                    user_sender,
-                    connection_id.to_string(),
-                )
-                .await,
-            );
-        }
-        None
-    }
 }
 
-pub struct GroupTransmitter {
+pub struct GroupUserConnections {
     conn: GroupConnection,
-    users: GroupChatState,
+    users: ChatUsers,
 }
 
-impl GroupTransmitter {
-    // consider Arc tx and cloning
-    fn new(user_id: Uuid, connection_id: String, sender: UserSender) -> Self {
+impl GroupUserConnections {
+    fn new() -> Self {
         Self {
             conn: GroupConnection::new(100),
-            users: GroupChatState::new(user_id, UserChatState::new(connection_id, sender)),
+            users: ChatUsers::new(),
         }
     }
 }
-/// Arc<DashMap<Uuid (group id), Group
-pub struct GroupChatState(Arc<Mutex<HashMap<Uuid, UserChatState>>>);
 
-impl GroupChatState {
-    fn new(user_id: Uuid, connections: UserChatState) -> Self {
-        Self(Arc::new(Mutex::new(HashMap::from([(
-            user_id,
-            connections,
-        )]))))
+pub struct ChatUsers(DashMap<Uuid, UserConnections>);
+
+impl ChatUsers {
+    fn new() -> Self {
+        Self(DashMap::new())
     }
 
-    async fn remove_user_connection(
+    async fn disconnect(&mut self, user_id: &Uuid, connection_id: String) {
+        let ChatUsers(group_users) = self;
+        if let Some((_, user_connections)) = group_users.remove(user_id) {
+            if let Some((_, task)) = user_connections.remove(connection_id).await {
+                task.abort();
+            }
+        }
+    }
+
+    async fn disconnect_all(&mut self, user_id: &Uuid, kick_message: KickMessage) {
+        let ChatUsers(group_users) = self;
+        if let Some(user_connections) = group_users.get_mut(user_id) {
+            if let Some(user_connecetions) = user_connections.remove_all().await {
+                for (sender, task) in user_connecetions {
+                    task.abort();
+                    sender.send(&ServerAction::Kick(kick_message.clone())).await;
+                }
+            }
+        }
+    }
+
+    async fn connect(
         &mut self,
         user_id: &Uuid,
-        connection_id: &str,
-    ) -> Option<UserSender> {
-        let GroupChatState(group_users) = self;
-        if let Some(user_senders) = group_users.lock().await.get_mut(user_id) {
-            return user_senders.remove_user_connection(connection_id).await;
-        }
-        None
-    }
-
-    async fn remove_all_user_connections(&mut self, user_id: &Uuid) {
-        let GroupChatState(group_users) = self;
-        if let Some(mut user_senders) = group_users.lock().await.remove(user_id) {
-            user_senders.remove_all_user_connections().await;
-        };
-    }
-
-    async fn add_user_connection(
-        &mut self,
-        user_id: Uuid,
-        sender: impl Into<UserSender> + Clone,
+        conn: (UserSender, JoinHandle<()>),
         connection_id: String,
     ) {
-        let GroupChatState(group_users) = self;
-        let mut data = group_users.lock().await;
-        match data.get_mut(&user_id) {
-            Some(user_senders) => {
-                user_senders
-                    .add_user_connection(connection_id, sender)
-                    .await
-            }
-            None => {
-                let _ = data.insert(user_id, UserChatState::new(connection_id, sender));
-            }
+        let ChatUsers(group_users) = self;
+        if let Some(user_connections) = group_users.get_mut(user_id) {
+            user_connections.add(connection_id, conn).await;
         }
     }
 }
 
-pub struct UserChatState(Arc<Mutex<HashMap<String, UserSender>>>);
+pub struct UserConnections(RwLock<HashMap<String, (UserSender, JoinHandle<()>)>>);
 
-impl UserChatState {
-    fn new(connection_id: String, sender: impl Into<UserSender>) -> Self {
-        Self(Arc::new(Mutex::new(HashMap::from([(
-            connection_id,
-            sender.into(),
-        )]))))
+impl UserConnections {
+    fn new() -> Self {
+        Self(RwLock::new(HashMap::new()))
     }
 
-    async fn remove_user_connection(&mut self, connection_id: &str) -> Option<UserSender> {
-        let UserChatState(user_senders) = self;
-        user_senders.lock().await.remove(connection_id)
-    }
-
-    async fn remove_all_user_connections(&mut self) -> Vec<UserSender> {
-        let UserChatState(user_senders) = self;
-        let mut senders = user_senders.lock().await;
-
-        senders
-            .drain()
-            .map(|(id, sender)| sender)
-            .collect::<Vec<UserSender>>()
-    }
-
-    async fn add_user_connection(&mut self, connection_id: String, sender: impl Into<UserSender>) {
-        let UserChatState(user_senders) = self;
-        user_senders
-            .lock()
+    async fn add(&self, connection_id: String, conn: (UserSender, JoinHandle<()>)) {
+        let UserConnections(connections) = self;
+        connections
+            .write()
             .await
-            .insert(connection_id, sender.into());
+            .entry(connection_id)
+            .or_insert(conn);
+    }
+
+    async fn remove(&self, connection_id: String) -> Option<(UserSender, JoinHandle<()>)> {
+        let UserConnections(connections) = self;
+        connections.write().await.remove(&connection_id)
+    }
+
+    async fn remove_all(&self) -> Option<Vec<(UserSender, JoinHandle<()>)>> {
+        let UserConnections(connections) = self;
+        if connections.read().await.is_empty() {
+            return None;
+        }
+        Some(
+            connections
+                .write()
+                .await
+                .drain()
+                .map(|(_, conn)| conn)
+                .collect::<Vec<(UserSender, JoinHandle<()>)>>(),
+        )
     }
 }
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AddresedMessage {
     pub content: String,
@@ -222,4 +244,10 @@ impl GroupUserMessage {
             sat: OffsetDateTime::now_utc().unix_timestamp(),
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct KickMessage {
+    from: String,
+    reason: String,
 }

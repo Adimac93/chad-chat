@@ -4,62 +4,12 @@ use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use time::OffsetDateTime;
 use tokio::sync::broadcast::{self, Receiver};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
-pub struct Connection {
-    pub user_conn: UserConnection,
-    pub group_controller: Option<GroupController>,
-}
-
-pub struct GroupController {
-    pub group_conn: GroupConnection,
-    pub group_id: Uuid,
-    receive_task: Option<JoinHandle<()>>,
-}
-
-impl GroupController {
-    pub fn new(group_conn: GroupConnection, group_id: Uuid) -> Self {
-        Self {
-            group_conn,
-            group_id,
-            receive_task: None,
-        }
-    }
-}
-
-impl Connection {
-    pub fn new(stream: WebSocket) -> Self {
-        Self {
-            user_conn: UserConnection::new(stream),
-            group_controller: None,
-        }
-    }
-
-    pub async fn listen_for_group_messages(&mut self) {
-        if let Some(group_controller) = &mut self.group_controller {
-            group_controller.receive_task = Some(
-                self.user_conn
-                    .sender
-                    .listen(group_controller.group_conn.subscribe())
-                    .await,
-            )
-        }
-    }
-
-    pub fn stop_listening_for_group_messages(&mut self) {
-        if let Some(group_controller) = &mut self.group_controller {
-            if let Some(receive_task) = &group_controller.receive_task {
-                receive_task.abort();
-                group_controller.receive_task = None;
-            }
-        }
-    }
-}
 pub struct UserConnection {
     pub sender: UserSender,
     pub receiver: UserReceiver,
@@ -72,6 +22,14 @@ impl UserConnection {
             sender: UserSender::new(sender),
             receiver: UserReceiver::new(receiver),
         }
+    }
+
+    pub fn join(sender: UserSender, receiver: UserReceiver) -> Self {
+        Self { sender, receiver }
+    }
+
+    pub fn split(self) -> (UserSender, UserReceiver) {
+        (self.sender, self.receiver)
     }
 }
 
@@ -91,19 +49,27 @@ impl UserSender {
     }
 
     /// Listen to receiver messages and pass them to client
-    pub async fn listen(&self, broadcast_receiver: GroupReceiver) -> JoinHandle<()> {
+    pub async fn listen(&self, broadcast_receiver: GroupReceiver) -> (UserSender, JoinHandle<()>) {
         let UserSender(sender) = self;
         let GroupReceiver(mut broadcast_receiver) = broadcast_receiver;
 
-        let sender = sender.clone();
-        tokio::spawn(async move {
+        let task_sender = sender.clone();
+        let task = tokio::spawn(async move {
             while let Ok(msg) = broadcast_receiver.recv().await {
-                if sender.lock().await.send(Message::Text(msg)).await.is_err() {
+                // possible broadcast middleware
+                if task_sender
+                    .lock()
+                    .await
+                    .send(Message::Text(msg))
+                    .await
+                    .is_err()
+                {
                     error!("Error while sending message to the client");
                     break;
                 }
             }
-        })
+        });
+        (UserSender(sender.clone()), task)
     }
 }
 
@@ -137,6 +103,7 @@ pub enum ServerAction {
     LoadRequested(Vec<GroupUserMessage>),
     GroupInvite,
     Message(GroupUserMessage),
+    Kick(KickMessage),
 }
 
 /// Client action send to server
@@ -225,16 +192,6 @@ impl GroupConnection {
     }
 }
 
-impl Clone for GroupConnection {
-    fn clone(&self) -> Self {
-        let GroupSender(sender) = &self.sender;
-        Self {
-            sender: GroupSender::new(sender.clone()),
-            receiver: GroupReceiver::new(sender.subscribe()),
-        }
-    }
-}
-
 pub struct GroupSender(broadcast::Sender<String>);
 
 impl GroupSender {
@@ -252,7 +209,7 @@ impl GroupSender {
                 trace!("Action send to {n} group members");
             }
             Err(e) => {
-                error!("Failed to execute server action for all active members");
+                error!("Failed to execute server action for all active members: {e}");
             }
         }
     }
