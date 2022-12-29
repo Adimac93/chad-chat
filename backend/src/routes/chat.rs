@@ -1,7 +1,9 @@
 ﻿use crate::utils::auth::models::Claims;
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
-use crate::utils::chat::socket::{ClientAction, ServerAction, UserConnection};
+use crate::utils::chat::socket::{
+    ChatState, ClientAction, ServerAction, UserChannel, UserController,
+};
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use axum::http::HeaderMap;
@@ -57,7 +59,7 @@ pub async fn chat_socket(
 
     loop {
         // Wait for next client action
-        let action = controller.user_conn.receiver.next_action().await;
+        let action = controller.user_channel.receiver.next_action().await;
         match action {
             ClientAction::ChangeGroup { group_id } => {
                 // Security checks
@@ -66,7 +68,8 @@ pub async fn chat_socket(
                 }
 
                 // Connect user controller to group
-                state.groups.connect(&mut controller, &group_id).await;
+                let group_controller = state.groups.get(&group_id);
+                controller.connect(group_id, group_controller).await;
 
                 // Load last group messages
                 let Ok(messages) = fetch_last_messages_in_range(&pool,&group_id,10,0).await else {
@@ -76,13 +79,13 @@ pub async fn chat_socket(
 
                 // Send messages JSON object to user
                 let payload = ServerAction::LoadMessages(messages);
-                if controller.user_conn.sender.send(&payload).await.is_err() {
+                if controller.user_channel.sender.send(&payload).await.is_err() {
                     error!("ws closed: Failed to load fetched messages");
                     continue;
                 }
             }
             ClientAction::SendMessage { content } => {
-                let Some(group_controller) = controller.get_group_controller() else {
+                let Some(conn) = controller.get_group_conn().await else {
                     debug!(
                         "Cannot send message from user {} ({}) - group not selected",
                         &claims.user_id, &claims.login
@@ -102,37 +105,36 @@ pub async fn chat_socket(
 
                 // todo: make transaction
                 // Save message in database
-                let nickname =
-                    get_group_nickname(&pool, &claims.user_id, &group_controller.group_id)
-                        .await
-                        .unwrap_or("unknown_user".into());
+                let nickname = get_group_nickname(&pool, &claims.user_id, &conn.group_id)
+                    .await
+                    .unwrap_or("unknown_user".into());
 
-                let Ok(_) = create_message(&pool, &claims.user_id, &group_controller.group_id, &content).await else {
+                let Ok(_) = create_message(&pool, &claims.user_id, &conn.group_id, &content).await else {
                             error!("ws closed: Failed to save the message from the user {} ({}) in the database", &claims.user_id, &claims.login);
                             continue;
                         };
 
                 // Send message to the connected group members
-                let payload = ServerAction::Message(GroupUserMessage::new(nickname, content));
-                group_controller.sender.send(&payload);
-                debug!("Sent: {payload:#?}");
+                let action = ServerAction::Message(GroupUserMessage::new(nickname, content));
+                debug!("Sent: {action:#?}");
+                conn.controller.channel.sender.send(action);
             }
             ClientAction::RequestMessages { loaded } => {
-                let Some(group_controller) = controller.get_group_controller() else {
+                let Some(conn) = controller.get_group_conn().await else {
                     debug!("Cannot fetch requested messages - group not selected");
                     continue;
                 };
                 info!("Requested messages");
 
                 // Load older messages
-                let Ok(messages) = fetch_last_messages_in_range(&pool,&group_controller.group_id,10,loaded).await else {
+                let Ok(messages) = fetch_last_messages_in_range(&pool,&conn.group_id,10,loaded).await else {
                         error!("ws closed: Cannot fetch group messages for user {} ({})", &claims.user_id, &claims.login);
                         continue;
                     };
 
                 // Send messages json object
                 let payload = ServerAction::LoadRequested(messages);
-                if controller.user_conn.sender.send(&payload).await.is_err() {
+                if controller.user_channel.sender.send(&payload).await.is_err() {
                     error!(
                         "Failed to load messages for user {} ({})",
                         &claims.user_id, &claims.login
@@ -147,11 +149,7 @@ pub async fn chat_socket(
                     continue;
                 };
             }
-            ClientAction::RemoveUser {
-                user_id,
-                group_id,
-                kick_message,
-            } => {
+            ClientAction::RemoveUser { user_id, group_id } => {
                 match check_if_group_member(&pool, &user_id, &group_id).await {
                     Ok(false) => {
                         debug!(
@@ -176,10 +174,7 @@ pub async fn chat_socket(
                 };
 
                 // Stop listening for new group messages on all kicked user connections
-                state
-                    .groups
-                    .kick(&pool, &user_id, &group_id, kick_message)
-                    .await;
+                controller.kick(user_id).await;
 
                 // todo: disconnect group controllers
             }
@@ -187,7 +182,7 @@ pub async fn chat_socket(
                 info!("WebSocket closed explicitly");
                 break;
             }
-            ClientAction::Forbidden => {
+            ClientAction::Ignore => {
                 info!("Action can't be handled");
                 continue;
             }
@@ -195,7 +190,7 @@ pub async fn chat_socket(
     }
 
     debug!("ws closed: User left the message loop");
-    state.groups.disconnect(&controller).await;
+    controller.disconnect().await;
 }
 
 /// Checks if group exsists and if users is a group member

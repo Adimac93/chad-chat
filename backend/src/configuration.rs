@@ -78,7 +78,7 @@ impl DatabaseSettings {
     }
 
     pub fn is_migrating(&self) -> bool {
-        self.is_migrating.unwrap_or(true)
+        self.is_migrating.unwrap_or(false)
     }
 
     fn production() -> Self {
