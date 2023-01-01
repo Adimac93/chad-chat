@@ -10,7 +10,7 @@ use errors::*;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use sqlx::{query, PgPool};
+use sqlx::{query, query_as, PgPool};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -24,6 +24,7 @@ pub enum ActivityStatus {
     Idle,
 }
 
+// todo: make as transaction with Acquire
 pub async fn try_register_user(
     pool: &PgPool,
     login: &str,
@@ -32,7 +33,7 @@ pub async fn try_register_user(
 ) -> Result<Uuid, AuthError> {
     let user = query!(
         r#"
-            select id from users where login = $1
+            select id from credentials where login = $1
         "#,
         login
     )
@@ -62,14 +63,13 @@ pub async fn try_register_user(
         nickname = "I am definitely not a chad"
     }
 
+    // ! should be inserted at once
     let user_id = query!(
         r#"
-            insert into users (login, password, nickname, activity_status)
-            values ($1, $2, $3, $4)
+            insert into users (nickname, activity_status)
+            values ($1, $2)
             returning (id)
         "#,
-        login,
-        hashed_pass,
         nickname,
         ActivityStatus::Online as ActivityStatus,
     )
@@ -77,6 +77,19 @@ pub async fn try_register_user(
     .await
     .context("Failed to create a new user")?
     .id;
+
+    query!(
+        r#"
+            insert into credentials (id, login, password)
+            values ($1, $2, $3)
+        "#,
+        user_id,
+        login,
+        hashed_pass
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create new credentials")?;
 
     Ok(user_id)
 }
@@ -93,7 +106,8 @@ pub async fn verify_user_credentials(
 
     let res = query!(
         r#"
-            select id, password from users where login = $1
+            select id, password from credentials
+            where login = $1
         "#,
         login
     )

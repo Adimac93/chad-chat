@@ -31,7 +31,7 @@ pub async fn get_group_nickname(
 pub async fn get_user_login_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, ChatError> {
     let res = query!(
         r#"
-            select login from users where id = $1
+            select login from credentials where id = $1
         "#,
         user_id
     )
