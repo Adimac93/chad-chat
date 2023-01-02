@@ -37,6 +37,7 @@ pub async fn fetch_last_messages_in_range(
             nickname: msg.nickname,
             sat: msg.sent_at.unix_timestamp(),
         })
+        .rev()
         .collect();
 
     Ok(messages)

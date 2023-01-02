@@ -3,7 +3,7 @@ mod tools;
 use backend::utils::chat::{messages::fetch_last_messages_in_range, models::GroupUserMessage};
 use sqlx::PgPool;
 
-#[sqlx::test(fixtures("users", "groups", "messages"))]
+#[sqlx::test(fixtures("users", "groups", "group_users", "messages"))]
 async fn partial(pool: PgPool) {
     let group_id = Uuid::try_from("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 

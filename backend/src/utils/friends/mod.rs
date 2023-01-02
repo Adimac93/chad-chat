@@ -181,7 +181,7 @@ pub async fn respond_to_friend_request<'c>(
     return Ok(());
 }
 
-pub async fn remove_friend<'c>(
+pub async fn remove_user_friend<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: Uuid,
     friend_id: Uuid,
@@ -212,5 +212,36 @@ pub async fn remove_friend<'c>(
 
     transaction.commit().await.context("Transaction failed")?;
 
+    Ok(())
+}
+
+pub async fn update_friend_note<'c>(
+    conn: impl Acquire<'c, Database = Postgres>,
+    user_id: Uuid,
+    friend_id: Uuid,
+    note: String,
+) -> Result<(), FriendError> {
+    //? is a friend
+
+    let mut transaction = conn
+        .begin()
+        .await
+        .context("Failed to abort the transaction")?;
+
+    query!(
+        r#"
+            update user_friends
+            set note = $1
+            where user_id = $2 and friend_id = $3
+        "#,
+        note,
+        user_id,
+        friend_id
+    )
+    .execute(&mut transaction)
+    .await
+    .context("Failed to update note")?;
+
+    transaction.commit().await.context("Transaction failed")?;
     Ok(())
 }
