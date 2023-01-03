@@ -10,7 +10,7 @@ use super::{auth::ActivityStatus, groups::check_if_user_exists};
 pub mod errors;
 pub mod models;
 
-pub async fn send_friend_request<'c>(
+pub async fn send_friend_request_by_user_id<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: Uuid,
     request_user_id: Uuid,
@@ -78,7 +78,7 @@ pub async fn fetch_user_friends<'c>(
     let friends = query_as!(
         Friend,
         r#"
-            select users.activity_status as "status: ActivityStatus", user_friends.note from user_friends
+            select users.activity_status as "status: ActivityStatus", users.profile_picture_url, user_friends.note from user_friends
             join users on users.id = user_friends.friend_id
             where user_id = $1
         "#,

@@ -1,19 +1,20 @@
 pub mod app_errors;
 pub mod configuration;
 pub mod database;
-pub mod models;
 pub mod routes;
 pub mod utils;
 
 use std::io;
 
 use axum::{
+    async_trait,
+    extract::{self, FromRequest},
     http::header::CONTENT_TYPE,
     http::StatusCode,
     http::{HeaderValue, Method, Uri},
     response::IntoResponse,
     routing::get,
-    Extension, Json, Router, extract::{FromRequest, self}, async_trait,
+    Extension, Json, Router,
 };
 use axum_extra::routing::SpaRouter;
 use configuration::get_config;
@@ -75,7 +76,9 @@ pub struct TokenExtensions {
 
 #[async_trait]
 impl<B> FromRequest<B> for TokenExtensions
-where B: Send + Sync {
+where
+    B: Send + Sync,
+{
     type Rejection = AuthError;
 
     async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
@@ -83,8 +86,7 @@ where B: Send + Sync {
             .extensions()
             .get::<Self>()
             .expect("Failed to get jwt secret extension")
-            .clone()
-        )
+            .clone())
     }
 }
 

@@ -1,8 +1,8 @@
 mod tools;
 
 use backend::utils::friends::{
-    fetch_user_friends, remove_user_friend, respond_to_friend_request, send_friend_request,
-    update_friend_note,
+    fetch_user_friends, remove_user_friend, respond_to_friend_request,
+    send_friend_request_by_user_id, update_friend_note,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -11,7 +11,7 @@ use uuid::Uuid;
 async fn send_request(db: PgPool) {
     let user_id = Uuid::parse_str("ba34ff10-4b89-44cb-9b36-31eb57c41556").unwrap(); // Adam
     let request_user_id = Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(); // Hubert
-    let res = send_friend_request(&db, user_id, request_user_id).await;
+    let res = send_friend_request_by_user_id(&db, user_id, request_user_id).await;
 
     res.unwrap();
 }
