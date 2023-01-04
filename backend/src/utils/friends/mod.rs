@@ -1,6 +1,7 @@
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, query_as, Acquire, Postgres};
+use tracing::debug;
 use uuid::Uuid;
 
 use self::{errors::FriendError, models::Friend};
@@ -191,6 +192,21 @@ pub async fn remove_user_friend<'c>(
         .await
         .context("Failed to abort the transaction")?;
 
+    if !is_friend(
+        transaction
+            .acquire()
+            .await
+            .context("Failed to acquire transaction")?,
+        &user_id,
+        &friend_id,
+    )
+    .await?
+    {
+        transaction.rollback().await.context("Failed to rollback")?;
+        debug!("Can not remove not friend");
+        return Err(FriendError::Unexpected(anyhow::Error::msg("Stranger"))); // other way of auto logging with 500 error
+    }
+
     let res = query!(
         r#"
             delete from user_friends
@@ -216,18 +232,30 @@ pub async fn remove_user_friend<'c>(
 }
 
 pub async fn update_friend_note<'c>(
-    conn: impl Acquire<'c, Database = Postgres>,
+    acq: impl Acquire<'c, Database = Postgres>,
     user_id: Uuid,
     friend_id: Uuid,
     note: String,
 ) -> Result<(), FriendError> {
-    //? is a friend
-
-    let mut transaction = conn
+    let mut transaction = acq
         .begin()
         .await
         .context("Failed to abort the transaction")?;
 
+    if !is_friend(
+        transaction
+            .acquire()
+            .await
+            .context("Failed to acquire transaction")?,
+        &user_id,
+        &friend_id,
+    )
+    .await?
+    {
+        transaction.rollback().await.context("Failed to rollback")?;
+        debug!("Can not change note for not a friend");
+        return Err(FriendError::Unexpected(anyhow::Error::msg("Stranger"))); // other way of auto logging with 500 error
+    }
     query!(
         r#"
             update user_friends
@@ -244,4 +272,26 @@ pub async fn update_friend_note<'c>(
 
     transaction.commit().await.context("Transaction failed")?;
     Ok(())
+}
+
+pub async fn is_friend<'c>(
+    acq: impl Acquire<'c, Database = Postgres>,
+    user_id: &Uuid,
+    friend_id: &Uuid,
+) -> Result<bool, FriendError> {
+    let mut conn = acq.acquire().await.context("Failed to acquire")?;
+    let is_friend = query!(
+        r#"
+            select * from user_friends
+            where user_id = $1 and friend_id = $2
+        "#,
+        user_id,
+        friend_id
+    )
+    .fetch_optional(&mut *conn)
+    .await
+    .context("Failed to select user friend")?
+    .is_some();
+
+    Ok(is_friend)
 }
