@@ -9,9 +9,11 @@ use time::{Duration, OffsetDateTime};
 use tracing::debug;
 use uuid::Uuid;
 
+use crate::app_errors::AppError;
+
 use self::errors::InvitationError;
 
-use super::groups::{models::GroupInfo, try_add_user_to_group};
+use super::groups::{errors::GroupError, models::GroupInfo, try_add_user_to_group};
 
 // Frontend payload
 #[derive(Deserialize, Debug)]
@@ -81,8 +83,7 @@ pub async fn try_create_group_invitation_with_code(
         invitation.uses_left
     )
     .execute(pool)
-    .await
-    .context("Failed to create a group invitation")?;
+    .await?;
 
     Ok(invitation.id)
 }
@@ -91,7 +92,7 @@ pub async fn fetch_group_info_by_code(
     pool: &PgPool,
     code: &str,
 ) -> Result<GroupInfo, InvitationError> {
-    let mut transaction = pool.begin().await.context("Failed to begin transaction")?;
+    let mut transaction = pool.begin().await?;
     let res = query!(
         r#"
             select groups.name, groups.id as group_id, count(*) as members_count from group_invitations
@@ -103,14 +104,16 @@ pub async fn fetch_group_info_by_code(
         code,
     )
     .fetch_optional(&mut transaction)
-    .await
-    .context("Failed to find group invitation")?;
+    .await?;
 
     let invitation = res.ok_or(InvitationError::InvalidCode)?;
 
     Ok(GroupInfo {
         name: invitation.name,
-        members: invitation.members_count.context("Members count is None")?,
+        members: invitation
+            .members_count
+            .context("Members count is None")
+            .map_err(InvitationError::Unexpected)?, // to change
     })
 }
 
@@ -118,8 +121,9 @@ pub async fn try_join_group_by_code<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: &Uuid,
     code: &str,
-) -> Result<(), InvitationError> {
-    let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
+) -> Result<(), GroupError> {
+    let mut transaction = conn.begin().await?;
+
     let Some(invitation) = query_as!(
         GroupInvitation,
         r#"
@@ -129,9 +133,8 @@ pub async fn try_join_group_by_code<'c>(
         code
     )
     .fetch_optional(&mut transaction)
-    .await
-    .context("Failed to find group invitation")? else {
-        return Err(InvitationError::InvalidCode)
+    .await? else {
+        return Err(InvitationError::InvalidCode)?
     };
 
     match invitation.uses_left {
@@ -144,15 +147,11 @@ pub async fn try_join_group_by_code<'c>(
                 invitation.id
             )
             .execute(&mut transaction)
-            .await
-            .context("Failed to delete expired group invitation")?;
+            .await?;
 
-            transaction
-                .commit()
-                .await
-                .context("Failed to commit transaction")?;
+            transaction.commit().await?;
 
-            return Err(InvitationError::InvitationExpired);
+            return Err(InvitationError::InvitationExpired)?;
         }
         _ => (),
     }
@@ -167,22 +166,16 @@ pub async fn try_join_group_by_code<'c>(
                 invitation.id
             )
             .execute(&mut transaction)
-            .await
-            .context("Failed to delete expired group invitation")?;
+            .await?;
 
-            transaction
-                .commit()
-                .await
-                .context("Failed to commit transaction")?;
+            transaction.commit().await?;
 
-            return Err(InvitationError::InvitationExpired);
+            return Err(InvitationError::InvitationExpired)?;
         }
         _ => (),
     }
 
-    try_add_user_to_group(&mut transaction, user_id, &invitation.group_id)
-        .await
-        .context("Failed to add user to group")?; // ? better error conversion possible
+    try_add_user_to_group(&mut transaction, user_id, &invitation.group_id).await?; // ? better error conversion possible
 
     if let Some(use_number) = invitation.uses_left {
         let _res = query!(
@@ -195,14 +188,10 @@ pub async fn try_join_group_by_code<'c>(
             invitation.id,
         )
         .execute(&mut transaction)
-        .await
-        .context("Failed to update group invitation uses_left field")?;
+        .await?;
     }
 
-    transaction
-        .commit()
-        .await
-        .context("Failed to commit transaction")?;
+    transaction.commit().await?;
     return Ok(());
 }
 

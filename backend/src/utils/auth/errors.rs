@@ -44,3 +44,9 @@ impl IntoResponse for AuthError {
         (status_code, Json(json!({ "error_info": info }))).into_response()
     }
 }
+
+impl From<sqlx::Error> for AuthError {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}

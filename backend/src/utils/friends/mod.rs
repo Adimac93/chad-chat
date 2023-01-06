@@ -4,6 +4,8 @@ use sqlx::{query, query_as, Acquire, Postgres};
 use tracing::debug;
 use uuid::Uuid;
 
+use crate::app_errors::AppError;
+
 use self::{errors::FriendError, models::Friend};
 
 use super::{auth::ActivityStatus, groups::check_if_user_exists};
@@ -16,7 +18,7 @@ pub async fn send_friend_request_by_user_id<'c>(
     user_id: Uuid,
     request_user_id: Uuid,
 ) -> Result<(), FriendError> {
-    let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
+    let mut transaction = conn.begin().await?;
 
     //check_if_user_exists(transaction, &request_user_id);
     //? is a friend already
@@ -29,8 +31,7 @@ pub async fn send_friend_request_by_user_id<'c>(
         request_user_id
     )
     .fetch_optional(&mut transaction)
-    .await
-    .context("Failed to select user friend")?;
+    .await?;
 
     if let Some(_) = res {
         return Err(FriendError::AlreadyFriend);
@@ -46,8 +47,7 @@ pub async fn send_friend_request_by_user_id<'c>(
         request_user_id
     )
     .fetch_optional(&mut transaction)
-    .await
-    .context("Failed to select friend request")?;
+    .await?;
 
     if let Some(_) = res {
         return Err(FriendError::RequestSendAlready);
@@ -62,10 +62,9 @@ pub async fn send_friend_request_by_user_id<'c>(
         request_user_id
     )
     .execute(&mut transaction)
-    .await
-    .context("Failed to create a friend request")?;
+    .await?;
 
-    transaction.commit().await.context("Transaction failed")?;
+    transaction.commit().await?;
 
     Ok(())
 }
@@ -74,7 +73,7 @@ pub async fn fetch_user_friends<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: Uuid,
 ) -> Result<Vec<Friend>, FriendError> {
-    let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
+    let mut transaction = conn.begin().await?;
 
     let friends = query_as!(
         Friend,
@@ -86,10 +85,9 @@ pub async fn fetch_user_friends<'c>(
         user_id
     )
     .fetch_all(&mut transaction)
-    .await
-    .context("Failed to fetch friends")?;
+    .await?;
 
-    transaction.commit().await.context("Transaction failed")?;
+    transaction.commit().await?;
 
     Ok(friends)
 }
@@ -100,7 +98,7 @@ pub async fn respond_to_friend_request<'c>(
     sender_id: Uuid,
     receiver_id: Uuid,
 ) -> Result<(), FriendError> {
-    let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
+    let mut transaction = conn.begin().await?;
 
     //? is request present
     let res = query!(
@@ -112,8 +110,7 @@ pub async fn respond_to_friend_request<'c>(
         receiver_id
     )
     .fetch_optional(&mut transaction)
-    .await
-    .context("Failed to fetch friend requests")?;
+    .await?;
 
     if let None = res {
         return Err(FriendError::AlreadyFriend);
@@ -129,12 +126,11 @@ pub async fn respond_to_friend_request<'c>(
         receiver_id
     )
     .execute(&mut transaction)
-    .await
-    .context("Failed to delete friend request")?;
+    .await?;
 
     // commit and return if declined
     if !is_accepted {
-        transaction.commit().await.context("Transaction failed")?;
+        transaction.commit().await?;
         return Ok(());
     }
 
@@ -151,11 +147,8 @@ pub async fn respond_to_friend_request<'c>(
     .await;
 
     if let Err(e) = res {
-        transaction
-            .rollback()
-            .await
-            .context("Failed to abort transaction")?;
-        return Err(FriendError::Unexpected(e.into()));
+        transaction.rollback().await?;
+        return Err(FriendError::from(e));
     }
 
     let res = query!(
@@ -170,14 +163,11 @@ pub async fn respond_to_friend_request<'c>(
     .await;
 
     if let Err(e) = res {
-        transaction
-            .rollback()
-            .await
-            .context("Failed to abort transaction")?;
-        return Err(FriendError::Unexpected(e.into()));
+        transaction.rollback().await?;
+        return Err(FriendError::from(e))?;
     }
 
-    transaction.commit().await.context("Transaction failed")?;
+    transaction.commit().await?;
 
     return Ok(());
 }
@@ -187,24 +177,12 @@ pub async fn remove_user_friend<'c>(
     user_id: Uuid,
     friend_id: Uuid,
 ) -> Result<(), FriendError> {
-    let mut transaction = conn
-        .begin()
-        .await
-        .context("Failed to abort the transaction")?;
+    let mut transaction = conn.begin().await?;
 
-    if !is_friend(
-        transaction
-            .acquire()
-            .await
-            .context("Failed to acquire transaction")?,
-        &user_id,
-        &friend_id,
-    )
-    .await?
-    {
-        transaction.rollback().await.context("Failed to rollback")?;
+    if !is_friend(transaction.acquire().await?, &user_id, &friend_id).await? {
+        transaction.rollback().await?;
         debug!("Can not remove not friend");
-        return Err(FriendError::Unexpected(anyhow::Error::msg("Stranger"))); // other way of auto logging with 500 error
+        return Err(FriendError::Unexpected(anyhow::Error::msg("Stranger")))?; // other way of auto logging with 500 error
     }
 
     let res = query!(
@@ -222,11 +200,11 @@ pub async fn remove_user_friend<'c>(
     .await;
 
     if let Err(e) = res {
-        transaction.rollback().await.context("Rollback failed")?;
-        return Err(FriendError::Unexpected(e.into()));
+        transaction.rollback().await?;
+        return Err(FriendError::Unexpected(e.into()))?;
     }
 
-    transaction.commit().await.context("Transaction failed")?;
+    transaction.commit().await?;
 
     Ok(())
 }
@@ -237,24 +215,12 @@ pub async fn update_friend_note<'c>(
     friend_id: Uuid,
     note: String,
 ) -> Result<(), FriendError> {
-    let mut transaction = acq
-        .begin()
-        .await
-        .context("Failed to abort the transaction")?;
+    let mut transaction = acq.begin().await?;
 
-    if !is_friend(
-        transaction
-            .acquire()
-            .await
-            .context("Failed to acquire transaction")?,
-        &user_id,
-        &friend_id,
-    )
-    .await?
-    {
-        transaction.rollback().await.context("Failed to rollback")?;
+    if !is_friend(transaction.acquire().await?, &user_id, &friend_id).await? {
+        transaction.rollback().await?;
         debug!("Can not change note for not a friend");
-        return Err(FriendError::Unexpected(anyhow::Error::msg("Stranger"))); // other way of auto logging with 500 error
+        return Err(FriendError::Unexpected(anyhow::Error::msg("Stranger")))?; // other way of auto logging with 500 error
     }
     query!(
         r#"
@@ -267,10 +233,9 @@ pub async fn update_friend_note<'c>(
         friend_id
     )
     .execute(&mut transaction)
-    .await
-    .context("Failed to update note")?;
+    .await?;
 
-    transaction.commit().await.context("Transaction failed")?;
+    transaction.commit().await?;
     Ok(())
 }
 
@@ -279,7 +244,7 @@ pub async fn is_friend<'c>(
     user_id: &Uuid,
     friend_id: &Uuid,
 ) -> Result<bool, FriendError> {
-    let mut conn = acq.acquire().await.context("Failed to acquire")?;
+    let mut conn = acq.acquire().await?;
     let is_friend = query!(
         r#"
             select * from user_friends
@@ -289,8 +254,7 @@ pub async fn is_friend<'c>(
         friend_id
     )
     .fetch_optional(&mut *conn)
-    .await
-    .context("Failed to select user friend")?
+    .await?
     .is_some();
 
     Ok(is_friend)

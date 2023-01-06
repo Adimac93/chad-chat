@@ -5,14 +5,13 @@ use axum::{
 use axum::{Extension, Json};
 use sqlx::PgPool;
 
-use crate::utils::auth::models::Claims;
-use crate::utils::friends::errors::FriendError;
 use crate::utils::friends::models::{
     FriendInvitationResponse, FriendList, IdentifiedFriendIvitation,
 };
 use crate::utils::friends::{
     fetch_user_friends, respond_to_friend_request, send_friend_request_by_user_id,
 };
+use crate::{app_errors::AppError, utils::auth::models::Claims};
 
 pub fn router() -> Router {
     Router::new()
@@ -25,7 +24,7 @@ pub fn router() -> Router {
 async fn user_friends(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
-) -> Result<Json<FriendList>, FriendError> {
+) -> Result<Json<FriendList>, AppError> {
     let friends = fetch_user_friends(&pool, claims.user_id).await?;
     Ok(Json(FriendList { friends }))
 }
@@ -34,7 +33,7 @@ async fn send_friend_invitation_by_id(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
     Json(data): Json<IdentifiedFriendIvitation>,
-) -> Result<(), FriendError> {
+) -> Result<(), AppError> {
     send_friend_request_by_user_id(&pool, claims.user_id, data.user_id).await?;
     Ok(())
 }
@@ -43,7 +42,7 @@ async fn respond_to_invitation(
     claims: Claims,
     Extension(pool): Extension<PgPool>,
     Json(data): Json<FriendInvitationResponse>,
-) -> Result<(), FriendError> {
+) -> Result<(), AppError> {
     respond_to_friend_request(&pool, data.is_accepted, data.sender_id, claims.user_id).await?;
     Ok(())
 }
@@ -52,6 +51,6 @@ async fn respond_to_invitation(
 //     claims: Claims,
 //     Extension(pool): Extension<PgPool>,
 //     Json(data): Json<TaggedFriendInvitation>,
-// ) -> Result<(), FriendError> {
+// ) -> Result<(), AppError> {
 //     let res = send_friend_request_by_user_tag(&pool, claims.user_id, data.user_id).await?;
 // }

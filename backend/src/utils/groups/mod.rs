@@ -1,6 +1,8 @@
 pub mod errors;
 pub mod models;
 
+use crate::app_errors::AppError;
+
 use self::models::*;
 use anyhow::Context;
 use axum::Json;
@@ -15,7 +17,7 @@ pub async fn try_add_user_to_group<'c>(
     user_id: &Uuid,
     group_id: &Uuid,
 ) -> Result<(), GroupError> {
-    let mut transaction = conn.begin().await.context("Failed to begin transaction")?;
+    let mut transaction = conn.begin().await?;
 
     let res = query!(
         r#"
@@ -26,30 +28,20 @@ pub async fn try_add_user_to_group<'c>(
         group_id
     )
     .fetch_optional(&mut transaction)
-    .await
-    .context("Failed to select group user")?;
+    .await?;
 
     if res.is_some() {
-        transaction
-            .rollback()
-            .await
-            .context("Failed when aborting transaction")?;
+        transaction.rollback().await?;
         return Err(GroupError::UserAlreadyInGroup);
     }
 
     if !check_if_group_exists(&mut transaction, group_id).await? {
-        transaction
-            .rollback()
-            .await
-            .context("Failed when aborting transaction")?;
+        transaction.rollback().await?;
         return Err(GroupError::GroupDoesNotExist);
     }
 
     if !check_if_user_exists(&mut transaction, user_id).await? {
-        transaction
-            .rollback()
-            .await
-            .context("Failed when aborting transaction")?;
+        transaction.rollback().await?;
         return Err(GroupError::UserDoesNotExist);
     }
 
@@ -61,8 +53,7 @@ pub async fn try_add_user_to_group<'c>(
         user_id
     )
     .fetch_one(&mut transaction)
-    .await
-    .context("Failed to fetch user nickname")?
+    .await?
     .nickname;
 
     debug!("Adding user '{nickname}' to group ");
@@ -76,20 +67,19 @@ pub async fn try_add_user_to_group<'c>(
         nickname
     )
     .execute(&mut transaction)
-    .await
-    .context("Failed to add user to group")?;
+    .await?;
 
-    transaction.commit().await.context("Transaction failed")?;
+    transaction.commit().await?;
 
     Ok(())
 }
 
 pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<(), GroupError> {
     if name.trim().is_empty() {
-        return Err(GroupError::MissingGroupField);
+        return Err(GroupError::MissingGroupField)?;
     }
 
-    let mut transaction = pool.begin().await.context("Failed to create transaction")?;
+    let mut transaction = pool.begin().await?;
 
     let group = query_as!(
         Group,
@@ -101,8 +91,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
         name
     )
     .fetch_one(&mut transaction)
-    .await
-    .context("Failed to create a group")?;
+    .await?;
 
     let nickname = query!(
         r#"
@@ -112,8 +101,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
         user_id,
     )
     .fetch_one(&mut transaction)
-    .await
-    .context("Failed to fetch user nickname")?
+    .await?
     .nickname;
 
     query!(
@@ -129,10 +117,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
     .await
     .map_err(|_| GroupError::UserAlreadyInGroup)?;
 
-    transaction
-        .commit()
-        .await
-        .context("Failed to commit transaction")?;
+    transaction.commit().await?;
 
     Ok(())
 }
@@ -151,8 +136,7 @@ pub async fn check_if_group_member(
         group_id
     )
     .fetch_optional(pool)
-    .await
-    .context("Failed to check if user is in group")?;
+    .await?;
 
     Ok(res.is_some())
 }
@@ -168,8 +152,7 @@ pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> Result<Json<Val
         user_id
     )
     .fetch_all(pool)
-    .await
-    .context("Failed to select groups with provided user id")?;
+    .await?;
 
     Ok(Json(json!({ "groups": groups })))
 }
@@ -186,8 +169,7 @@ pub async fn check_if_group_exists<'c>(
         group_id
     )
     .fetch_optional(exe)
-    .await
-    .context("Failed to select group by id")?;
+    .await?;
 
     Ok(res.is_some())
 }
@@ -204,15 +186,14 @@ pub async fn check_if_user_exists<'c>(
         user_id
     )
     .fetch_optional(exe)
-    .await
-    .context("Failed to select user by id")?;
+    .await?;
 
     Ok(res.is_some())
 }
 
 pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo, GroupError> {
     if !check_if_group_exists(pool, group_id).await? {
-        return Err(GroupError::GroupDoesNotExist);
+        return Err(GroupError::GroupDoesNotExist)?;
     }
 
     let res = query!(
@@ -225,8 +206,7 @@ pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo,
         group_id
     )
     .fetch_one(pool)
-    .await
-    .context("Failed to select group infos")?;
+    .await?;
 
     Ok(GroupInfo {
         name: res.name,
@@ -248,8 +228,7 @@ pub async fn try_remove_user_from_group(
         group_id
     )
     .execute(pool)
-    .await
-    .context("Failed to remove user from the group")?;
+    .await?;
 
     Ok(())
 }

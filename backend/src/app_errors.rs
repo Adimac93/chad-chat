@@ -1,21 +1,25 @@
-﻿use axum::response::IntoResponse;
-use thiserror::Error;
-use crate::utils::{
-    auth::errors::AuthError,
-    groups::errors::GroupError,
-    chat::errors::ChatError, invitations::errors::InvitationError
+﻿use crate::utils::friends::errors::FriendError;
+use crate::{
+    database::DatabaseError,
+    utils::{
+        auth::errors::AuthError, chat::errors::ChatError, groups::errors::GroupError,
+        invitations::errors::InvitationError,
+    },
 };
+use axum::response::IntoResponse;
+use std::convert::Infallible;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Auth error")]
+    #[error(transparent)]
     AuthError(#[from] AuthError),
-    #[error("Group error")]
+    #[error(transparent)]
     GroupError(#[from] GroupError),
-    #[error("Chat error")]
+    #[error(transparent)]
     ChatError(#[from] ChatError),
-    // #[error(transparent)]
-    // Unexpected(#[from] anyhow::Error),
+    #[error(transparent)]
+    FriendError(#[from] FriendError),
 }
 
 // TODO: server error backtrace
@@ -25,7 +29,7 @@ impl IntoResponse for AppError {
             AppError::AuthError(e) => return e.into_response(),
             AppError::GroupError(e) => return e.into_response(),
             AppError::ChatError(e) => return e.into_response(),
-            // AppError::Unexpected(e) => todo!(),
+            AppError::FriendError(e) => return e.into_response(),
         };
     }
 }

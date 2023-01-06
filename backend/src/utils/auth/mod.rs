@@ -2,7 +2,7 @@ pub mod additions;
 pub mod errors;
 pub mod models;
 
-use crate::TokenExtensions;
+use crate::{app_errors::AppError, TokenExtensions};
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
@@ -10,7 +10,7 @@ use errors::*;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use sqlx::{query, query_as, PgPool};
+use sqlx::{query, query_as, Acquire, PgPool, Postgres};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -25,21 +25,22 @@ pub enum ActivityStatus {
 }
 
 // todo: make as transaction with Acquire
-pub async fn try_register_user(
-    pool: &PgPool,
+pub async fn try_register_user<'c>(
+    acq: impl Acquire<'c, Database = Postgres>,
     login: &str,
     password: SecretString,
     nickname: &str,
 ) -> Result<Uuid, AuthError> {
+    let mut transaction = acq.begin().await?;
+
     let user = query!(
         r#"
             select id from credentials where login = $1
         "#,
         login
     )
-    .fetch_optional(pool)
-    .await
-    .context("Failed to query user by login")?;
+    .fetch_optional(&mut transaction)
+    .await?;
 
     if user.is_some() {
         return Err(AuthError::UserAlreadyExists);
@@ -49,13 +50,17 @@ pub async fn try_register_user(
         return Err(AuthError::MissingCredential);
     }
 
-    let _ = RegisterCredentials::new(login, password.expose_secret(), &nickname).validate()?;
+    let _ = RegisterCredentials::new(login, password.expose_secret(), &nickname)
+        .validate()
+        .map_err(AuthError::InvalidUsername)?;
 
     if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
         return Err(AuthError::WeakPassword);
     }
 
-    let hashed_pass = additions::hash_pass(password).context("Failed to hash pass")?;
+    let hashed_pass = additions::hash_pass(password)
+        .context("Failed to hash password with argon2")
+        .map_err(AuthError::Unexpected)?;
 
     let mut nickname = nickname.trim();
     if nickname.is_empty() {
@@ -73,9 +78,8 @@ pub async fn try_register_user(
         nickname,
         ActivityStatus::Online as ActivityStatus,
     )
-    .fetch_one(pool)
-    .await
-    .context("Failed to create a new user")?
+    .fetch_one(&mut transaction)
+    .await?
     .id;
 
     query!(
@@ -87,9 +91,10 @@ pub async fn try_register_user(
         login,
         hashed_pass
     )
-    .execute(pool)
-    .await
-    .context("Failed to create new credentials")?;
+    .execute(&mut transaction)
+    .await?;
+
+    transaction.commit().await?;
 
     Ok(user_id)
 }
@@ -101,7 +106,7 @@ pub async fn verify_user_credentials(
 ) -> Result<Uuid, AuthError> {
     debug!("Verifying credentials");
     if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
-        return Err(AuthError::MissingCredential);
+        return Err(AuthError::MissingCredential)?;
     }
 
     let res = query!(
@@ -112,12 +117,12 @@ pub async fn verify_user_credentials(
         login
     )
     .fetch_optional(pool)
-    .await
-    .context("Failed to select user by login")?
+    .await?
     .ok_or(AuthError::WrongUserOrPassword)?;
 
     match verify_encoded(&res.password, password.expose_secret().as_bytes())
-        .context("Failed to verify password")?
+        .context("Failed to verify credentials")
+        .map_err(AuthError::Unexpected)?
     {
         true => Ok(res.id),
         false => Err(AuthError::WrongUserOrPassword),
@@ -165,7 +170,8 @@ where
 
 pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<(), AuthError> {
     let exp = OffsetDateTime::from_unix_timestamp(claims.exp as i64)
-        .context("Failed to convert timestamp to date and time with the timezone")?;
+        .context("Failed to convert timestamp to date and time with the timezone")
+        .map_err(AuthError::Unexpected)?;
 
     let _res = query!(
         r#"
@@ -176,8 +182,7 @@ pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<()
         exp,
     )
     .execute(pool)
-    .await
-    .context("Failed to add token to the blacklist")?;
+    .await?;
 
     trace!("Adding token to blacklist");
     Ok(())

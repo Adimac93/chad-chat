@@ -34,3 +34,9 @@ impl IntoResponse for FriendError {
         (status_code, Json(json!({ "error_info": info }))).into_response()
     }
 }
+
+impl From<sqlx::Error> for FriendError {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}
