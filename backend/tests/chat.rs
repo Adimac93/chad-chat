@@ -5,7 +5,7 @@ use uuid::Uuid;
 mod chat {
     use super::*;
 
-    #[sqlx::test(fixtures("users", "credentials", "groups", "group_users"))]
+    #[sqlx::test(fixtures("users", "credentials", "groups", "roles", "group_users"))]
     async fn get_user_login_by_id_health_check(db: PgPool) {
         let res = get_user_login_by_id(
             &db,
@@ -19,7 +19,7 @@ mod chat {
         }
     }
 
-    #[sqlx::test(fixtures("users", "credentials", "groups", "group_users"))]
+    #[sqlx::test(fixtures("users", "credentials", "groups", "roles", "group_users"))]
     async fn get_user_login_by_id_user_does_not_exist(db: PgPool) {
         let res = get_user_login_by_id(
             &db,
@@ -33,7 +33,7 @@ mod chat {
         }
     }
 
-    #[sqlx::test(fixtures("users", "credentials", "groups", "group_users"))]
+    #[sqlx::test(fixtures("users", "credentials", "groups", "roles", "group_users"))]
     async fn create_message_health_check(db: PgPool) {
         let res = create_message(
             &db,
@@ -49,7 +49,7 @@ mod chat {
         }
     }
 
-    #[sqlx::test(fixtures("users", "credentials", "groups", "group_users"))]
+    #[sqlx::test(fixtures("users", "credentials", "groups", "roles", "group_users"))]
     async fn create_message_content_is_empty(db: PgPool) {
         let res = create_message(
             &db,

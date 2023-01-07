@@ -1,16 +1,16 @@
-use crate::routes::groups;
+use crate::utils::roles::{GroupRolePrivileges, Role, GroupUsersRole, Privileges, GroupUsersRoleFromJson};
 
-use super::models::{AddresedMessage, GroupUserMessage, KickMessage};
+use super::models::{GroupUserMessage, KickMessage};
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Weak};
+use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::select;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::broadcast::{self, Receiver};
+use tokio::sync::broadcast;
 use tokio::sync::{Mutex, Notify, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
@@ -34,11 +34,11 @@ impl Groups {
         Self(DashMap::new())
     }
 
-    pub fn get(&self, group_id: &Uuid) -> GroupController {
+    pub fn get(&self, group_id: &Uuid, privileges: GroupRolePrivileges) -> GroupController {
         let Groups(groups) = self;
         groups
             .entry(*group_id)
-            .or_insert(GroupController::new(100))
+            .or_insert(GroupController::new(100, privileges))
             .value()
             .clone()
     }
@@ -48,27 +48,51 @@ impl Groups {
 pub struct GroupController {
     pub channel: GroupChannel,
     users: Users,
+    privileges: Arc<Mutex<GroupRolePrivileges>>
 }
+
 impl GroupController {
-    fn new(capacity: usize) -> Self {
+    fn new(capacity: usize, privileges: GroupRolePrivileges) -> Self {
         Self {
             channel: GroupChannel::new(capacity),
             users: Users::new(),
+            privileges: Arc::new(Mutex::new(privileges)),
         }
     }
 }
 
 #[derive(Clone)]
-struct Users(Arc<RwLock<HashMap<Uuid, UserConnections>>>);
+struct Users(Arc<RwLock<HashMap<Uuid, GroupUserData>>>);
 impl Users {
     fn new() -> Self {
         Self(Arc::new(RwLock::new(HashMap::new())))
     }
 }
+struct GroupUserData {
+    role: Role,
+    connections: UserConnections,
+}
+
+impl GroupUserData {
+    fn new(role: Role) -> Self {
+        Self {
+            role,
+            connections: UserConnections::new(),
+        }
+    }
+}
+
 struct UserConnections(Arc<RwLock<HashMap<String, UserChannelListener>>>);
 impl UserConnections {
     fn new() -> Self {
         Self(Arc::new(RwLock::new(HashMap::new())))
+    }
+
+    async fn send_across_all(&self, msg: &ServerAction) {
+        let guard = self.0.read().await;
+        for (_, connection) in guard.iter() {
+            connection.sender.send(msg).await;
+        }
     }
 }
 
@@ -102,7 +126,7 @@ impl UserController {
         }
     }
 
-    pub async fn connect(&mut self, group_id: Uuid, group_controller: GroupController) {
+    pub async fn connect(&mut self, group_id: Uuid, group_controller: GroupController, role: Role) {
         if let None = self.group_conn {
             let listener = UserChannelListener::new(
                 self.user_channel.sender.clone(),
@@ -115,7 +139,8 @@ impl UserController {
                 .write()
                 .await
                 .entry(self.user_id)
-                .or_insert(UserConnections::new())
+                .or_insert(GroupUserData::new(role))
+                .connections
                 .0
                 .write()
                 .await
@@ -134,8 +159,8 @@ impl UserController {
 
     pub async fn disconnect(&mut self) {
         if let Some(conn) = &self.group_conn {
-            if let Some(connections) = conn.controller.users.0.write().await.get(&self.user_id) {
-                connections.0.write().await.remove(&self.conn_id);
+            if let Some(user_data) = conn.controller.users.0.write().await.get(&self.user_id) {
+                user_data.connections.0.write().await.remove(&self.conn_id);
             }
         }
     }
@@ -161,6 +186,7 @@ impl UserController {
         if let Some(conn) = &self.group_conn {
             if let Some(connections) = conn.controller.users.0.write().await.remove(&user_id) {
                 let listeners: Vec<UserChannelListener> = connections
+                    .connections
                     .0
                     .write()
                     .await
@@ -179,21 +205,77 @@ impl UserController {
             }
         }
     }
+
+    pub async fn set_privileges(&self, privileges: GroupRolePrivileges) {
+        if let Some(conn) = &self.group_conn {
+            let mut privilege_guard = conn
+                .controller
+                .privileges
+                .lock()
+                .await;
+
+            let users_guard = conn.controller.users.0.read().await;
+            let changed_privileges = privileges.compare(&privilege_guard);
+
+            *privilege_guard = privileges;
+
+            // send new privileges to every user, whose privileges were changed
+            for (_, data) in users_guard.iter() {
+                let role = data.role;
+                if changed_privileges.0.contains(&role) {
+                    let privileges = privilege_guard.get_privileges(role);
+
+                    data.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await;
+                }
+            }
+        }
+    }
+
+    pub async fn set_users_role(&self, new_roles: GroupUsersRole) {
+        if let Some(conn) = &self.group_conn {
+            let mut users_guard = conn.controller.users.0.write().await;
+            let privilege_guard = conn.controller.privileges.lock().await;
+            for (role, users) in new_roles.0.into_iter() {
+                for elem in users.0.into_iter() {
+                    if let Some(user) = users_guard.get_mut(&elem.user_id) {
+                        user.role = role;
+
+                        let privileges = privilege_guard.get_privileges(role);
+
+                        // send new privileges to every user with changed role
+                        user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await;
+                    };
+                }
+            };
+        }
+    }
+
+    pub async fn get_role(&self) -> Option<Role> {
+        let Some(conn) = &self.group_conn else {
+            return None
+        };
+
+        match conn.controller.users.0.read().await.get(&self.user_id) {
+            Some(user_data) => Some(user_data.role),
+            None => None,
+        }
+    }
 }
 
 pub struct UserChannelListener {
-    task: JoinHandle<UserSender>,
-    notifier: Arc<Notify>,
+    task: JoinHandle<()>,
+    sender: UserSender,
 }
 
 impl UserChannelListener {
     async fn new(sender: UserSender, broadcast_receiver: GroupReceiver) -> Self {
-        let notifier = Arc::new(Notify::new());
+        // let notifier = Arc::new(Notify::new());
+        let (task, sender) = sender
+            .listen(broadcast_receiver)
+            .await;
         Self {
-            task: sender
-                .listen_with_notifier(broadcast_receiver, notifier.clone())
-                .await,
-            notifier,
+            task,
+            sender,
         }
     }
 
@@ -201,16 +283,20 @@ impl UserChannelListener {
         self.task.abort();
     }
 
+    // pub async fn send(&self, action: &ServerAction) {
+    //     match (&self.task).await {
+    //         Ok(sender) => {
+    //             sender.send(action).await;
+    //         },
+    //         Err(e) => {
+    //             error!("Error while accessing user sender: {e}");
+    //         },
+    //     }
+    // }
+
     pub async fn disconnect_with_action(self, action: &ServerAction) {
-        self.notifier.notify_one();
-        match self.task.await {
-            Ok(sender) => {
-                sender.send(action).await;
-            }
-            Err(e) => {
-                error!("Error while disconnecting: {e}")
-            }
-        }
+        self.task.abort();
+        self.sender.send(action).await;
     }
 }
 
@@ -251,19 +337,21 @@ impl UserSender {
         let msg = serde_json::to_string(action).unwrap();
         sender.lock().await.send(Message::Text(msg)).await
     }
-    pub async fn listen(&self, broadcast_receiver: GroupReceiver) -> JoinHandle<()> {
+    pub async fn listen(&self, broadcast_receiver: GroupReceiver) -> (JoinHandle<()>, UserSender) {
         let GroupReceiver(mut broadcast_receiver) = broadcast_receiver;
 
         let task_sender = self.clone();
         // Stop task on error or aborting
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             while let Ok(action) = broadcast_receiver.recv().await {
                 if task_sender.send(&action).await.is_err() {
                     error!("Error while sending message to the client");
                     break;
                 }
             }
-        })
+        });
+
+        (task, self.clone())
     }
 
     /// Listen to receiver messages and pass them to client
@@ -326,6 +414,7 @@ pub enum ServerAction {
     GroupInvite,
     Message(GroupUserMessage),
     Kick(KickMessage),
+    SetPrivileges(Privileges),
 }
 
 /// Client action send to server
@@ -335,6 +424,8 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
+    ChangePrivileges { group_id: Uuid, privileges: GroupRolePrivileges },
+    ChangeUsersRole { group_id: Uuid, users: GroupUsersRoleFromJson },
     RequestMessages { loaded: i64 },
     Close,
     Ignore,

@@ -4,8 +4,6 @@ use axum::Json;
 use serde_json::json;
 use thiserror::Error;
 
-use crate::utils::groups::errors::GroupError;
-
 #[derive(Error, Debug)]
 pub enum InvitationError {
     #[error("Invitation is expired")]

@@ -1,13 +1,11 @@
-﻿use crate::utils::friends::errors::FriendError;
+use crate::utils::friends::errors::FriendError;
 use crate::{
-    database::DatabaseError,
     utils::{
         auth::errors::AuthError, chat::errors::ChatError, groups::errors::GroupError,
-        invitations::errors::InvitationError,
+        invitations::errors::InvitationError, roles::errors::RoleError
     },
 };
 use axum::response::IntoResponse;
-use std::convert::Infallible;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -37,6 +35,12 @@ impl IntoResponse for AppError {
 // better error conversion trait may be needed
 impl From<InvitationError> for AppError {
     fn from(e: InvitationError) -> Self {
+        AppError::from(GroupError::from(e))
+    }
+}
+
+impl From<RoleError> for AppError {
+    fn from(e: RoleError) -> Self {
         AppError::from(GroupError::from(e))
     }
 }

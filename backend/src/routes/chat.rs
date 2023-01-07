@@ -2,10 +2,12 @@
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
 use crate::utils::chat::socket::{
-    ChatState, ClientAction, ServerAction, UserChannel, UserController,
+    ChatState, ClientAction, ServerAction, UserController,
 };
 use crate::utils::chat::*;
 use crate::utils::groups::*;
+use crate::utils::groups::models::GroupUser;
+use crate::utils::roles::{get_group_role_privileges, set_group_role_privileges, set_group_users_role, GroupUsersRole, get_user_role};
 use axum::http::HeaderMap;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
@@ -15,7 +17,7 @@ use axum::{
 };
 use sqlx::PgPool;
 use std::sync::Arc;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 const MAX_MESSAGE_LENGTH: usize = 2000;
@@ -67,9 +69,20 @@ pub async fn chat_socket(
                     break;
                 }
 
+                // Fetch role and privileges in order to connect to group
+                let Ok(privileges) = get_group_role_privileges(&pool, group_id).await else {
+                    error!("Cannot fetch group role privileges");
+                    continue
+                };
+                let group_controller = state.groups.get(&group_id, privileges);
+
+                let Ok(role) = get_user_role(&pool, claims.user_id, group_id).await else {
+                    error!("Cannot fetch group user role data");
+                    continue
+                };
+
                 // Connect user controller to group
-                let group_controller = state.groups.get(&group_id);
-                controller.connect(group_id, group_controller).await;
+                controller.connect(group_id, group_controller, role).await;
 
                 // Load last group messages
                 let Ok(messages) = fetch_last_messages_in_range(&pool,&group_id,10,0).await else {
@@ -110,7 +123,7 @@ pub async fn chat_socket(
                     .unwrap_or("unknown_user".into());
 
                 let Ok(_) = create_message(&pool, &claims.user_id, &conn.group_id, &content).await else {
-                            error!("ws closed: Failed to save the message from the user {} ({}) in the database", &claims.user_id, &claims.login);
+                            error!("Failed to save the message from the user {} ({}) in the database", &claims.user_id, &claims.login);
                             continue;
                         };
 
@@ -177,6 +190,40 @@ pub async fn chat_socket(
                 controller.kick(user_id).await;
 
                 // todo: disconnect group controllers
+            }
+            ClientAction::ChangePrivileges { group_id, privileges } => {
+                let Ok(group_privileges) = set_group_role_privileges(&pool, group_id, privileges).await else {
+                    error!("Error when setting group role privileges");
+                    continue
+                };
+
+                controller.set_privileges(group_privileges).await;
+            }
+            ClientAction::ChangeUsersRole { group_id, users } => {
+                let Ok(mut users) = GroupUsersRole::try_from(users) else {
+                    error!("Invalid JSON from client");
+                    continue
+                };
+
+                // security checks
+                let Some(role) = controller.get_role().await else {
+                    error!("Can't get role of user {}", claims.user_id);
+                    continue
+                };
+
+                if users
+                    .verify_before_role_change(role, GroupUser::new(claims.user_id, group_id))
+                    .is_err() {
+                        info!("Role change didn't get through the gate");
+                        continue
+                    };
+
+                if set_group_users_role(&pool, users.clone()).await.is_err() {
+                    error!("Cannot set roles in group");
+                    continue
+                };
+
+                controller.set_users_role(users).await;
             }
             ClientAction::Close => {
                 info!("WebSocket closed explicitly");

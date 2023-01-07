@@ -9,8 +9,6 @@ use time::{Duration, OffsetDateTime};
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::app_errors::AppError;
-
 use self::errors::InvitationError;
 
 use super::groups::{errors::GroupError, models::GroupInfo, try_add_user_to_group};

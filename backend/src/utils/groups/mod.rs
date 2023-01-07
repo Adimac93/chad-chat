@@ -1,8 +1,6 @@
 pub mod errors;
 pub mod models;
 
-use crate::app_errors::AppError;
-
 use self::models::*;
 use anyhow::Context;
 use axum::Json;
@@ -59,8 +57,13 @@ pub async fn try_add_user_to_group<'c>(
     debug!("Adding user '{nickname}' to group ");
     query!(
         r#"
-            insert into group_users (user_id, group_id, nickname)
-            values ($1, $2, $3)
+            insert into group_users (user_id, group_id, nickname, role_id)
+            values ($1, $2, $3, (
+                select role_id
+                    from group_roles
+                    where group_roles.group_id = $2
+                    and group_roles.role_type = 'member'
+            ))
         "#,
         user_id,
         group_id,
@@ -106,8 +109,23 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
 
     query!(
         r#"
-            insert into group_users (user_id, group_id, nickname)
-            values ($1, $2, $3)
+            select add_group_roles($1)
+        "#,
+        group.id,
+    )
+    .execute(&mut transaction)
+    .await
+    .context("Failed to initiate group roles")?;
+
+    query!(
+        r#"
+            insert into group_users (user_id, group_id, nickname, role_id)
+            values ($1, $2, $3, (
+                select role_id
+                    from group_roles
+                    where group_roles.group_id = $2
+                    and group_roles.role_type = 'owner'
+            ))
         "#,
         user_id,
         group.id,

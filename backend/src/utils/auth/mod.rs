@@ -2,7 +2,7 @@ pub mod additions;
 pub mod errors;
 pub mod models;
 
-use crate::{app_errors::AppError, TokenExtensions};
+use crate::TokenExtensions;
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
@@ -10,7 +10,7 @@ use errors::*;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use sqlx::{query, query_as, Acquire, PgPool, Postgres};
+use sqlx::{query, Acquire, PgPool, Postgres};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
 use uuid::Uuid;

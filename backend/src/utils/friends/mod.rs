@@ -1,14 +1,10 @@
-use anyhow::Context;
-use serde::{Deserialize, Serialize};
 use sqlx::{query, query_as, Acquire, Postgres};
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::app_errors::AppError;
-
 use self::{errors::FriendError, models::Friend};
 
-use super::{auth::ActivityStatus, groups::check_if_user_exists};
+use super::auth::ActivityStatus;
 
 pub mod errors;
 pub mod models;
