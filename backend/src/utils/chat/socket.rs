@@ -1,4 +1,4 @@
-use crate::utils::roles::{GroupRolePrivileges, Role, GroupUsersRole, Privileges, GroupUsersRoleFromJson};
+use crate::utils::roles::models::{Privileges, GroupRolePrivileges, Role, GroupUsersRoleFromJson, GroupUsersRole};
 
 use super::models::{GroupUserMessage, KickMessage};
 use axum::extract::ws::{Message, WebSocket};
@@ -236,7 +236,7 @@ impl UserController {
             let mut users_guard = conn.controller.users.0.write().await;
             let privilege_guard = conn.controller.privileges.lock().await;
             for (role, users) in new_roles.0.into_iter() {
-                for elem in users.0.into_iter() {
+                for elem in users.into_iter() {
                     if let Some(user) = users_guard.get_mut(&elem.user_id) {
                         user.role = role;
 

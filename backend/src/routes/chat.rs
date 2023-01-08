@@ -7,7 +7,8 @@ use crate::utils::chat::socket::{
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::groups::models::GroupUser;
-use crate::utils::roles::{get_group_role_privileges, set_group_role_privileges, set_group_users_role, GroupUsersRole, get_user_role};
+use crate::utils::roles::models::GroupUsersRole;
+use crate::utils::roles::{get_group_role_privileges, set_group_role_privileges, set_group_users_role, get_user_role};
 use axum::http::HeaderMap;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
@@ -76,7 +77,7 @@ pub async fn chat_socket(
                 };
                 let group_controller = state.groups.get(&group_id, privileges);
 
-                let Ok(role) = get_user_role(&pool, claims.user_id, group_id).await else {
+                let Ok(role) = get_user_role(&pool, &claims.user_id, &group_id).await else {
                     error!("Cannot fetch group user role data");
                     continue
                 };
@@ -191,13 +192,14 @@ pub async fn chat_socket(
 
                 // todo: disconnect group controllers
             }
-            ClientAction::ChangePrivileges { group_id, privileges } => {
-                let Ok(group_privileges) = set_group_role_privileges(&pool, group_id, privileges).await else {
+            ClientAction::ChangePrivileges { group_id, mut privileges } => {
+                privileges.maintain_hierarchy();
+                if set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
                     error!("Error when setting group role privileges");
                     continue
                 };
 
-                controller.set_privileges(group_privileges).await;
+                controller.set_privileges(privileges).await;
             }
             ClientAction::ChangeUsersRole { group_id, users } => {
                 let Ok(mut users) = GroupUsersRole::try_from(users) else {
@@ -212,13 +214,13 @@ pub async fn chat_socket(
                 };
 
                 if users
-                    .verify_before_role_change(role, GroupUser::new(claims.user_id, group_id))
+                    .preprocess(role, GroupUser::new(claims.user_id, group_id))
                     .is_err() {
                         info!("Role change didn't get through the gate");
                         continue
                     };
 
-                if set_group_users_role(&pool, users.clone()).await.is_err() {
+                if set_group_users_role(&pool, &users).await.is_err() {
                     error!("Cannot set roles in group");
                     continue
                 };

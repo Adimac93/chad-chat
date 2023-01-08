@@ -31,3 +31,15 @@ impl IntoResponse for RoleError {
         (status_code, Json(json!({ "error_info": info }))).into_response()
     }
 }
+
+impl From<sqlx::Error> for RoleError {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}
+
+impl From<serde_json::Error> for RoleError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}
