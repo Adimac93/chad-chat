@@ -1,20 +1,20 @@
 <script lang="ts">
     import { isAuthorized } from "../stores";
 
-    let login = "";
+    let email = "";
     let passwordA = "";
     let passwordB = "";
     let message = "";
-    let nickname = "";
+    let username = "";
 
     async function register_user() {
         let res = await fetch(`api/auth/register`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                login,
+                email,
                 password: passwordA,
-                nickname,
+                username
             }),
         });
         if (res.ok) {
@@ -30,14 +30,14 @@
 </script>
 
 <form>
-    <input bind:value={login} placeholder="login" type="text" />
-    <input bind:value={nickname} placeholder="nickname" type="text" />
+    <input bind:value={email} placeholder="email" type="email" />
+    <input bind:value={username} placeholder="username" type="text" />
     <input bind:value={passwordA} placeholder="password" type="password" />
     <input bind:value={passwordB} placeholder="repeat password" type="password" />
     <div>{message}</div>
     <button
         on:click|preventDefault={register_user}
-        disabled={!login || !passwordA || !passwordB || passwordA != passwordB}>Register</button
+        disabled={!email || !passwordA || !passwordB || passwordA != passwordB}>Register</button
     >
 </form>
 

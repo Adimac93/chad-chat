@@ -1,4 +1,4 @@
-﻿use backend::utils::chat::{create_message, errors::ChatError, get_user_login_by_id};
+﻿use backend::utils::chat::{create_message, errors::ChatError, gget_user_email_by_id;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -7,7 +7,7 @@ mod chat {
 
     #[sqlx::test(fixtures("users", "credentials", "groups", "roles", "group_users"))]
     async fn get_user_login_by_id_health_check(db: PgPool) {
-        let res = get_user_login_by_id(
+        let res = get_user_email_by_id(
             &db,
             &Uuid::parse_str("263541a8-fa1e-4f13-9e5d-5b250a5a71e6").unwrap(),
         )
@@ -21,7 +21,7 @@ mod chat {
 
     #[sqlx::test(fixtures("users", "credentials", "groups", "roles", "group_users"))]
     async fn get_user_login_by_id_user_does_not_exist(db: PgPool) {
-        let res = get_user_login_by_id(
+        let res = get_user_email_by_id(
             &db,
             &Uuid::parse_str("a1fd5c51-326f-476e-a4f7-2e61a692bb56").unwrap(),
         )

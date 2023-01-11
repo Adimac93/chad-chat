@@ -142,7 +142,7 @@ mod auth {
         .await;
 
         match res {
-            Err(AuthError::InvalidUsername(_)) => (),
+            Err(AuthError::InvalidEmail(_)) => (),
             _ => panic!("Test gives the result {:?}", res),
         }
     }
@@ -158,7 +158,7 @@ mod auth {
         .await;
 
         match res {
-            Err(AuthError::InvalidUsername(_)) => (),
+            Err(AuthError::InvalidEmail(_)) => (),
             _ => panic!("Test gives the result {:?}", res),
         }
     }
@@ -174,7 +174,7 @@ mod auth {
         .await;
 
         match res {
-            Err(AuthError::InvalidUsername(_)) => (),
+            Err(AuthError::InvalidEmail(_)) => (),
             _ => panic!("Test gives the result {:?}", res),
         }
     }
@@ -240,7 +240,7 @@ mod auth {
         .await;
 
         match res {
-            Err(AuthError::WrongUserOrPassword) => (),
+            Err(AuthError::WrongEmailOrPassword) => (),
             _ => panic!("Test gives the result {:?}", res),
         }
     }
@@ -255,7 +255,7 @@ mod auth {
         .await;
 
         match res {
-            Err(AuthError::WrongUserOrPassword) => (),
+            Err(AuthError::WrongEmailOrPassword) => (),
             _ => panic!("Test gives the result {:?}", res),
         }
     }

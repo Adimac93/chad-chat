@@ -10,6 +10,8 @@ use sqlx::{query, query_as, Acquire, Executor, PgPool, Postgres};
 use tracing::debug;
 use uuid::Uuid;
 
+use super::email::Mailer;
+
 pub async fn try_add_user_to_group<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: &Uuid,
@@ -43,18 +45,18 @@ pub async fn try_add_user_to_group<'c>(
         return Err(GroupError::UserDoesNotExist);
     }
 
-    let nickname = query!(
+    let username = query!(
         r#"
-            select (nickname) from users
+            select (username) from users
             where id = $1
         "#,
         user_id
     )
     .fetch_one(&mut transaction)
     .await?
-    .nickname;
+    .username;
 
-    debug!("Adding user '{nickname}' to group ");
+    debug!("Adding user '{username}' to group ");
     query!(
         r#"
             insert into group_users (user_id, group_id, nickname, role_id)
@@ -67,7 +69,7 @@ pub async fn try_add_user_to_group<'c>(
         "#,
         user_id,
         group_id,
-        nickname
+        username
     )
     .execute(&mut transaction)
     .await?;
@@ -96,16 +98,16 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
     .fetch_one(&mut transaction)
     .await?;
 
-    let nickname = query!(
+    let username = query!(
         r#"
-            select (nickname) from users
+            select (username) from users
             where id = $1
         "#,
         user_id,
     )
     .fetch_one(&mut transaction)
     .await?
-    .nickname;
+    .username;
 
     query!(
         r#"
@@ -129,7 +131,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
         "#,
         user_id,
         group.id,
-        nickname
+        username
     )
     .execute(&mut transaction)
     .await

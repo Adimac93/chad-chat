@@ -16,5 +16,9 @@ set (username, tag) = (credentials.login, 0)
 from credentials
 where users.id = credentials.id;
 
+alter table users
+alter column username set not null,
+alter column tag set not null;
+
 alter table credentials
 drop login;

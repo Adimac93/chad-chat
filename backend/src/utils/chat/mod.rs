@@ -28,18 +28,18 @@ pub async fn get_group_nickname(
     Ok(res.nickname)
 }
 
-pub async fn get_user_login_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, ChatError> {
+pub async fn get_user_email_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, ChatError> {
     let res = query!(
         r#"
-            select login from credentials where id = $1
+            select email from credentials where id = $1
         "#,
         user_id
     )
     .fetch_one(pool)
     .await
-    .context("Cannot fetch user login from database")?;
+    .context("Cannot fetch user email from database")?;
 
-    Ok(res.login)
+    Ok(res.email)
 }
 
 pub async fn create_message(

@@ -1,5 +1,9 @@
 ﻿use argon2::hash_encoded;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use rand::seq::{IteratorRandom, SliceRandom};
+use rand::{
+    distributions::{Alphanumeric, Uniform},
+    thread_rng, Rng,
+};
 use secrecy::{ExposeSecret, SecretString};
 
 pub fn hash_pass(pass: SecretString) -> Result<String, argon2::Error> {
@@ -18,4 +22,11 @@ pub fn random_salt() -> String {
 pub fn pass_is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
     let score = zxcvbn::zxcvbn(user_password, user_inputs);
     score.map_or(false, |entropy| entropy.score() >= 3)
+}
+
+pub fn random_username_tag(used_tags: Vec<i32>) -> Option<i32> {
+    let mut rng = thread_rng();
+    (0..10000)
+        .filter(|x| !used_tags.contains(x))
+        .choose(&mut rng)
 }

@@ -7,6 +7,7 @@ use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use errors::*;
+use lettre::{AsyncTransport, Message};
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,10 @@ use time::OffsetDateTime;
 use tracing::{debug, trace};
 use uuid::Uuid;
 use validator::Validate;
+
+use self::additions::random_username_tag;
+
+use super::email::Mailer;
 
 #[derive(sqlx::Type, Debug, Serialize, Deserialize)]
 #[sqlx(type_name = "status", rename_all = "snake_case")]
@@ -27,17 +32,18 @@ pub enum ActivityStatus {
 // todo: make as transaction with Acquire
 pub async fn try_register_user<'c>(
     acq: impl Acquire<'c, Database = Postgres>,
-    login: &str,
+    mailer: Mailer,
+    email: &str,
     password: SecretString,
-    nickname: &str,
+    username: &str,
 ) -> Result<Uuid, AuthError> {
     let mut transaction = acq.begin().await?;
 
     let user = query!(
         r#"
-            select id from credentials where login = $1
+            select id from credentials where email = $1
         "#,
-        login
+        email
     )
     .fetch_optional(&mut transaction)
     .await?;
@@ -46,15 +52,15 @@ pub async fn try_register_user<'c>(
         return Err(AuthError::UserAlreadyExists);
     }
 
-    if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
+    if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
         return Err(AuthError::MissingCredential);
     }
 
-    let _ = RegisterCredentials::new(login, password.expose_secret(), &nickname)
+    let _ = RegisterCredentials::new(email, password.expose_secret(), &username)
         .validate()
-        .map_err(AuthError::InvalidUsername)?;
+        .map_err(AuthError::InvalidEmail)?;
 
-    if !additions::pass_is_strong(password.expose_secret(), &[&login]) {
+    if !additions::pass_is_strong(password.expose_secret(), &[&email]) {
         return Err(AuthError::WeakPassword);
     }
 
@@ -62,20 +68,33 @@ pub async fn try_register_user<'c>(
         .context("Failed to hash password with argon2")
         .map_err(AuthError::Unexpected)?;
 
-    let mut nickname = nickname.trim();
-    if nickname.is_empty() {
-        // TODO: Generate random nickname
-        nickname = "I am definitely not a chad"
+    let mut username = username.trim();
+    if username.is_empty() {
+        // TODO: Generate random username
+        username = "I am definitely not a chad"
     }
 
-    // ! should be inserted at once
+    let used_tags = query!(
+        r#"
+            select tag from users
+            where username = $1
+        "#,
+        username
+    )
+    .fetch_all(&mut transaction)
+    .await?;
+
+    let tag = random_username_tag(used_tags.into_iter().map(|record| record.tag).collect())
+        .ok_or(AuthError::TagOverflow)?;
+
     let user_id = query!(
         r#"
-            insert into users (nickname, activity_status)
-            values ($1, $2)
+            insert into users (username, tag, activity_status)
+            values ($1, $2, $3)
             returning (id)
         "#,
-        nickname,
+        username,
+        tag,
         ActivityStatus::Online as ActivityStatus,
     )
     .fetch_one(&mut transaction)
@@ -84,11 +103,11 @@ pub async fn try_register_user<'c>(
 
     query!(
         r#"
-            insert into credentials (id, login, password)
+            insert into credentials (id, email, password)
             values ($1, $2, $3)
         "#,
         user_id,
-        login,
+        email,
         hashed_pass
     )
     .execute(&mut transaction)
@@ -96,36 +115,38 @@ pub async fn try_register_user<'c>(
 
     transaction.commit().await?;
 
+    let res = mailer.send_verification(email).await;
+
     Ok(user_id)
 }
 
 pub async fn verify_user_credentials(
     pool: &PgPool,
-    login: &str,
+    email: &str,
     password: SecretString,
 ) -> Result<Uuid, AuthError> {
     debug!("Verifying credentials");
-    if login.trim().is_empty() || password.expose_secret().trim().is_empty() {
+    if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
         return Err(AuthError::MissingCredential)?;
     }
 
     let res = query!(
         r#"
             select id, password from credentials
-            where login = $1
+            where email = $1
         "#,
-        login
+        email
     )
     .fetch_optional(pool)
     .await?
-    .ok_or(AuthError::WrongUserOrPassword)?;
+    .ok_or(AuthError::WrongEmailOrPassword)?;
 
     match verify_encoded(&res.password, password.expose_secret().as_bytes())
         .context("Failed to verify credentials")
         .map_err(AuthError::Unexpected)?
     {
         true => Ok(res.id),
-        false => Err(AuthError::WrongUserOrPassword),
+        false => Err(AuthError::WrongEmailOrPassword),
     }
 }
 

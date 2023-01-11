@@ -1,4 +1,5 @@
 ﻿use crate::utils::auth::models::*;
+use crate::utils::email::Mailer;
 use crate::{app_errors::AppError, utils::auth::*, TokenExtensions};
 use axum::{debug_handler, extract, http::StatusCode, Extension, Json};
 use axum::{routing::post, Router};
@@ -22,25 +23,27 @@ pub fn router() -> Router {
 
 async fn post_register_user(
     Extension(pool): Extension<PgPool>,
+    Extension(mailer): Extension<Mailer>,
     Json(register_credentials): extract::Json<RegisterCredentials>,
     token_ext: TokenExtensions,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
         &pool,
-        register_credentials.login.trim(),
+        mailer,
+        register_credentials.email.trim(),
         SecretString::new(register_credentials.password.trim().to_string()),
-        &register_credentials.nickname,
+        &register_credentials.username,
     )
     .await?;
 
     let login_credentials =
-        LoginCredentials::new(&register_credentials.login, &register_credentials.password);
-    let jar = generate_token_cookies(user_id, &login_credentials.login, &token_ext, jar).await?;
+        LoginCredentials::new(&register_credentials.email, &register_credentials.password);
+    let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
 
     debug!(
         "User {} ({}) registered successfully",
-        user_id, &register_credentials.login
+        user_id, &register_credentials.email
     );
 
     Ok(jar)
@@ -55,16 +58,16 @@ async fn post_login_user(
     // returns if credentials are wrong
     let user_id = verify_user_credentials(
         &pool,
-        &login_credentials.login,
+        &login_credentials.email,
         SecretString::new(login_credentials.password.clone()),
     )
     .await?;
 
-    let jar = generate_token_cookies(user_id, &login_credentials.login, &token_ext, jar).await?;
+    let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
 
     debug!(
         "User {} ({}) logged in successfully",
-        user_id, &login_credentials.login
+        user_id, &login_credentials.email
     );
 
     Ok(jar)

@@ -5,17 +5,19 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum AuthError {
     #[error("Invalid username")]
-    InvalidUsername(#[from] validator::ValidationErrors),
+    InvalidEmail(#[from] validator::ValidationErrors),
     #[error("User already exists")]
     UserAlreadyExists,
     #[error("Missing credential")]
     MissingCredential,
     #[error("Password is too weak")]
     WeakPassword,
-    #[error("Incorrect user or password")]
-    WrongUserOrPassword,
+    #[error("Incorrect email or password")]
+    WrongEmailOrPassword,
     #[error("Invalid or expired token")]
     InvalidToken,
+    #[error("Maximum number of tags for this username")]
+    TagOverflow,
     #[error(transparent)]
     Unexpected(#[from] anyhow::Error),
 }
@@ -23,11 +25,12 @@ pub enum AuthError {
 impl IntoResponse for AuthError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
-            AuthError::InvalidUsername(_) => StatusCode::BAD_REQUEST,
+            AuthError::InvalidEmail(_) => StatusCode::BAD_REQUEST,
             AuthError::UserAlreadyExists => StatusCode::BAD_REQUEST,
             AuthError::MissingCredential => StatusCode::BAD_REQUEST,
             AuthError::WeakPassword => StatusCode::BAD_REQUEST,
-            AuthError::WrongUserOrPassword => StatusCode::UNAUTHORIZED,
+            AuthError::WrongEmailOrPassword => StatusCode::UNAUTHORIZED,
+            AuthError::TagOverflow => StatusCode::BAD_REQUEST,
             AuthError::InvalidToken => StatusCode::UNAUTHORIZED,
             AuthError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
@@ -37,7 +40,7 @@ impl IntoResponse for AuthError {
 
         let info = match self {
             AuthError::Unexpected(_) => "Unexpected server error".to_string(),
-            AuthError::InvalidUsername(e) => e.to_string(),
+            AuthError::InvalidEmail(e) => e.to_string(),
             _ => self.to_string(),
         };
 

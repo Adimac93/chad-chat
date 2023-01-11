@@ -1,4 +1,5 @@
 use config::{Config, ConfigError};
+use lettre::transport::smtp::authentication::Credentials;
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use std::net::SocketAddr;
@@ -8,6 +9,23 @@ use tracing::info;
 pub struct Settings {
     pub app: ApplicationSettings,
     pub database: DatabaseSettings,
+    pub smtp: SmtpSettings,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct SmtpSettings {
+    username: Secret<String>,
+    password: Secret<String>,
+    pub relay: String,
+}
+
+impl SmtpSettings {
+    pub fn get_credentials(self) -> Credentials {
+        Credentials::new(
+            self.username.expose_secret().to_owned(),
+            self.password.expose_secret().to_owned(),
+        )
+    }
 }
 
 #[derive(Deserialize, Clone)]
@@ -135,11 +153,16 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                 app: ApplicationSettings {
                     host: "0.0.0.0".into(),
                     port: get_env("PORT").parse::<u16>().expect("Invalid port number"),
-                    access_jwt_secret: Secret::from(get_env("ACCESS_JWT_SECRET")),
-                    refresh_jwt_secret: Secret::from(get_env("REFRESH_JWT_SECRET")),
+                    access_jwt_secret: get_secret_env("ACCESS_JWT_SECRET"),
+                    refresh_jwt_secret: get_secret_env("REFRESH_JWT_SECRET"),
                     origin: get_env("FRONTEND_URL"),
                 },
                 database: DatabaseSettings::production(),
+                smtp: SmtpSettings {
+                    username: get_secret_env("SMTP_USERNAME"),
+                    password: get_secret_env("SMTP_PASSWORD"),
+                    relay: get_env("SMTP_RELAY"),
+                },
             };
             return Ok(settings);
         }
@@ -148,4 +171,7 @@ pub fn get_config() -> Result<Settings, ConfigError> {
 
 fn get_env(name: &str) -> String {
     std::env::var(name).expect(format!("Missing {name}").as_str())
+}
+fn get_secret_env(name: &str) -> Secret<String> {
+    Secret::from(get_env(name))
 }

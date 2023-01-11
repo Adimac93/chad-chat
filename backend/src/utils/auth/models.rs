@@ -320,14 +320,15 @@ where
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct LoginCredentials {
-    pub login: String,
+    #[validate(email)]
+    pub email: String,
     pub password: String,
 }
 
 impl LoginCredentials {
-    pub fn new(login: &str, password: &str) -> Self {
+    pub fn new(email: &str, password: &str) -> Self {
         Self {
-            login: login.into(),
+            email: email.into(),
             password: password.into(),
         }
     }
@@ -335,21 +336,18 @@ impl LoginCredentials {
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct RegisterCredentials {
-    #[validate(
-        length(min = 4, max = 20, message = "Invalid username length"),
-        does_not_contain(pattern = " ", message = "Username contains spaces")
-    )]
-    pub login: String,
+    #[validate(email)]
+    pub email: String,
     pub password: String,
-    pub nickname: String,
+    pub username: String,
 }
 
 impl RegisterCredentials {
-    pub fn new(login: &str, password: &str, nickname: &str) -> Self {
+    pub fn new(email: &str, password: &str, username: &str) -> Self {
         Self {
-            login: login.into(),
+            email: email.into(),
             password: password.into(),
-            nickname: nickname.into(),
+            username: username.into(),
         }
     }
 }

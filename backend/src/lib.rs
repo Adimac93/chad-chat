@@ -23,7 +23,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 use tracing::debug;
-use utils::auth::errors::AuthError;
+use utils::{auth::errors::AuthError, email::Mailer};
 
 pub async fn app(pool: PgPool) -> Router {
     let config = get_config().expect("Failed to read configuration");
@@ -37,6 +37,8 @@ pub async fn app(pool: PgPool) -> Router {
         .allow_origin(origin)
         .allow_headers([CONTENT_TYPE])
         .allow_credentials(true);
+
+    let mailer = Mailer::new(config.smtp);
 
     let groups = Router::new().nest(
         "/groups",
@@ -57,6 +59,7 @@ pub async fn app(pool: PgPool) -> Router {
             access: JwtSecret(config.app.access_jwt_secret),
             refresh: RefreshJwtSecret(config.app.refresh_jwt_secret),
         }))
+        .layer(Extension(mailer))
         .layer(cors);
 
     Router::new().nest("/api", api).merge(spa)
