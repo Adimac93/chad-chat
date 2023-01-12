@@ -1,4 +1,4 @@
-use crate::utils::roles::models::{Privileges, GroupRolePrivileges, Role, GroupUsersRoleFromJson, GroupUsersRole};
+use crate::utils::roles::models::{Privileges, Role, GroupUsersRoleFromJson, GroupUsersRole, NewGroupRolePrivilegesFromJson, NewGroupRolePrivileges, SocketGroupRolePrivileges};
 
 use super::models::{GroupUserMessage, KickMessage};
 use axum::extract::ws::{Message, WebSocket};
@@ -34,7 +34,7 @@ impl Groups {
         Self(DashMap::new())
     }
 
-    pub fn get(&self, group_id: &Uuid, privileges: GroupRolePrivileges) -> GroupController {
+    pub fn get(&self, group_id: &Uuid, privileges: SocketGroupRolePrivileges) -> GroupController {
         let Groups(groups) = self;
         groups
             .entry(*group_id)
@@ -48,15 +48,15 @@ impl Groups {
 pub struct GroupController {
     pub channel: GroupChannel,
     users: Users,
-    privileges: Arc<Mutex<GroupRolePrivileges>>
+    privileges: SocketGroupRolePrivileges,
 }
 
 impl GroupController {
-    fn new(capacity: usize, privileges: GroupRolePrivileges) -> Self {
+    fn new(capacity: usize, privileges: SocketGroupRolePrivileges) -> Self {
         Self {
             channel: GroupChannel::new(capacity),
             users: Users::new(),
-            privileges: Arc::new(Mutex::new(privileges)),
+            privileges: privileges,
         }
     }
 }
@@ -206,26 +206,25 @@ impl UserController {
         }
     }
 
-    pub async fn set_privileges(&self, privileges: GroupRolePrivileges) {
+    pub async fn set_privileges(&self, group_privileges: NewGroupRolePrivileges) {
         if let Some(conn) = &self.group_conn {
-            let mut privilege_guard = conn
-                .controller
-                .privileges
-                .lock()
-                .await;
+            for (role, new_privileges) in group_privileges.0 {
+                let Some(privilege_ref) =
+                    conn.controller.privileges.0.get(&role) else {
+                        error!("No role {role:?} found in a group");
+                        continue
+                    };
 
-            let users_guard = conn.controller.users.0.read().await;
-            let changed_privileges = privileges.compare(&privilege_guard);
+                let mut privilege_guard = privilege_ref.write().await;
 
-            *privilege_guard = privileges;
+                let users_guard = conn.controller.users.0.read().await;
+                *privilege_guard = new_privileges;
 
-            // send new privileges to every user, whose privileges were changed
-            for (_, data) in users_guard.iter() {
-                let role = data.role;
-                if changed_privileges.0.contains(&role) {
-                    let privileges = privilege_guard.get_privileges(role);
-
-                    data.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await;
+                // send new privileges to every user, whose privileges were changed
+                for (_, data) in users_guard.iter() {
+                    if data.role == role {
+                        data.connections.send_across_all(&ServerAction::SetPrivileges(new_privileges)).await;
+                    }
                 }
             }
         }
@@ -234,13 +233,15 @@ impl UserController {
     pub async fn set_users_role(&self, new_roles: GroupUsersRole) {
         if let Some(conn) = &self.group_conn {
             let mut users_guard = conn.controller.users.0.write().await;
-            let privilege_guard = conn.controller.privileges.lock().await;
             for (role, users) in new_roles.0.into_iter() {
                 for elem in users.into_iter() {
                     if let Some(user) = users_guard.get_mut(&elem.user_id) {
                         user.role = role;
 
-                        let privileges = privilege_guard.get_privileges(role);
+                        let Some(privileges) = conn.controller.privileges.get_privileges(role).await else {
+                            error!("No role {role:?} found in a group");
+                            continue
+                        };
 
                         // send new privileges to every user with changed role
                         user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await;
@@ -259,6 +260,11 @@ impl UserController {
             Some(user_data) => Some(user_data.role),
             None => None,
         }
+    }
+
+    pub fn get_privileges(&self) -> Option<&SocketGroupRolePrivileges> {
+        let connection = self.group_conn.as_ref()?;
+        Some(&connection.controller.privileges)
     }
 }
 
@@ -424,7 +430,7 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    ChangePrivileges { group_id: Uuid, privileges: GroupRolePrivileges },
+    ChangePrivileges { group_id: Uuid, privileges: NewGroupRolePrivilegesFromJson },
     ChangeUsersRole { group_id: Uuid, users: GroupUsersRoleFromJson },
     RequestMessages { loaded: i64 },
     Close,

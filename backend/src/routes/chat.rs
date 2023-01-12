@@ -7,7 +7,7 @@ use crate::utils::chat::socket::{
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::groups::models::GroupUser;
-use crate::utils::roles::models::GroupUsersRole;
+use crate::utils::roles::models::{GroupUsersRole, NewGroupRolePrivileges, SocketGroupRolePrivileges};
 use crate::utils::roles::{get_group_role_privileges, set_group_role_privileges, set_group_users_role, get_user_role};
 use axum::http::HeaderMap;
 use axum::{
@@ -75,7 +75,7 @@ pub async fn chat_socket(
                     error!("Cannot fetch group role privileges");
                     continue
                 };
-                let group_controller = state.groups.get(&group_id, privileges);
+                let group_controller = state.groups.get(&group_id, SocketGroupRolePrivileges::from(privileges));
 
                 let Ok(role) = get_user_role(&pool, &claims.user_id, &group_id).await else {
                     error!("Cannot fetch group user role data");
@@ -192,8 +192,22 @@ pub async fn chat_socket(
 
                 // todo: disconnect group controllers
             }
-            ClientAction::ChangePrivileges { group_id, mut privileges } => {
-                privileges.maintain_hierarchy();
+            ClientAction::ChangePrivileges { group_id, privileges } => {
+                let Ok(mut privileges) = NewGroupRolePrivileges::try_from(privileges) else {
+                    error!("Invalid JSON from client");
+                    continue
+                };
+
+                let Some(socket_privileges) = controller.get_privileges() else {
+                    debug!("User trying to change privileges not in group");
+                    continue
+                };
+
+                if privileges.maintain_hierarchy(socket_privileges).await.is_err() {
+                    error!("Mismatched roles when trying to change privileges");
+                    continue
+                };
+
                 if set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
                     error!("Error when setting group role privileges");
                     continue

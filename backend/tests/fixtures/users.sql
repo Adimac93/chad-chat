@@ -1,4 +1,4 @@
-insert into users (id, nickname, activity_status)
+insert into users (id, username, activity_status)
 values
 ('ba34ff10-4b89-44cb-9b36-31eb57c41556','Adimac93', 'idle'),
 ('263541a8-fa1e-4f13-9e5d-5b250a5a71e6','HubertK05', 'idle'),

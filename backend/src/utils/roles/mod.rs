@@ -1,19 +1,17 @@
 ﻿pub mod errors;
 pub mod models;
 
-use anyhow::Context;
 use sqlx::{query, PgPool};
 use uuid::Uuid;
 
-use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role}};
+use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, NewGroupRolePrivileges}};
 
 use super::groups::models::GroupUser;
 
 pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<GroupRolePrivileges, RoleError> {
-    // the iterator and next() are still necessary because of the borrow checker
-    let mut query_res = query!(
+    let query_res = query!(
         r#"
-            select roles.privileges from
+            select group_roles.role_type as "role_type: Role", roles.privileges from
                 group_roles join roles on group_roles.role_id = roles.id
                 where group_roles.group_id = $1
                 and group_roles.role_type in ('member', 'admin')
@@ -22,19 +20,22 @@ pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<
         group_id
     )
     .fetch_all(pool)
-    .await?
-    .into_iter();
+    .await?;
 
-    Ok(GroupRolePrivileges {
-        admin: serde_json::from_value(query_res.next().context("Missing privileges for some roles in group")?.privileges)?,
-        member: serde_json::from_value(query_res.next().context("Missing privileges for some roles in group")?.privileges)?,
-    })
+    let mut res = GroupRolePrivileges::new();
+    for role_data in query_res {
+        res.0.insert(role_data.role_type, serde_json::from_value(role_data.privileges)?);
+    }
+
+    Ok(res)
 }
 
-pub async fn set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &GroupRolePrivileges) -> Result<(), RoleError> {
+pub async fn set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &NewGroupRolePrivileges) -> Result<(), RoleError> {
+    // todo: maintain hierarchy using data from the db and in new_privileges if the role 1 below and the corresponding privilege exists
+    
     let mut transaction = pool.begin().await?;
 
-    for (role, privileges) in [(Role::Admin, &new_privileges.admin), (Role::Member, &new_privileges.member)] {
+    for (role, privileges) in &new_privileges.0 {
         // rollbacks automatically on error
         let _res = query!(
             r#"
