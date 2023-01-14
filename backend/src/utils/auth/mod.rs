@@ -1,13 +1,13 @@
 pub mod additions;
 pub mod errors;
 pub mod models;
+pub mod tokens;
 
 use crate::TokenExtensions;
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use errors::*;
-use lettre::{AsyncTransport, Message};
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 use validator::Validate;
 
-use self::additions::random_username_tag;
+use self::{additions::random_username_tag, tokens::Token};
 
 use super::email::Mailer;
 
@@ -31,13 +31,13 @@ pub enum ActivityStatus {
 
 // todo: make as transaction with Acquire
 pub async fn try_register_user<'c>(
-    acq: impl Acquire<'c, Database = Postgres>,
+    pool: &PgPool,
     mailer: Mailer,
     email: &str,
     password: SecretString,
     username: &str,
 ) -> Result<Uuid, AuthError> {
-    let mut transaction = acq.begin().await?;
+    let mut transaction = pool.begin().await?;
 
     let user = query!(
         r#"
@@ -115,7 +115,9 @@ pub async fn try_register_user<'c>(
 
     transaction.commit().await?;
 
-    let res = mailer.send_verification(email).await;
+    let token_id = Token::Registration.gen_token(pool, &user_id).await?;
+
+    mailer.send_verification(email, &token_id).await?;
 
     Ok(user_id)
 }

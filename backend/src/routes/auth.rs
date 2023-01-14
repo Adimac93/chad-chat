@@ -1,8 +1,13 @@
 ﻿use crate::utils::auth::models::*;
 use crate::utils::email::Mailer;
 use crate::{app_errors::AppError, utils::auth::*, TokenExtensions};
+use axum::extract::Path;
+use axum::response::IntoResponse;
 use axum::{debug_handler, extract, http::StatusCode, Extension, Json};
-use axum::{routing::post, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::{decode, DecodingKey, Validation};
@@ -11,6 +16,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
+use uuid::Uuid;
 
 pub fn router() -> Router {
     Router::new()
@@ -19,6 +25,7 @@ pub fn router() -> Router {
         .route("/validate", post(protected_zone))
         .route("/logout", post(post_user_logout))
         .route("/refresh", post(post_refresh_user_token))
+        .route("/verify/registration/:token_id", get(verify_token))
 }
 
 async fn post_register_user(
@@ -141,4 +148,12 @@ async fn post_refresh_user_token(
     );
 
     Ok(jar)
+}
+
+async fn verify_token(
+    Extension(pool): Extension<PgPool>,
+    claims: Claims,
+    Path(token_id): Path<Uuid>,
+) -> impl IntoResponse {
+    todo!()
 }

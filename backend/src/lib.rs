@@ -40,7 +40,7 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         .allow_headers([CONTENT_TYPE])
         .allow_credentials(true);
 
-    let mailer = Mailer::new(config.smtp);
+    let mailer = Mailer::new(config.smtp, config.app.origin);
 
     let groups = Router::new().nest(
         "/groups",
