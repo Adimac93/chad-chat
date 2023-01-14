@@ -32,7 +32,7 @@ pub enum ActivityStatus {
 // todo: make as transaction with Acquire
 pub async fn try_register_user<'c>(
     pool: &PgPool,
-    mailer: Mailer,
+    mailer: Option<Mailer>,
     email: &str,
     password: SecretString,
     username: &str,
@@ -115,9 +115,10 @@ pub async fn try_register_user<'c>(
 
     transaction.commit().await?;
 
-    let token_id = Token::Registration.gen_token(pool, &user_id).await?;
-
-    mailer.send_verification(email, &token_id).await?;
+    if let Some(mailer) = mailer {
+        let token_id = Token::Registration.gen_token(pool, &user_id).await?;
+        mailer.send_verification(email, &token_id).await?;
+    }
 
     Ok(user_id)
 }

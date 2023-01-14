@@ -37,7 +37,7 @@ async fn post_register_user(
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
         &pool,
-        mailer,
+        Some(mailer),
         register_credentials.email.trim(),
         SecretString::new(register_credentials.password.trim().to_string()),
         &register_credentials.username,
