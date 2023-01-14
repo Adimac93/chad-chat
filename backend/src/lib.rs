@@ -17,7 +17,8 @@ use axum::{
     Extension, Json, Router,
 };
 use axum_extra::routing::SpaRouter;
-use configuration::get_config;
+use configuration::{get_config, Settings};
+use database::{get_postgres_pool, get_redis_pool};
 use secrecy::Secret;
 use serde_json::json;
 use sqlx::PgPool;
@@ -25,8 +26,9 @@ use tower_http::cors::CorsLayer;
 use tracing::debug;
 use utils::{auth::errors::AuthError, email::Mailer};
 
-pub async fn app(pool: PgPool) -> Router {
-    let config = get_config().expect("Failed to read configuration");
+pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
+    let pgpool = test_pool.unwrap_or(get_postgres_pool(config.postgres).await);
+    let rdpool = get_redis_pool(config.redis).await;
 
     let origin = config
         .app
@@ -54,12 +56,13 @@ pub async fn app(pool: PgPool) -> Router {
         .nest("/chat", routes::chat::router())
         .route("/health", get(health_check))
         .merge(groups)
-        .layer(Extension(pool))
+        .layer(Extension(pgpool))
+        .layer(Extension(rdpool))
+        .layer(Extension(mailer))
         .layer(Extension(TokenExtensions {
             access: JwtSecret(config.app.access_jwt_secret),
             refresh: RefreshJwtSecret(config.app.refresh_jwt_secret),
         }))
-        .layer(Extension(mailer))
         .layer(cors);
 
     Router::new().nest("/api", api).merge(spa)
@@ -91,11 +94,6 @@ where
             .expect("Failed to get jwt secret extension")
             .clone())
     }
-}
-
-async fn home_page() -> impl IntoResponse {
-    // TODO: api docs, info
-    Json(json!({"info":"docs"}))
 }
 
 async fn not_found(method: Method, uri: Uri, err: io::Error) -> String {

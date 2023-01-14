@@ -1,10 +1,11 @@
-﻿use backend::app;
+﻿use backend::{app, configuration::get_config};
 use dotenv::dotenv;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::net::{SocketAddr, TcpListener};
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt};
-pub async fn spawn_app(db: PgPool) -> SocketAddr {
+
+async fn spawn_app(db: PgPool) -> SocketAddr {
     dotenv().ok();
 
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
@@ -19,10 +20,11 @@ pub async fn spawn_app(db: PgPool) -> SocketAddr {
     //     .with(tracing_subscriber::fmt::layer())
     //     .init();
 
+    let settings = get_config().unwrap();
     tokio::spawn(async move {
         axum::Server::from_tcp(listener)
             .unwrap()
-            .serve(app(db).await.into_make_service())
+            .serve(app(settings, Some(db)).await.into_make_service())
             .await
             .unwrap()
     });

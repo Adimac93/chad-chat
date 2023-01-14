@@ -20,7 +20,7 @@ async fn main() {
     info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(
-            app(get_database_pool(config.database).await)
+            app(config, None)
                 .await
                 .into_make_service(),
         )
