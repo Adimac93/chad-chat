@@ -28,6 +28,7 @@ lettre = { version = "0.10.1", features = [
 maud = "0.24.0"
 nanoid = "0.4.0"
 rand = "0.8.5"
+redis = { version = "0.22.2", features = ["tokio-native-tls-comp", "r2d2", "connection-manager", "tokio-comp"] }
 rust-argon2 = "1.0.0"
 secrecy = { version = "0.8.0", features = ["serde"] }
 serde = { version = "1.0.147", features = ["derive"] }
