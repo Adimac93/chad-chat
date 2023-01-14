@@ -1,14 +1,15 @@
 use config::{Config, ConfigError};
-use lettre::transport::smtp::authentication::Credentials;
+use lettre::{transport::smtp::authentication::Credentials, Address};
 use secrecy::{ExposeSecret, Secret};
-use serde::Deserialize;
-use std::net::SocketAddr;
+use serde::{Deserialize, Serializer};
+use std::{fmt::Display, net::SocketAddr};
 use tracing::info;
 
 #[derive(Deserialize, Clone)]
 pub struct Settings {
     pub app: ApplicationSettings,
-    pub database: DatabaseSettings,
+    pub postgres: PostgresSettings,
+    pub redis: RedisSettings,
     pub smtp: SmtpSettings,
 }
 
@@ -17,6 +18,7 @@ pub struct SmtpSettings {
     username: Secret<String>,
     password: Secret<String>,
     pub relay: String,
+    pub address: String,
 }
 
 impl SmtpSettings {
@@ -25,6 +27,14 @@ impl SmtpSettings {
             self.username.expose_secret().to_owned(),
             self.password.expose_secret().to_owned(),
         )
+    }
+
+    fn from_env() -> Self {
+        let config = Config::builder()
+            .add_source(config::Environment::with_prefix("SMTP").separator("_"))
+            .build()
+            .unwrap();
+        config.try_deserialize().unwrap()
     }
 }
 
@@ -43,17 +53,27 @@ impl ApplicationSettings {
         addr.parse::<SocketAddr>()
             .expect(&format!("Failed to parse address: {addr} "))
     }
+
+    pub fn from_env() -> Self {
+        Self {
+            host: "0.0.0.0".into(),
+            port: get_env("PORT").parse::<u16>().expect("Invalid port number"),
+            access_jwt_secret: get_secret_env("ACCESS_JWT_SECRET"),
+            refresh_jwt_secret: get_secret_env("REFRESH_JWT_SECRET"),
+            origin: get_env("WEBSITE_URL"),
+        }
+    }
 }
 
 #[derive(Deserialize, Clone)]
-pub struct DatabaseSettings {
-    database_url: Option<Secret<String>>,
-    fields: Option<DatabaseFields>,
+pub struct PostgresSettings {
+    database_url: Option<String>,
+    fields: Option<PostgresFields>,
     is_migrating: Option<bool>,
 }
 
 #[derive(Deserialize, Clone)]
-pub struct DatabaseFields {
+pub struct PostgresFields {
     username: String,
     password: Secret<String>,
     port: u16,
@@ -61,50 +81,115 @@ pub struct DatabaseFields {
     database_name: String,
 }
 
-impl DatabaseFields {
-    fn compose(&self) -> String {
-        format!(
-            "postgresql://{}:{}@{}:{}/{}",
-            self.username,
-            self.password.expose_secret(),
-            self.host,
-            self.port,
-            self.database_name
-        )
+#[derive(Deserialize, Clone)]
+pub struct RedisSettings {
+    database_url: Option<String>,
+    fields: Option<RedisFields>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct RedisFields {
+    username: String,
+    password: Secret<String>,
+    host: String,
+    port: u16,
+}
+
+pub trait ConnectionPrep {
+    fn compose_database_url(&self) -> Option<String>;
+    fn get_database_url(&self) -> Option<String>;
+    fn env_database_url() -> Option<String>;
+    fn get_connection_string(&self) -> String
+    where
+        Self: std::fmt::Display,
+    {
+        if let Some(url) = self.compose_database_url() {
+            info!("Using composed url for {self}");
+            url
+        } else {
+            if let Some(url) = self.get_database_url() {
+                info!("Using field url for {self}");
+                url
+            } else {
+                let url = Self::env_database_url().expect("No connection info provided");
+                info!("Using composed url for {self}");
+                url
+            }
+        }
     }
 }
 
-impl DatabaseSettings {
-    pub fn get_connection_string(&self) -> String {
-        // database_url -> fields -> .env
-        match &self.database_url {
-            Some(url) => {
-                info!("Database url using toml 'database_url'");
-                url.expose_secret().to_string()
-            }
-            None => match &self.fields {
-                Some(fields) => {
-                    info!("Database url using toml 'fields'");
-                    fields.compose()
-                }
-                None => {
-                    info!("Database url using environment variable");
-                    get_env("DATABASE_URL")
-                }
-            },
+impl RedisSettings {
+    fn from_env() -> Self {
+        Self {
+            database_url: Self::env_database_url(),
+            fields: None,
         }
     }
+}
 
+impl Display for RedisSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "redis")
+    }
+}
+
+impl ConnectionPrep for RedisSettings {
+    fn compose_database_url(&self) -> Option<String> {
+        let fields = self.fields.clone()?;
+
+        Some(format!(
+            "redis://{}:{}@{}:{}",
+            fields.username,
+            fields.password.expose_secret(),
+            fields.host,
+            fields.port
+        ))
+    }
+    fn get_database_url(&self) -> Option<String> {
+        self.database_url.clone()
+    }
+    fn env_database_url() -> Option<String> {
+        try_get_env("REDIS_URL")
+    }
+}
+
+impl PostgresSettings {
     pub fn is_migrating(&self) -> bool {
         self.is_migrating.unwrap_or(false)
     }
-
-    fn production() -> Self {
+    fn from_env() -> Self {
         Self {
-            database_url: None,
+            database_url: Self::env_database_url(),
             fields: None,
             is_migrating: Some(true),
         }
+    }
+}
+
+impl Display for PostgresSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "postgres")
+    }
+}
+
+impl ConnectionPrep for PostgresSettings {
+    fn compose_database_url(&self) -> Option<String> {
+        let fields = self.fields.clone()?;
+        Some(format!(
+            "postgresql://{}:{}@{}:{}/{}",
+            fields.username,
+            fields.password.expose_secret(),
+            fields.host,
+            fields.port,
+            fields.database_name
+        ))
+    }
+    fn get_database_url(&self) -> Option<String> {
+        self.database_url.clone()
+    }
+    fn env_database_url() -> Option<String> {
+        try_get_env("DATABASE_URL")
     }
 }
 
@@ -150,28 +235,28 @@ pub fn get_config() -> Result<Settings, ConfigError> {
 
         Environment::Production => {
             let settings = Settings {
-                app: ApplicationSettings {
-                    host: "0.0.0.0".into(),
-                    port: get_env("PORT").parse::<u16>().expect("Invalid port number"),
-                    access_jwt_secret: get_secret_env("ACCESS_JWT_SECRET"),
-                    refresh_jwt_secret: get_secret_env("REFRESH_JWT_SECRET"),
-                    origin: get_env("FRONTEND_URL"),
-                },
-                database: DatabaseSettings::production(),
-                smtp: SmtpSettings {
-                    username: get_secret_env("SMTP_USERNAME"),
-                    password: get_secret_env("SMTP_PASSWORD"),
-                    relay: get_env("SMTP_RELAY"),
-                },
+                app: ApplicationSettings::from_env(),
+                postgres: PostgresSettings::from_env(),
+                redis: RedisSettings::from_env(),
+                smtp: SmtpSettings::from_env(),
             };
             return Ok(settings);
         }
     }
 }
 
+fn try_get_env(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
+fn try_get_secret_env(name: &str) -> Option<Secret<String>> {
+    Some(Secret::from(try_get_env(name)?))
+}
+
 fn get_env(name: &str) -> String {
     std::env::var(name).expect(format!("Missing {name}").as_str())
 }
+
 fn get_secret_env(name: &str) -> Secret<String> {
     Secret::from(get_env(name))
 }
