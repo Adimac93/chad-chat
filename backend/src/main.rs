@@ -1,4 +1,6 @@
-use backend::{app, configuration::get_config, database::get_database_pool};
+use std::net::SocketAddr;
+
+use backend::{app, configuration::get_config, database::get_postgres_pool};
 use dotenv::dotenv;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -17,12 +19,13 @@ async fn main() {
         .init();
 
     let addr = config.app.get_addr();
+
     info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(
             app(config, None)
                 .await
-                .into_make_service(),
+                .into_make_service_with_connect_info::<SocketAddr>(),
         )
         .await
         .expect("Failed to run axum server");

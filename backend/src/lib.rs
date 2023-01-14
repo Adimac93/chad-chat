@@ -4,11 +4,11 @@ pub mod database;
 pub mod routes;
 pub mod utils;
 
-use std::io;
+use std::{io, net::SocketAddr};
 
 use axum::{
     async_trait,
-    extract::{self, FromRequest},
+    extract::{self, ConnectInfo, FromRequest},
     http::header::CONTENT_TYPE,
     http::StatusCode,
     http::{HeaderValue, Method, Uri},
@@ -55,6 +55,7 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         .nest("/auth", routes::auth::router())
         .nest("/chat", routes::chat::router())
         .route("/health", get(health_check))
+        .route("/ip", get(conection_info))
         .merge(groups)
         .layer(Extension(pgpool))
         .layer(Extension(rdpool))
@@ -114,4 +115,8 @@ async fn health_check(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"status":"database unavailable"})),
     )
+}
+
+async fn conection_info(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
+    debug!("Connection from {addr}");
 }
