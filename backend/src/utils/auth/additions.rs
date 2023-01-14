@@ -5,6 +5,7 @@ use rand::{
     thread_rng, Rng,
 };
 use secrecy::{ExposeSecret, SecretString};
+use std::collections::HashSet;
 
 pub fn hash_pass(pass: SecretString) -> Result<String, argon2::Error> {
     hash_encoded(
@@ -24,7 +25,7 @@ pub fn pass_is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
     score.map_or(false, |entropy| entropy.score() >= 3)
 }
 
-pub fn random_username_tag(used_tags: Vec<i32>) -> Option<i32> {
+pub fn random_username_tag(used_tags: HashSet<i32>) -> Option<i32> {
     let mut rng = thread_rng();
     (0..10000)
         .filter(|x| !used_tags.contains(x))
