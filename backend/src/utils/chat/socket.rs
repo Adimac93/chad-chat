@@ -1,4 +1,4 @@
-use crate::utils::roles::models::{Privileges, Role, GroupUsersRoleFromJson, GroupUsersRole, NewGroupRolePrivilegesFromJson, NewGroupRolePrivileges, SocketGroupRolePrivileges};
+use crate::utils::roles::models::{Privileges, Role, GroupUsersRole, SocketGroupRolePrivileges, BulkNewGroupRolePrivileges};
 
 use super::models::{GroupUserMessage, KickMessage};
 use axum::extract::ws::{Message, WebSocket};
@@ -206,7 +206,7 @@ impl UserController {
         }
     }
 
-    pub async fn set_privileges(&self, group_privileges: NewGroupRolePrivileges) {
+    pub async fn set_privileges(&self, group_privileges: BulkNewGroupRolePrivileges) {
         if let Some(conn) = &self.group_conn {
             for (role, new_privileges) in group_privileges.0 {
                 let Some(privilege_ref) =
@@ -218,12 +218,12 @@ impl UserController {
                 let mut privilege_guard = privilege_ref.write().await;
 
                 let users_guard = conn.controller.users.0.read().await;
-                *privilege_guard = new_privileges;
+                *privilege_guard = new_privileges.clone();
 
                 // send new privileges to every user, whose privileges were changed
                 for (_, data) in users_guard.iter() {
                     if data.role == role {
-                        data.connections.send_across_all(&ServerAction::SetPrivileges(new_privileges)).await;
+                        data.connections.send_across_all(&ServerAction::SetPrivileges(new_privileges.clone())).await;
                     }
                 }
             }
@@ -430,8 +430,8 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    ChangePrivileges { group_id: Uuid, privileges: NewGroupRolePrivilegesFromJson },
-    ChangeUsersRole { group_id: Uuid, users: GroupUsersRoleFromJson },
+    BulkChangePrivileges { group_id: Uuid, privileges: BulkNewGroupRolePrivileges },
+    BulkChangeUsersRole { group_id: Uuid, users: GroupUsersRole },
     RequestMessages { loaded: i64 },
     Close,
     Ignore,

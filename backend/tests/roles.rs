@@ -1,13 +1,15 @@
 ﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::GroupUsersRole;
+use backend::utils::roles::models::{GroupUsersRole, PrivilegeType, Privilege, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges};
 use backend::utils::roles::models::{
-    CanInvite, CanSendMessages, GroupRolePrivileges, NewGroupRolePrivileges, Privileges, Role,
+    CanInvite, CanSendMessages, GroupRolePrivileges, Privileges, Role,
 };
 use backend::utils::roles::{
-    get_group_role_privileges, get_user_role, set_group_role_privileges, set_group_users_role,
+    get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges,
 };
 use sqlx::{query, PgPool};
+use tokio::sync::RwLock;
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq)]
@@ -21,24 +23,23 @@ const HUBERT_ID: &str = "263541a8-fa1e-4f13-9e5d-5b250a5a71e6";
 const MARCO_ID: &str = "4bd30a6a-7dfe-46a2-b741-f49612aa85c1";
 const POLO_ID: &str = "6666e44f-14ce-4aa5-b5f9-8a4cc5ee5c58";
 
-#[sqlx::test]
-async fn json_conversion_health_check(db: PgPool) {
-    let role_id = query!(
-        r#"
-            insert into roles(privileges)
-                values($1)
-                returning (id)
-        "#,
-        serde_json::to_value(&Privileges {
-            can_invite: CanInvite::Yes,
-            can_send_messages: CanSendMessages::Yes(10),
-        })
-        .expect("Failed to serialize privileges to json")
-    )
-    .fetch_one(&db)
-    .await
-    .expect("Failed to store json in the db")
-    .id;
+    #[sqlx::test]
+    async fn json_conversion_health_check(db: PgPool) {
+        let role_id = query!(
+            r#"
+                insert into roles(privileges)
+                    values($1)
+                    returning (id)
+            "#,
+            serde_json::to_value(&Privileges (HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+            ]))).expect("Failed to serialize privileges to json")
+        )
+        .fetch_one(&db)
+        .await
+        .expect("Failed to store json in the db")
+        .id;
 
     let res = query!(
         r#"
@@ -52,16 +53,15 @@ async fn json_conversion_health_check(db: PgPool) {
     .expect("Failed to fetch privileges by role id")
     .privileges;
 
-    let privileges =
-        serde_json::from_value::<Privileges>(res).expect("Failed to deserialize json from db");
-    assert_eq!(
-        Privileges {
-            can_invite: CanInvite::Yes,
-            can_send_messages: CanSendMessages::Yes(10),
-        },
-        privileges
-    )
-}
+        let privileges = serde_json::from_value::<Privileges>(res).expect("Failed to deserialize json from db");
+        assert_eq!(
+            Privileges (HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+            ])),
+            privileges
+        )
+    }
 
 #[sqlx::test(fixtures("groups", "roles", "group_roles"))]
 async fn get_group_role_privileges_health_check(db: PgPool) {
@@ -73,26 +73,22 @@ async fn get_group_role_privileges_health_check(db: PgPool) {
     .await
     .expect("Query failed");
 
-    assert_eq!(
-        res,
-        GroupRolePrivileges(HashMap::from([
-            (
-                Role::Admin,
-                Privileges {
-                    can_invite: CanInvite::Yes,
-                    can_send_messages: CanSendMessages::Yes(2),
-                }
-            ),
-            (
-                Role::Member,
-                Privileges {
-                    can_invite: CanInvite::No,
-                    can_send_messages: CanSendMessages::Yes(10),
-                }
-            ),
-        ]))
-    )
-}
+        assert_eq!(
+            res,
+            GroupRolePrivileges (
+                HashMap::from([
+                    (Role::Admin, Privileges (HashMap::from([
+                        (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                        (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(2))),
+                    ]))),
+                    (Role::Member, Privileges (HashMap::from([
+                        (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::No)),
+                        (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+                    ]))),
+                ])
+            )
+        )
+    }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
 async fn get_user_role_health_check(db: PgPool) {
@@ -113,28 +109,23 @@ async fn set_group_role_privileges_health_check(db: PgPool) {
     // Hard working rust programmers
     let group_id = Uuid::parse_str("a1fd5c51-326f-476e-a4f7-2e61a692bb56").unwrap();
 
-    let _res = set_group_role_privileges(
-        &db,
-        &group_id,
-        &NewGroupRolePrivileges(HashMap::from([
-            (
-                Role::Admin,
-                Privileges {
-                    can_invite: CanInvite::Yes,
-                    can_send_messages: CanSendMessages::Yes(1),
-                },
-            ),
-            (
-                Role::Member,
-                Privileges {
-                    can_invite: CanInvite::Yes,
-                    can_send_messages: CanSendMessages::Yes(15),
-                },
-            ),
-        ])),
-    )
-    .await
-    .expect("Query failed");
+        let _res = bulk_set_group_role_privileges(
+            &db,
+            &group_id,
+            &BulkNewGroupRolePrivileges (
+                HashMap::from([
+                    (Role::Admin, Privileges (HashMap::from([
+                        (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                        (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(1))),
+                    ]))),
+                    (Role::Member, Privileges (HashMap::from([
+                        (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                        (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(15))),
+                    ]))),
+            ])),
+        )
+        .await
+        .expect("Query failed");
 
     let res = query!(
         r#"
@@ -158,60 +149,76 @@ async fn set_group_role_privileges_health_check(db: PgPool) {
 
     res.sort_by_key(|k| k.role);
 
-    assert_eq!(
-        res,
-        vec![
-            RoleData {
-                role: Role::Member,
-                privileges: Privileges {
-                    can_invite: CanInvite::Yes,
-                    can_send_messages: CanSendMessages::Yes(15),
+        assert_eq!(
+            res,
+            vec![
+                RoleData {
+                    role: Role::Member,
+                    privileges: Privileges (HashMap::from([
+                        (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                        (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(15))),
+                    ])),
                 },
-            },
-            RoleData {
-                role: Role::Admin,
-                privileges: Privileges {
-                    can_invite: CanInvite::Yes,
-                    can_send_messages: CanSendMessages::Yes(1),
+                RoleData {
+                    role: Role::Admin,
+                    privileges: Privileges (HashMap::from([
+                        (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                        (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(1))),
+                    ])),
                 },
-            },
-            RoleData {
-                role: Role::Owner,
-                privileges: Privileges {
-                    can_invite: CanInvite::Yes,
-                    can_send_messages: CanSendMessages::Yes(0),
-                },
-            }
-        ]
-    )
-}
+                RoleData {
+                    role: Role::Owner,
+                    privileges: Privileges (HashMap::from([
+                        (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                        (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(0))),
+                    ])),
+                }
+            ]
+        )
+    }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
 async fn set_group_users_role_health_check(db: PgPool) {
     // Chadders - Marco and Adimac get Admin and Hubert gets Owner
+    println!("{:#?}", serde_json::to_string(&BulkNewGroupRolePrivileges (
+        HashMap::from([
+            (Role::Admin, Privileges (HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(1))),
+            ]))),
+            (Role::Member, Privileges (HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(15))),
+            ]))),
+    ]))));
+
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let _res = set_group_users_role(
-        &db,
-        &GroupUsersRole(HashMap::from([
-            (
-                Role::Admin,
-                vec![
-                    GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id),
-                    GroupUser::new(Uuid::parse_str(ADIMAC_ID).unwrap(), group_id),
-                ],
-            ),
-            (
-                Role::Owner,
-                vec![GroupUser::new(
-                    Uuid::parse_str(HUBERT_ID).unwrap(),
-                    group_id,
-                )],
-            ),
-        ])),
-    )
-    .await
-    .expect("Query failed");
+        let _res = bulk_set_group_users_role(
+            &db,
+            &GroupUsersRole(
+                HashMap::from([
+                    (Role::Admin, vec![
+                        GroupUser::new(
+                            Uuid::parse_str(MARCO_ID).unwrap(),
+                            group_id
+                        ),
+                        GroupUser::new(
+                            Uuid::parse_str(ADIMAC_ID).unwrap(),
+                            group_id
+                        )
+                    ]),
+                    (Role::Owner, vec![
+                        GroupUser::new(
+                            Uuid::parse_str(HUBERT_ID).unwrap(),
+                            group_id
+                        )
+                    ])
+                ])
+            )
+        )
+        .await
+        .expect("Query failed");
 
     let res = query!(
         r#"
@@ -375,32 +382,47 @@ async fn preprocess_self_role() {
     assert_eq!(data, GroupUsersRole(HashMap::from([])))
 }
 
-// #[tokio::test]
-// async fn maintain_hierarchy_health_check() {
-//     let mut new_privileges = GroupRolePrivileges {
-//         admin: Privileges {
-//             can_invite: CanInvite::Yes,
-//             can_send_messages: CanSendMessages::Yes(20),
-//         },
-//         member: Privileges {
-//             can_invite: CanInvite::No,
-//             can_send_messages: CanSendMessages::Yes(10),
-//         }
-//     };
+#[tokio::test]
+async fn maintain_hierarchy_health_check() {
+    let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
+        (
+            Role::Admin,
+            Arc::new(RwLock::new(Privileges(HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(5))),
+            ])))),
+        ),
+        (
+            Role::Member,
+            Arc::new(RwLock::new(Privileges(HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::No)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+            ])))),
+        ),
+    ]));
 
-//     // new_privileges.maintain_hierarchy();
+    let mut new_privileges = BulkNewGroupRolePrivileges ( HashMap::from([
+        (
+            Role::Admin,
+            Privileges(HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(20))),
+            ])),
+        ),
+    ]));
 
-//     assert_eq!(
-//         new_privileges,
-//         GroupRolePrivileges {
-//             admin: Privileges {
-//                 can_invite: CanInvite::Yes,
-//                 can_send_messages: CanSendMessages::Yes(10),
-//             },
-//             member: Privileges {
-//                 can_invite: CanInvite::No,
-//                 can_send_messages: CanSendMessages::Yes(10),
-//             }
-//         }
-//     );
-// }
+    new_privileges.maintain_hierarchy(&old_privileges).await.unwrap();
+
+    assert_eq!(
+        new_privileges,
+        BulkNewGroupRolePrivileges ( HashMap::from([
+            (
+                Role::Admin,
+                Privileges(HashMap::from([
+                    (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                    (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+                ])),
+            ),
+        ]))
+    );
+}

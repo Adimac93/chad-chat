@@ -1,6 +1,6 @@
 ﻿use std::{cmp::Ordering, collections::{HashMap, HashSet}, sync::Arc};
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 
@@ -10,6 +10,7 @@ use super::errors::RoleError;
 
 #[derive(sqlx::Type, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 #[sqlx(type_name = "user_role", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum Role {
     Member,
     Admin,
@@ -34,23 +35,23 @@ impl Role {
     }
 }
 
-impl TryFrom<String> for Role {
-    type Error = RoleError;
+// impl TryFrom<String> for Role {
+//     type Error = RoleError;
 
-    fn try_from(val: String) -> Result<Self, Self::Error> {
-        match &*val {
-            "owner" => Ok(Role::Owner),
-            "admin" => Ok(Role::Admin),
-            "member" => Ok(Role::Member),
-            _ => Err(RoleError::RoleParseError),
-        }
-    }
-}
+//     fn try_from(val: String) -> Result<Self, Self::Error> {
+//         match &*val {
+//             "owner" => Ok(Role::Owner),
+//             "admin" => Ok(Role::Admin),
+//             "member" => Ok(Role::Member),
+//             _ => Err(RoleError::RoleParseError),
+//         }
+//     }
+// }
 
-#[derive(Deserialize, Serialize, Clone)]
-pub struct GroupUsersRoleFromJson(pub HashMap<String, Vec<GroupUser>>);
+// #[derive(Deserialize, Serialize, Clone)]
+// pub struct GroupUsersRoleFromJson(pub HashMap<String, Vec<GroupUser>>);
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GroupUsersRole(pub HashMap<Role, Vec<GroupUser>>);
 
 pub struct ChangedPrivilegeSet(pub HashSet<Role>);
@@ -81,27 +82,33 @@ impl GroupUsersRole {
     }
 }
 
-// todo: remove the GroupUsersRoleFromJson struct entirely and provide the serializer and deserializer for GroupUsersRole
-impl TryFrom<GroupUsersRoleFromJson> for GroupUsersRole {
-    type Error = RoleError;
+// impl TryFrom<GroupUsersRoleFromJson> for GroupUsersRole {
+//     type Error = RoleError;
 
-    fn try_from(val: GroupUsersRoleFromJson) -> Result<Self, Self::Error> {
-        let iter = val.0.into_iter();
+//     fn try_from(val: GroupUsersRoleFromJson) -> Result<Self, Self::Error> {
+//         let iter = val.0.into_iter();
 
-        let mut map = HashMap::new();
-        for (role_str, vec) in iter {
-            map.insert(Role::try_from(role_str)?, vec);
-        }
+//         let mut map = HashMap::new();
+//         for (role_str, vec) in iter {
+//             map.insert(Role::try_from(role_str)?, vec);
+//         }
 
-        Ok(Self(map))
-    }
-}
+//         Ok(Self(map))
+//     }
+// }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct GroupRolePrivileges (pub HashMap<Role, Privileges>);
 
 #[derive(Clone)]
 pub struct SocketGroupRolePrivileges (pub HashMap<Role, Arc<RwLock<Privileges>>>);
+
+impl SocketGroupRolePrivileges {
+    pub async fn get_privileges(&self, role: Role) -> Option<Privileges> {
+        if role == Role::Owner { Some(Privileges::max()) }
+        else { Some(self.0.get(&role)?.read().await.clone()) }
+    }
+}
 
 impl From<GroupRolePrivileges> for SocketGroupRolePrivileges {
     fn from(val: GroupRolePrivileges) -> Self {
@@ -120,101 +127,135 @@ impl GroupRolePrivileges {
     }
 
     pub fn get_privileges(&self, role: Role) -> Option<Privileges> {
-        if role == Role::Owner { return Some(Privileges::MAX) };
-        Some(*self.0.get(&role)?)
+        if role == Role::Owner { return Some(Privileges::max()) };
+        Some(self.0.get(&role)?.clone())
     }
 }
 
-impl SocketGroupRolePrivileges {
-    pub async fn get_privileges(&self, role: Role) -> Option<Privileges> {
-        if role == Role::Owner { Some(Privileges::MAX) }
-        else {
-            Some(*self.0.get(&role)?.read().await)
-        }
-    }
-}
+// #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+// pub struct BulkNewGroupRolePrivilegesFromJson(pub HashMap<String, Privileges>);
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct NewGroupRolePrivilegesFromJson(pub HashMap<String, Privileges>);
+pub struct BulkNewGroupRolePrivileges(pub HashMap<Role, Privileges>);
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct NewGroupRolePrivileges(pub HashMap<Role, Privileges>);
-
-impl NewGroupRolePrivileges {
+impl BulkNewGroupRolePrivileges {
     // todo: refactor this, I ran into borrow checker issues writing this function
     pub async fn maintain_hierarchy(&mut self, other: &SocketGroupRolePrivileges) -> Result<(), RoleError> {
         let mut role_iter = self.0.keys().copied().collect::<Vec<Role>>();
         role_iter.sort();
         for role in role_iter.iter() {
             let Some(other_role) = role.decrement() else { continue };
+            let mut ref_privilege = self.0.remove(&role).unwrap();
+            let arc_rwlock;
+            dbg!(&other_role);
             let other_privileges = match self.0.get(&other_role) {
-                Some(&r) => r,
-                None => *other.0.get(&other_role).context("Mismatched roles")?.read().await,
+                Some(r) => r,
+                None => match other.0.get(&other_role) {
+                    Some(x) => {
+                        arc_rwlock = x.read().await;
+                        &arc_rwlock
+                    },
+                    None => {
+                        self.0.insert(*role, ref_privilege);
+                        return Err(RoleError::Unexpected(anyhow!("Mismatched privileges")))
+                    }
+                }
             };
-            let ref_mut = self.0.get_mut(&role).unwrap();
-            ref_mut.cmp_with_lower(other_privileges);
+            
+            let ref_mut = &mut ref_privilege;
+            ref_mut.cmp_with_lower(other_privileges)?;
+            self.0.insert(*role, ref_privilege);
         }
 
         role_iter.reverse();
-        for role in role_iter {
+        for role in role_iter.iter() {
             let Some(other_role) = role.increment() else { continue };
+            if other_role == Role::Owner { continue };
+            let mut ref_privilege = self.0.remove(&role).unwrap();
+            let arc_rwlock;
+            dbg!(&other_role);
             let other_privileges = match self.0.get(&other_role) {
-                Some(&r) => r,
-                None => *other.0.get(&other_role).context("Mismatched roles")?.read().await,
+                Some(r) => r,
+                None => match other.0.get(&other_role) {
+                    Some(x) => {
+                        arc_rwlock = x.read().await;
+                        &arc_rwlock
+                    },
+                    None => {
+                        self.0.insert(*role, ref_privilege);
+                        return Err(RoleError::Unexpected(anyhow!("Mismatched privileges")))
+                    }
+                }
             };
-            let ref_mut = self.0.get_mut(&role).unwrap();
-            ref_mut.cmp_with_higher(other_privileges);
+            
+            let ref_mut = &mut ref_privilege;
+            ref_mut.cmp_with_higher(other_privileges)?;
+            self.0.insert(*role, ref_privilege);
         }
 
         Ok(())
     }
 }
 
-impl TryFrom<NewGroupRolePrivilegesFromJson> for NewGroupRolePrivileges {
-    type Error = RoleError;
+// impl TryFrom<BulkNewGroupRolePrivilegesFromJson> for BulkNewGroupRolePrivileges {
+//     type Error = RoleError;
 
-    fn try_from(val: NewGroupRolePrivilegesFromJson) -> Result<Self, Self::Error> {
-        let iter = val.0.into_iter();
+//     fn try_from(val: BulkNewGroupRolePrivilegesFromJson) -> Result<Self, Self::Error> {
+//         let iter = val.0.into_iter();
 
-        let mut map = HashMap::new();
-        for (role_str, vec) in iter {
-            map.insert(Role::try_from(role_str)?, vec);
-        }
+//         let mut map = HashMap::new();
+//         for (role_str, vec) in iter {
+//             map.insert(Role::try_from(role_str)?, vec);
+//         }
 
-        Ok(Self(map))
-    }
-}
+//         Ok(Self(map))
+//     }
+// }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct Privileges {
-    pub can_invite: CanInvite,
-    pub can_send_messages: CanSendMessages,
-}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct Privileges(pub HashMap<PrivilegeType, Privilege>);
 
 impl Privileges {
-    pub const MAX: Self = Self {
-        can_invite: CanInvite::Yes,
-        can_send_messages: CanSendMessages::Yes(0),
-    };
-
-    fn cmp_with_lower(&mut self, other: Self) {
-        self.can_invite = std::cmp::max(self.can_invite, other.can_invite);
-        self.can_send_messages = std::cmp::max(self.can_send_messages, other.can_send_messages);
+    pub fn max() -> Self {
+        Self(HashMap::from([
+            (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+            (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(0))),
+        ]))
     }
 
-    fn cmp_with_higher(&mut self, other: Self) {
-        self.can_invite = std::cmp::min(self.can_invite, other.can_invite);
-        self.can_send_messages = std::cmp::min(self.can_send_messages, other.can_send_messages);
+    fn cmp_with_lower(&mut self, other: &Self) -> Result<(), RoleError> {
+        let privilege_type_iter = self.0.keys().copied().collect::<Vec<PrivilegeType>>();
+
+        for privilege_type in privilege_type_iter {
+            let self_privilege = self.0.get_mut(&privilege_type).context("Mismatched privileges")?;
+            let other_privilege = other.0.get(&privilege_type).context("Mismatched privileges")?;
+            self_privilege.cmp_with_lower(other_privilege)?;
+        }
+        Ok(())
+    }
+
+    fn cmp_with_higher(&mut self, other: &Self) -> Result<(), RoleError> {
+        let privilege_type_iter = self.0.keys().copied().collect::<Vec<PrivilegeType>>();
+
+        for privilege_type in privilege_type_iter {
+            let self_privilege = self.0.get_mut(&privilege_type).context("Mismatched privileges")?;
+            let other_privilege = other.0.get(&privilege_type).context("Mismatched privileges")?;
+            self_privilege.cmp_with_higher(other_privilege)?;
+        }
+        Ok(())
     }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord, Clone, Copy, Debug)]
+#[serde(rename_all = "snake_case")]
 pub enum CanInvite {
     No,
     Yes,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Copy, Debug)]
+#[serde(rename_all = "snake_case")]
 pub enum CanSendMessages {
     No,
     Yes(usize),
@@ -240,5 +281,64 @@ impl Ord for CanSendMessages {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // the result is always Some(_)
         self.partial_cmp(other).unwrap()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum PrivilegeType {
+    CanInvite,
+    CanSendMessages,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "snake_case")]
+#[serde(untagged)]
+ pub enum Privilege {
+    CanInvite(CanInvite),
+    CanSendMessages(CanSendMessages),
+ }
+
+ impl Privilege {
+    fn cmp_with_lower(&mut self, other: &Self) -> Result<(), RoleError> {
+        if (&*self).partial_cmp(other).context("Mismatched privileges")? == Ordering::Less {
+            self.try_set(other)?;
+        };
+        Ok(())
+    }
+
+    fn cmp_with_higher(&mut self, other: &Self) -> Result<(), RoleError> {
+        if (&*self).partial_cmp(other).context("Mismatched privileges")? == Ordering::Greater {
+            self.try_set(other)?;
+        };
+        Ok(())
+    }
+
+    fn try_set(&mut self, other: &Self) -> Result<(), RoleError> {
+        match self {
+            Privilege::CanInvite(x) => match other {
+                Privilege::CanInvite(y) => Ok(*x = *y),
+                _ => Err(RoleError::Unexpected(anyhow!("Mismatched privileges"))),
+            },
+            Privilege::CanSendMessages(x) => match other {
+                Privilege::CanSendMessages(y) => Ok(*x = *y),
+                _ => Err(RoleError::Unexpected(anyhow!("Mismatched privileges"))),
+            },
+        }
+    }
+ }
+
+ impl PartialOrd for Privilege {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self {
+            Privilege::CanInvite(x) => match other {
+                Privilege::CanInvite(y) => x.partial_cmp(y),
+                _ => None,
+            }
+            Privilege::CanSendMessages(x) => match other {
+                Privilege::CanSendMessages(y) => x.partial_cmp(y),
+                _ => None,
+            }
+        }
     }
 }

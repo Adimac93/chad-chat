@@ -7,8 +7,8 @@ use crate::utils::chat::socket::{
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::groups::models::GroupUser;
-use crate::utils::roles::models::{GroupUsersRole, NewGroupRolePrivileges, SocketGroupRolePrivileges};
-use crate::utils::roles::{get_group_role_privileges, set_group_role_privileges, set_group_users_role, get_user_role};
+use crate::utils::roles::models::{GroupUsersRole, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges};
+use crate::utils::roles::{get_group_role_privileges, get_user_role, bulk_set_group_role_privileges, bulk_set_group_users_role};
 use axum::http::HeaderMap;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
@@ -192,8 +192,8 @@ pub async fn chat_socket(
 
                 // todo: disconnect group controllers
             }
-            ClientAction::ChangePrivileges { group_id, privileges } => {
-                let Ok(mut privileges) = NewGroupRolePrivileges::try_from(privileges) else {
+            ClientAction::BulkChangePrivileges { group_id, privileges } => {
+                let Ok(mut privileges) = BulkNewGroupRolePrivileges::try_from(privileges) else {
                     error!("Invalid JSON from client");
                     continue
                 };
@@ -208,14 +208,14 @@ pub async fn chat_socket(
                     continue
                 };
 
-                if set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
+                if bulk_set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
                     error!("Error when setting group role privileges");
                     continue
                 };
 
                 controller.set_privileges(privileges).await;
             }
-            ClientAction::ChangeUsersRole { group_id, users } => {
+            ClientAction::BulkChangeUsersRole { group_id, users } => {
                 let Ok(mut users) = GroupUsersRole::try_from(users) else {
                     error!("Invalid JSON from client");
                     continue
@@ -234,7 +234,7 @@ pub async fn chat_socket(
                         continue
                     };
 
-                if set_group_users_role(&pool, &users).await.is_err() {
+                if bulk_set_group_users_role(&pool, &users).await.is_err() {
                     error!("Cannot set roles in group");
                     continue
                 };
