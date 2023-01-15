@@ -4,7 +4,9 @@ pub mod models;
 use sqlx::{query, PgPool};
 use uuid::Uuid;
 
-use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, BulkNewGroupRolePrivileges}};
+use crate::utils::roles::models::PrivilegeType;
+
+use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, BulkNewGroupRolePrivileges, PrivilegeChangeData}};
 
 use super::groups::models::GroupUser;
 
@@ -59,34 +61,25 @@ pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_
     Ok(())
 }
 
-// pub async fn set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &BulkNewGroupRolePrivileges) -> Result<(), RoleError> {
-//     let mut transaction = pool.begin().await?;
+pub async fn single_set_group_role_privileges(pool: &PgPool, data: &PrivilegeChangeData) -> Result<(), RoleError> {
+    let _res = query!(
+        r#"
+            update roles
+                set privileges[$1::text] = $2
+                from group_roles
+                where group_roles.group_id = $3
+                and group_roles.role_type = $4
+        "#,
+        &data.privilege as &PrivilegeType,
+        serde_json::to_value(&data.value)?,
+        &data.group_id,
+        &data.role as &Role,
+    )
+    .execute(pool)
+    .await?;
 
-//     for (role, privileges) in &new_privileges.0 {
-//         // rollbacks automatically on error
-//         let _res = query!(
-//             r#"
-//                 update roles
-//                     set privileges = $1
-//                     where roles.id = (
-//                         select role_id
-//                             from group_roles
-//                             where group_roles.role_type = $2
-//                             and group_roles.group_id = $3
-//                     )
-//             "#,
-//             &serde_json::to_value(&privileges)?,
-//             &role as &Role,
-//             &group_id,
-//         )
-//         .execute(&mut transaction)
-//         .await?;
-//     }
-
-//     transaction.commit().await?;
-
-//     Ok(())
-// }
+    Ok(())
+}
 
 pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &GroupUsersRole) -> Result<(), RoleError> {
     let mut transaction = pool.begin().await?;

@@ -3,6 +3,7 @@
 use anyhow::{Context, anyhow};
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use crate::utils::groups::models::GroupUser;
 
@@ -147,7 +148,6 @@ impl BulkNewGroupRolePrivileges {
             let Some(other_role) = role.decrement() else { continue };
             let mut ref_privilege = self.0.remove(&role).unwrap();
             let arc_rwlock;
-            dbg!(&other_role);
             let other_privileges = match self.0.get(&other_role) {
                 Some(r) => r,
                 None => match other.0.get(&other_role) {
@@ -173,7 +173,6 @@ impl BulkNewGroupRolePrivileges {
             if other_role == Role::Owner { continue };
             let mut ref_privilege = self.0.remove(&role).unwrap();
             let arc_rwlock;
-            dbg!(&other_role);
             let other_privileges = match self.0.get(&other_role) {
                 Some(r) => r,
                 None => match other.0.get(&other_role) {
@@ -284,8 +283,9 @@ impl Ord for CanSendMessages {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "privilege_type", rename_all = "snake_case")]
 pub enum PrivilegeType {
     CanInvite,
     CanSendMessages,
@@ -340,5 +340,42 @@ pub enum PrivilegeType {
                 _ => None,
             }
         }
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct PrivilegeChangeData {
+    pub group_id: Uuid,
+    pub role: Role,
+    pub privilege: PrivilegeType,
+    pub value: Privilege,
+}
+
+impl PrivilegeChangeData {
+    pub async fn maintain_hierarchy(&mut self, other: &SocketGroupRolePrivileges) -> Result<(), RoleError> {
+        if let Some(other_role) = self.role.decrement() {
+            if let Some(other_privileges_lock) = other.0.get(&other_role) {
+                let other_privileges = other_privileges_lock.read().await;
+                if let Some(privilege) = other_privileges.0.get(&self.privilege) {
+                    let ref_mut = &mut self.value;
+                    ref_mut.cmp_with_lower(privilege)?;
+                }
+            }
+        };
+        
+        match self.role.increment() {
+            Some(other_role) if other_role != Role::Owner => {
+                if let Some(other_privileges_lock) = other.0.get(&other_role) {
+                    let other_privileges = other_privileges_lock.read().await;
+                    if let Some(privilege) = other_privileges.0.get(&self.privilege) {
+                        let ref_mut = &mut self.value;
+                        ref_mut.cmp_with_higher(privilege)?;
+                    }
+                }
+            }
+            _ => (),
+        };
+        
+        Ok(())
     }
 }

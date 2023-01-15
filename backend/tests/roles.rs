@@ -1,10 +1,10 @@
 ﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::{GroupUsersRole, PrivilegeType, Privilege, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges};
+use backend::utils::roles::models::{GroupUsersRole, PrivilegeType, Privilege, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges, PrivilegeChangeData};
 use backend::utils::roles::models::{
     CanInvite, CanSendMessages, GroupRolePrivileges, Privileges, Role,
 };
 use backend::utils::roles::{
-    get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges,
+    get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges, single_set_group_role_privileges,
 };
 use sqlx::{query, PgPool};
 use tokio::sync::RwLock;
@@ -180,18 +180,6 @@ async fn set_group_role_privileges_health_check(db: PgPool) {
 #[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
 async fn set_group_users_role_health_check(db: PgPool) {
     // Chadders - Marco and Adimac get Admin and Hubert gets Owner
-    println!("{:#?}", serde_json::to_string(&BulkNewGroupRolePrivileges (
-        HashMap::from([
-            (Role::Admin, Privileges (HashMap::from([
-                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(1))),
-            ]))),
-            (Role::Member, Privileges (HashMap::from([
-                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(15))),
-            ]))),
-    ]))));
-
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
         let _res = bulk_set_group_users_role(
@@ -425,4 +413,111 @@ async fn maintain_hierarchy_health_check() {
             ),
         ]))
     );
+}
+
+#[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
+async fn single_set_group_role_privileges_health_check(db: PgPool) {
+    let mut data = PrivilegeChangeData {
+        group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
+        role: Role::Member,
+        privilege: PrivilegeType::CanInvite,
+        value: Privilege::CanInvite(CanInvite::No),
+    };
+
+    let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
+        (
+            Role::Admin,
+            Arc::new(RwLock::new(Privileges(HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(5))),
+            ])))),
+        ),
+        (
+            Role::Member,
+            Arc::new(RwLock::new(Privileges(HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+            ])))),
+        ),
+    ]));
+
+    data.maintain_hierarchy(&old_privileges).await.unwrap();
+    single_set_group_role_privileges(&db, &data).await.unwrap();
+
+    let query_res = query!(
+        r#"
+            select roles.privileges
+                from group_roles join roles on group_roles.role_id = roles.id
+                where group_roles.group_id = $1
+                and group_roles.role_type = $2
+        "#,
+        data.group_id,
+        data.role as Role,
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    let res: Privileges = serde_json::from_value(query_res.privileges).unwrap();
+    assert_eq!(
+        res,
+        Privileges(HashMap::from([
+            (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::No)),
+            (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+        ]))
+    )
+}
+
+#[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
+async fn single_set_group_role_privileges_with_hierarchy(db: PgPool) {
+    let mut data = PrivilegeChangeData {
+        group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
+        role: Role::Admin,
+        privilege: PrivilegeType::CanInvite,
+        value: Privilege::CanInvite(CanInvite::No),
+    };
+
+    let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
+        (
+            Role::Admin,
+            Arc::new(RwLock::new(Privileges(HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(2))),
+            ])))),
+        ),
+        (
+            Role::Member,
+            Arc::new(RwLock::new(Privileges(HashMap::from([
+                (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+                (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
+            ])))),
+        ),
+    ]));
+
+    data.maintain_hierarchy(&old_privileges).await.unwrap();
+    single_set_group_role_privileges(&db, &data).await.unwrap();
+
+    let query_res = query!(
+        r#"
+            select roles.privileges
+                from group_roles join roles on group_roles.role_id = roles.id
+                where group_roles.group_id = $1
+                and group_roles.role_type = $2
+        "#,
+        data.group_id,
+        data.role as Role,
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    let res: Privileges = serde_json::from_value(query_res.privileges).unwrap();
+    assert_eq!(
+        res,
+        // the change should not happen
+        Privileges(HashMap::from([
+            (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
+            (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(2))),
+        ]))
+    )
 }

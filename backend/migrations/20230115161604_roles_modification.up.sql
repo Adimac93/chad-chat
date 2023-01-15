@@ -1,5 +1,7 @@
 -- Add up migration script here
 
+create type privilege_type as enum('can_invite', 'can_send_messages');
+
 do $$
 declare
     role_type_var user_role;

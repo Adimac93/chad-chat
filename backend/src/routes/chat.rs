@@ -8,7 +8,7 @@ use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::groups::models::GroupUser;
 use crate::utils::roles::models::{GroupUsersRole, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges};
-use crate::utils::roles::{get_group_role_privileges, get_user_role, bulk_set_group_role_privileges, bulk_set_group_users_role};
+use crate::utils::roles::{get_group_role_privileges, get_user_role, bulk_set_group_role_privileges, bulk_set_group_users_role, single_set_group_role_privileges};
 use axum::http::HeaderMap;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
@@ -192,28 +192,22 @@ pub async fn chat_socket(
 
                 // todo: disconnect group controllers
             }
-            ClientAction::BulkChangePrivileges { group_id, privileges } => {
-                let Ok(mut privileges) = BulkNewGroupRolePrivileges::try_from(privileges) else {
-                    error!("Invalid JSON from client");
-                    continue
-                };
-
+            ClientAction::BulkChangePrivileges { group_id, mut privileges } => {
                 let Some(socket_privileges) = controller.get_privileges() else {
                     debug!("User trying to change privileges not in group");
                     continue
                 };
 
                 if privileges.maintain_hierarchy(socket_privileges).await.is_err() {
-                    error!("Mismatched roles when trying to change privileges");
+                    error!("Error when maintaining role hierarchy");
                     continue
                 };
 
+                controller.bulk_set_privileges(&privileges).await;
                 if bulk_set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
                     error!("Error when setting group role privileges");
                     continue
                 };
-
-                controller.set_privileges(privileges).await;
             }
             ClientAction::BulkChangeUsersRole { group_id, users } => {
                 let Ok(mut users) = GroupUsersRole::try_from(users) else {
@@ -239,7 +233,28 @@ pub async fn chat_socket(
                     continue
                 };
 
-                controller.set_users_role(users).await;
+                controller.bulk_set_users_role(users).await;
+            }
+            ClientAction::SingleChangePrivileges { mut data } => {
+                let Some(socket_privileges) = controller.get_privileges() else {
+                    debug!("User trying to change privileges not in group");
+                    continue
+                };
+
+                if data.maintain_hierarchy(socket_privileges).await.is_err() {
+                    error!("Error when maintaining role hierarchy");
+                    continue
+                };
+
+                if controller.set_privilege(&data).await.is_err() {
+                    error!("Error when changing privilege");
+                    continue
+                };
+
+                if single_set_group_role_privileges(&pool, &data).await.is_err() {
+                    error!("Error when setting group role privileges");
+                    continue
+                };
             }
             ClientAction::Close => {
                 info!("WebSocket closed explicitly");

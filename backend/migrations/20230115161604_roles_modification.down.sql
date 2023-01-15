@@ -18,3 +18,5 @@ loop
         where group_roles.role_type = role_type_var;
 end loop;
 end $$;
+
+drop type privilege_type;
