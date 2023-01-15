@@ -1,7 +1,14 @@
+use crate::{
+    configuration::get_config,
+    database::{get_redis_pool, DatabaseError, RdPool},
+};
+use nanoid::nanoid;
+use redis::{aio::ConnectionLike, AsyncCommands, Cmd, Pipeline};
 use serde::{Deserialize, Serialize};
 use sqlx::{pool, query, query_as, Acquire, PgPool, Postgres};
 use std::time::Duration;
 use tokio::{sync::Notify, task::JoinHandle};
+use tracing_subscriber::fmt::format;
 use uuid::Uuid;
 
 #[derive(sqlx::Type, Debug, Serialize, Deserialize)]
@@ -11,47 +18,57 @@ pub enum Token {
     Network,
 }
 
-impl Token {
-    pub async fn gen_token<'c>(&self, pool: &PgPool, user_id: &Uuid) -> Result<Uuid, sqlx::Error> {
-        let token_id = query!(
-            r#"
-                insert into user_tokens (token, user_id)
-                values ($1, $2)
-                returning (id)
-            "#,
-            &self as &Token,
-            user_id
-        )
-        .fetch_one(pool)
-        .await?
-        .id;
-
-        Ok(token_id)
+impl ToString for Token {
+    fn to_string(&self) -> String {
+        match self {
+            Token::Registration => "reg".into(),
+            Token::Network => "net".into(),
+        }
     }
+}
 
+impl Token {
     pub async fn use_token<'c>(
         &self,
-        acq: impl Acquire<'c, Database = Postgres>,
-        user_id: &Uuid,
+        rdpool: &mut RdPool,
         token_id: &Uuid,
-    ) -> Result<Token, sqlx::Error> {
-        let mut conn = acq.acquire().await?;
-        let token = query!(
-            r#"
-            delete from user_tokens
-            where id = $1 and user_id = $2
-            returning token as "token: Token" 
-        "#,
-            token_id,
-            user_id
-        )
-        .fetch_one(&mut *conn)
-        .await?
-        .token;
+    ) -> Result<Uuid, DatabaseError> {
+        let key = format!("tokens:{}:{token_id}", self.to_string());
+        let val: String = rdpool.get_del(key).await?;
+        Ok(Uuid::try_parse(&val).unwrap())
+    }
 
-        match token {
-            Token::Registration => todo!(), // change account status to verified
-            Token::Network => todo!(),      // add ip address as trusted
-        }
+    pub async fn gen_token_with_duration(
+        &self,
+        rdpool: &mut RdPool,
+        user_id: &Uuid,
+    ) -> Result<Uuid, DatabaseError> {
+        let token_id = Uuid::new_v4();
+        let key = format!("tokens:{}:{token_id}", self.to_string());
+        rdpool.set_ex(&key, user_id.to_string(), 60 * 15).await?;
+
+        Ok(token_id)
+        // redis::cmd("SET")
+        //     .arg(&key)
+        //     .arg(nanoid!())
+        //     .arg("EX")
+        //     .arg(60 * 15)
+        //     .query_async(rdpool)
+        //     .await?;
+
+        // rdpool.set(&key, nanoid!()).await?;
+        // rdpool.expire(&key, 60 * 15).await?;
+
+        // rdpool
+        //     .req_packed_command(&Cmd::set(&key, nanoid!()).arg("EX").arg(60 * 15))
+        //     .await?;
+
+        // rdpool
+        //     .req_packed_commands(
+        //         &Pipeline::new().set(&key, nanoid!()).expire(&key, 60 * 15),
+        //         0,
+        //         2,
+        //     )
+        //     .await?;
     }
 }

@@ -1,4 +1,6 @@
-﻿use axum::{response::IntoResponse, Json, http::StatusCode};
+﻿use std::f32::consts::E;
+
+use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 use thiserror::Error;
 
@@ -34,6 +36,12 @@ impl IntoResponse for RoleError {
 
 impl From<sqlx::Error> for RoleError {
     fn from(e: sqlx::Error) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}
+
+impl From<redis::RedisError> for RoleError {
+    fn from(e: redis::RedisError) -> Self {
         Self::Unexpected(anyhow::Error::from(e))
     }
 }

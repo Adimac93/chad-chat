@@ -3,7 +3,7 @@ pub mod errors;
 pub mod models;
 pub mod tokens;
 
-use crate::TokenExtensions;
+use crate::{database::RdPool, TokenExtensions};
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
@@ -32,6 +32,7 @@ pub enum ActivityStatus {
 // todo: make as transaction with Acquire
 pub async fn try_register_user<'c>(
     pool: &PgPool,
+    rdpool: &mut RdPool,
     mailer: Option<Mailer>,
     email: &str,
     password: SecretString,
@@ -116,7 +117,9 @@ pub async fn try_register_user<'c>(
     transaction.commit().await?;
 
     if let Some(mailer) = mailer {
-        let token_id = Token::Registration.gen_token(pool, &user_id).await?;
+        let token_id = Token::Registration
+            .gen_token_with_duration(rdpool, &user_id)
+            .await?;
         mailer.send_verification(email, &token_id).await?;
     }
 
@@ -209,5 +212,11 @@ pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<()
     .await?;
 
     trace!("Adding token to blacklist");
+    Ok(())
+}
+
+pub async fn use_reg_token(rdpool: &mut RdPool, token_id: &Uuid) -> Result<(), AuthError> {
+    Token::Registration.use_token(rdpool, token_id).await?;
+    // todo: change status to verified
     Ok(())
 }

@@ -4,6 +4,8 @@ use axum::Json;
 use serde_json::json;
 use thiserror::Error;
 
+use crate::utils::roles::errors::RoleError;
+
 #[derive(Error, Debug)]
 pub enum InvitationError {
     #[error("Invitation is expired")]
@@ -39,6 +41,12 @@ impl IntoResponse for InvitationError {
 
 impl From<sqlx::Error> for InvitationError {
     fn from(e: sqlx::Error) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}
+
+impl From<redis::RedisError> for InvitationError {
+    fn from(e: redis::RedisError) -> Self {
         Self::Unexpected(anyhow::Error::from(e))
     }
 }

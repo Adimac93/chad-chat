@@ -2,6 +2,8 @@ use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 use thiserror::Error;
 
+use crate::database::DatabaseError;
+
 #[derive(Error, Debug)]
 pub enum AuthError {
     #[error("Invalid username")]
@@ -51,5 +53,17 @@ impl IntoResponse for AuthError {
 impl From<sqlx::Error> for AuthError {
     fn from(e: sqlx::Error) -> Self {
         Self::Unexpected(anyhow::Error::from(e))
+    }
+}
+
+impl From<redis::RedisError> for AuthError {
+    fn from(e: redis::RedisError) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}
+
+impl From<DatabaseError> for AuthError {
+    fn from(e: DatabaseError) -> Self {
+        AuthError::Unexpected(e.into())
     }
 }

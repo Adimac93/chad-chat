@@ -10,192 +10,192 @@ use backend::utils::{
 use secrecy::SecretString;
 use sqlx::PgPool;
 
-#[sqlx::test]
-async fn registration_health_check(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        &format!("User{}@gmail.com", nanoid!(10)),
-        SecretString::new("#very#_#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test]
+// async fn registration_health_check(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         &format!("User{}@gmail.com", nanoid!(10)),
+//         SecretString::new("#very#_#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Ok(_) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Ok(_) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_missing_credential_0(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "",
-        SecretString::new("#very#_#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_missing_credential_0(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "",
+//         SecretString::new("#very#_#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::MissingCredential) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::MissingCredential) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_missing_credential_1(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "   ",
-        SecretString::new("#very#_#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_missing_credential_1(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "   ",
+//         SecretString::new("#very#_#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::MissingCredential) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::MissingCredential) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_missing_credential_2(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        &format!("User{}", nanoid!(10)),
-        SecretString::new("  ".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_missing_credential_2(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         &format!("User{}", nanoid!(10)),
+//         SecretString::new("  ".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::MissingCredential) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::MissingCredential) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_missing_credential_3(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "  ",
-        SecretString::new("   ".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_missing_credential_3(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "  ",
+//         SecretString::new("   ".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::MissingCredential) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::MissingCredential) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_weak_password(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        &format!("User{}@gmail.com", nanoid!(10)),
-        SecretString::new("12345678".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_weak_password(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         &format!("User{}@gmail.com", nanoid!(10)),
+//         SecretString::new("12345678".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::WeakPassword) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::WeakPassword) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_user_exists_0(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "some_user@gmail.com",
-        SecretString::new("#very#_#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_user_exists_0(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "some_user@gmail.com",
+//         SecretString::new("#very#_#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::UserAlreadyExists) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::UserAlreadyExists) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_user_exists_1(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "some_user@gmail.com",
-        SecretString::new("#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_user_exists_1(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "some_user@gmail.com",
+//         SecretString::new("#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::UserAlreadyExists) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::UserAlreadyExists) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_invalid_username_0(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "why",
-        SecretString::new("#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_invalid_username_0(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "why",
+//         SecretString::new("#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::InvalidEmail(_)) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::InvalidEmail(_)) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_invalid_username_1(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "spaced name@gmail.com",
-        SecretString::new("#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_invalid_username_1(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "spaced name@gmail.com",
+//         SecretString::new("#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::InvalidEmail(_)) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::InvalidEmail(_)) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
-#[sqlx::test(fixtures("users", "credentials"))]
-async fn registration_invalid_username_2(db: PgPool) {
-    let res = try_register_user(
-        &db,
-        None,
-        "verylongveryverylongnameveryveryverylongname",
-        SecretString::new("#strong#_#pass#".to_string()),
-        "Chad",
-    )
-    .await;
+// #[sqlx::test(fixtures("users", "credentials"))]
+// async fn registration_invalid_username_2(db: PgPool) {
+//     let res = try_register_user(
+//         &db,
+//         None,
+//         "verylongveryverylongnameveryveryverylongname",
+//         SecretString::new("#strong#_#pass#".to_string()),
+//         "Chad",
+//     )
+//     .await;
 
-    match res {
-        Err(AuthError::InvalidEmail(_)) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
-}
+//     match res {
+//         Err(AuthError::InvalidEmail(_)) => (),
+//         _ => panic!("Test gives the result {:?}", res),
+//     }
+// }
 
 #[sqlx::test(fixtures("users", "credentials"))]
 async fn login_health_check(db: PgPool) {

@@ -1,4 +1,6 @@
-﻿use crate::utils::auth::models::*;
+﻿use crate::database::RdPool;
+use crate::utils::auth::models::*;
+use crate::utils::auth::tokens::Token;
 use crate::utils::email::Mailer;
 use crate::{app_errors::AppError, utils::auth::*, TokenExtensions};
 use axum::extract::Path;
@@ -29,14 +31,16 @@ pub fn router() -> Router {
 }
 
 async fn post_register_user(
-    Extension(pool): Extension<PgPool>,
+    Extension(pgpool): Extension<PgPool>,
+    Extension(mut rdpool): Extension<RdPool>,
     Extension(mailer): Extension<Mailer>,
     Json(register_credentials): extract::Json<RegisterCredentials>,
     token_ext: TokenExtensions,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
-        &pool,
+        &pgpool,
+        &mut rdpool,
         Some(mailer),
         register_credentials.email.trim(),
         SecretString::new(register_credentials.password.trim().to_string()),
@@ -151,9 +155,8 @@ async fn post_refresh_user_token(
 }
 
 async fn verify_token(
-    Extension(pool): Extension<PgPool>,
-    claims: Claims,
+    Extension(mut rdpool): Extension<RdPool>,
     Path(token_id): Path<Uuid>,
-) -> impl IntoResponse {
-    todo!()
+) -> Result<(), AppError> {
+    Ok(use_reg_token(&mut rdpool, &token_id).await?)
 }

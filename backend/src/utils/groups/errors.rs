@@ -57,3 +57,9 @@ impl From<sqlx::Error> for GroupError {
         Self::Unexpected(anyhow::Error::from(e))
     }
 }
+
+impl From<redis::RedisError> for GroupError {
+    fn from(e: redis::RedisError) -> Self {
+        Self::Unexpected(anyhow::Error::from(e))
+    }
+}
