@@ -1,8 +1,8 @@
 use config::{Config, ConfigError};
 use lettre::{transport::smtp::authentication::Credentials, Address};
 use secrecy::{ExposeSecret, Secret};
-use serde::{Deserialize, Serializer};
-use std::{fmt::Display, net::SocketAddr};
+use serde::Deserialize;
+use std::net::SocketAddr;
 use tracing::info;
 
 #[derive(Deserialize, Clone)]
@@ -68,12 +68,12 @@ impl ApplicationSettings {
 #[derive(Deserialize, Clone)]
 pub struct PostgresSettings {
     database_url: Option<String>,
-    fields: Option<PostgresFields>,
+    fields: Option<DatabaseFields>,
     is_migrating: Option<bool>,
 }
 
 #[derive(Deserialize, Clone)]
-pub struct PostgresFields {
+pub struct DatabaseFields {
     username: String,
     password: Secret<String>,
     port: u16,
@@ -81,18 +81,23 @@ pub struct PostgresFields {
     database_name: String,
 }
 
-#[derive(Deserialize, Clone)]
-pub struct RedisSettings {
-    database_url: Option<String>,
-    fields: Option<RedisFields>,
+impl DatabaseFields {
+    fn compose(&self, db_name: String) -> String {
+        format!(
+            "{db_name}://{}:{}@{}:{}/{}",
+            self.username,
+            self.password.expose_secret(),
+            self.host,
+            self.port,
+            self.database_name
+        )
+    }
 }
 
 #[derive(Deserialize, Clone)]
-pub struct RedisFields {
-    username: String,
-    password: Secret<String>,
-    host: String,
-    port: u16,
+pub struct RedisSettings {
+    database_url: Option<String>,
+    fields: Option<DatabaseFields>,
 }
 
 pub trait ConnectionPrep {
@@ -101,18 +106,19 @@ pub trait ConnectionPrep {
     fn env_database_url() -> Option<String>;
     fn get_connection_string(&self) -> String
     where
-        Self: std::fmt::Display,
+        Self: ToString,
     {
+        let info = format!("url for {}", self.to_string());
         if let Some(url) = self.compose_database_url() {
-            info!("Using composed url for {self}");
+            info!("Using composed {info}");
             url
         } else {
             if let Some(url) = self.get_database_url() {
-                info!("Using field url for {self}");
+                info!("Using field {info}");
                 url
             } else {
                 let url = Self::env_database_url().expect("No connection info provided");
-                info!("Using composed url for {self}");
+                info!("Using env {info}");
                 url
             }
         }
@@ -128,23 +134,15 @@ impl RedisSettings {
     }
 }
 
-impl Display for RedisSettings {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "redis")
+impl ToString for RedisSettings {
+    fn to_string(&self) -> String {
+        String::from("redis")
     }
 }
 
 impl ConnectionPrep for RedisSettings {
     fn compose_database_url(&self) -> Option<String> {
-        let fields = self.fields.clone()?;
-
-        Some(format!(
-            "redis://{}:{}@{}:{}",
-            fields.username,
-            fields.password.expose_secret(),
-            fields.host,
-            fields.port
-        ))
+        Some(self.fields.clone()?.compose(self.to_string()))
     }
     fn get_database_url(&self) -> Option<String> {
         self.database_url.clone()
@@ -167,23 +165,15 @@ impl PostgresSettings {
     }
 }
 
-impl Display for PostgresSettings {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "postgres")
+impl ToString for PostgresSettings {
+    fn to_string(&self) -> String {
+        String::from("postgresql")
     }
 }
 
 impl ConnectionPrep for PostgresSettings {
     fn compose_database_url(&self) -> Option<String> {
-        let fields = self.fields.clone()?;
-        Some(format!(
-            "postgresql://{}:{}@{}:{}/{}",
-            fields.username,
-            fields.password.expose_secret(),
-            fields.host,
-            fields.port,
-            fields.database_name
-        ))
+        Some(self.fields.clone()?.compose(self.to_string()))
     }
     fn get_database_url(&self) -> Option<String> {
         self.database_url.clone()
