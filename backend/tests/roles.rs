@@ -1,10 +1,10 @@
 ﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::{GroupUsersRole, PrivilegeType, Privilege, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges, PrivilegeChangeData};
+use backend::utils::roles::models::{GroupUsersRole, PrivilegeType, Privilege, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
 use backend::utils::roles::models::{
     CanInvite, CanSendMessages, GroupRolePrivileges, Privileges, Role,
 };
 use backend::utils::roles::{
-    get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges, single_set_group_role_privileges,
+    get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges, single_set_group_role_privileges, single_set_group_user_role,
 };
 use sqlx::{query, PgPool};
 use tokio::sync::RwLock;
@@ -522,12 +522,10 @@ async fn single_set_group_role_privileges_with_hierarchy(db: PgPool) {
     )
 }
 
-#[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
+#[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
 async fn single_set_group_user_role_health_check (db: PgPool) {
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
     // Chadders - Marco gets Admin
-    let mut data = UserRoleChangeData {
+    let data = UserRoleChangeData {
         group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
         user_id: Uuid::parse_str(MARCO_ID).unwrap(),
         value: Role::Admin,

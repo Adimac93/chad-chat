@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::utils::roles::models::PrivilegeType;
 
-use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, BulkNewGroupRolePrivileges, PrivilegeChangeData}};
+use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, BulkNewGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData}};
 
 use super::groups::models::GroupUser;
 
@@ -105,6 +105,25 @@ pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &GroupUsersRole) ->
     }
 
     transaction.commit().await?;
+
+    Ok(())
+}
+
+pub async fn single_set_group_user_role(pool: &PgPool, data: &UserRoleChangeData) -> Result<(), RoleError> {
+    // rollbacks automatically on error
+    let _res = query!(
+        r#"
+            update group_users
+                set role_id = group_roles.role_id
+                from group_roles
+                where group_roles.group_id = $1
+                and group_roles.role_type = $2
+        "#,
+        data.group_id,
+        data.value as Role,
+    )
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
