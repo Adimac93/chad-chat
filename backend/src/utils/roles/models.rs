@@ -380,6 +380,7 @@ impl PrivilegeChangeData {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct UserRoleChangeData {
     pub group_id: Uuid,
     pub user_id: Uuid,

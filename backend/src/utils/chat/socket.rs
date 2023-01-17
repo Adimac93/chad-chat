@@ -1,5 +1,5 @@
 use crate::utils::roles::errors::RoleError;
-use crate::utils::roles::models::{Privileges, Role, GroupUsersRole, SocketGroupRolePrivileges, BulkNewGroupRolePrivileges, PrivilegeChangeData};
+use crate::utils::roles::models::{Privileges, Role, GroupUsersRole, SocketGroupRolePrivileges, BulkNewGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
 
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;
@@ -280,6 +280,26 @@ impl UserController {
         }
     }
 
+    pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), RoleError> {
+        if let Some(conn) = &self.group_conn {
+            let mut users_guard = conn.controller.users.0.write().await;
+            if let Some(user) = users_guard.get_mut(&data.user_id) {
+                user.role = data.value;
+
+                let Some(privileges) = conn.controller.privileges.get_privileges(data.value).await else {
+                    error!("No role {:#?} found in a group", &data.value);
+                    // todo: add this variant
+                    return Err(RoleError::RoleNotFound);
+                };
+
+                // send new privileges to every user with changed role
+                user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await;
+            };
+        }
+
+        Ok(())
+    }
+
     pub async fn get_role(&self) -> Option<Role> {
         let Some(conn) = &self.group_conn else {
             return None
@@ -462,6 +482,7 @@ pub enum ClientAction {
     BulkChangePrivileges { group_id: Uuid, privileges: BulkNewGroupRolePrivileges },
     BulkChangeUsersRole { group_id: Uuid, users: GroupUsersRole },
     SingleChangePrivileges { data: PrivilegeChangeData },
+    SingleChangeUserRole { data: UserRoleChangeData },
     RequestMessages { loaded: i64 },
     Close,
     Ignore,
