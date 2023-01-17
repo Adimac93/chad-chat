@@ -521,3 +521,36 @@ async fn single_set_group_role_privileges_with_hierarchy(db: PgPool) {
         ]))
     )
 }
+
+#[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
+async fn single_set_group_user_role_health_check (db: PgPool) {
+    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
+
+    // Chadders - Marco gets Admin
+    let mut data = UserRoleChangeData {
+        group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
+        user_id: Uuid::parse_str(MARCO_ID).unwrap(),
+        value: Role::Admin,
+    };
+
+    single_set_group_user_role(&db, &data).await.unwrap();
+
+    let query_res = query!(
+        r#"
+            select group_users.user_id, group_roles.role_type as "role: Role" from
+            group_users join group_roles on group_users.role_id = group_roles.role_id
+            where group_users.group_id = $1
+            and group_users.user_id = $2
+        "#,
+        data.group_id,
+        data.user_id,
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        (query_res.user_id, query_res.role),
+        (Uuid::parse_str(MARCO_ID).unwrap(), Role::Admin),
+    )
+}
