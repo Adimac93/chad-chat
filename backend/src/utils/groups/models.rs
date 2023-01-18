@@ -22,10 +22,7 @@ pub struct GroupUser {
 
 impl GroupUser {
     pub fn new(user_id: Uuid, group_id: Uuid) -> Self {
-        Self {
-            user_id,
-            group_id,
-        }
+        Self { user_id, group_id }
     }
 }
 
