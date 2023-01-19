@@ -41,22 +41,6 @@ impl Role {
     }
 }
 
-// impl TryFrom<String> for Role {
-//     type Error = RoleError;
-
-//     fn try_from(val: String) -> Result<Self, Self::Error> {
-//         match &*val {
-//             "owner" => Ok(Role::Owner),
-//             "admin" => Ok(Role::Admin),
-//             "member" => Ok(Role::Member),
-//             _ => Err(RoleError::RoleParseError),
-//         }
-//     }
-// }
-
-// #[derive(Deserialize, Serialize, Clone)]
-// pub struct GroupUsersRoleFromJson(pub HashMap<String, Vec<GroupUser>>);
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GroupUsersRole(pub HashMap<Role, Vec<GroupUser>>);
 
@@ -97,21 +81,6 @@ impl GroupUsersRole {
     }
 }
 
-// impl TryFrom<GroupUsersRoleFromJson> for GroupUsersRole {
-//     type Error = RoleError;
-
-//     fn try_from(val: GroupUsersRoleFromJson) -> Result<Self, Self::Error> {
-//         let iter = val.0.into_iter();
-
-//         let mut map = HashMap::new();
-//         for (role_str, vec) in iter {
-//             map.insert(Role::try_from(role_str)?, vec);
-//         }
-
-//         Ok(Self(map))
-//     }
-// }
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct GroupRolePrivileges(pub HashMap<Role, Privileges>);
 
@@ -151,9 +120,6 @@ impl GroupRolePrivileges {
         Some(self.0.get(&role)?.clone())
     }
 }
-
-// #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-// pub struct BulkNewGroupRolePrivilegesFromJson(pub HashMap<String, Privileges>);
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct BulkNewGroupRolePrivileges(pub HashMap<Role, Privileges>);
@@ -219,21 +185,6 @@ impl BulkNewGroupRolePrivileges {
         Ok(())
     }
 }
-
-// impl TryFrom<BulkNewGroupRolePrivilegesFromJson> for BulkNewGroupRolePrivileges {
-//     type Error = RoleError;
-
-//     fn try_from(val: BulkNewGroupRolePrivilegesFromJson) -> Result<Self, Self::Error> {
-//         let iter = val.0.into_iter();
-
-//         let mut map = HashMap::new();
-//         for (role_str, vec) in iter {
-//             map.insert(Role::try_from(role_str)?, vec);
-//         }
-
-//         Ok(Self(map))
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -333,7 +284,7 @@ pub enum PrivilegeType {
     CanSendMessages,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 #[serde(rename_all = "snake_case")]
 #[serde(untagged)]
 pub enum Privilege {
