@@ -198,10 +198,10 @@ pub async fn chat_socket(
                     continue
                 };
 
-                if privileges.maintain_hierarchy(socket_privileges).await.is_err() {
-                    error!("Error when maintaining role hierarchy");
-                    continue
-                };
+                // if privileges.maintain_hierarchy(socket_privileges).await.is_err() {
+                //     error!("Error when maintaining role hierarchy");
+                //     continue
+                // };
 
                 controller.bulk_set_privileges(&privileges).await;
                 if bulk_set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
@@ -241,10 +241,10 @@ pub async fn chat_socket(
                     continue
                 };
 
-                if data.maintain_hierarchy(socket_privileges).await.is_err() {
-                    error!("Error when maintaining role hierarchy");
-                    continue
-                };
+                // if data.maintain_hierarchy(socket_privileges).await.is_err() {
+                //     error!("Error when maintaining role hierarchy");
+                //     continue
+                // };
 
                 if controller.set_privilege(&data).await.is_err() {
                     error!("Error when changing privilege");

@@ -4,9 +4,9 @@ pub mod models;
 use sqlx::{query, PgPool};
 use uuid::Uuid;
 
-use crate::utils::roles::models::PrivilegeType;
+use crate::utils::roles::models::{QueryPrivileges, PrivilegeType};
 
-use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, BulkNewGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData}};
+use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, BulkNewGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, Privileges}};
 
 use super::groups::models::GroupUser;
 
@@ -26,7 +26,7 @@ pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<
 
     let mut res = GroupRolePrivileges::new();
     for role_data in query_res {
-        res.0.insert(role_data.role_type, serde_json::from_value(role_data.privileges)?);
+        res.0.insert(role_data.role_type, serde_json::from_value::<QueryPrivileges>(role_data.privileges)?.into());
     }
 
     Ok(res)
@@ -48,7 +48,7 @@ pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_
                             and group_roles.group_id = $3
                     )
             "#,
-            &serde_json::to_value(&privileges)?,
+            &serde_json::to_value(&QueryPrivileges::from(privileges.clone()))?,
             &role as &Role,
             &group_id,
         )

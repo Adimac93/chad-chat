@@ -22,3 +22,5 @@ values
 ('4d0b7a5e-c369-4312-a4f3-052be2bf24ad', '{"can_invite":"yes","can_send_messages":{"yes":0}}');
 
 -- roles are sorted in order owner-admin-member
+
+-- "{\"can_send_messages\":{\"can_send_messages\":{\"yes\":0}},\"can_invite\":{\"can_invite\":\"yes\"}}"

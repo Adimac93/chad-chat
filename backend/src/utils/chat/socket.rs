@@ -241,10 +241,7 @@ impl UserController {
 
             let mut privilege_guard = privilege_ref.write().await;
             
-            match privilege_guard.0.get_mut(&data.privilege) {
-                Some(privilege) => *privilege = data.value,
-                _ => return Err(RoleError::Unexpected(anyhow!("No role {:?} found in a group", &data.role))),
-            };
+            privilege_guard.0.replace(data.value);
 
             let users_guard = conn.controller.users.0.read().await;
 
