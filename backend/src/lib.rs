@@ -1,6 +1,7 @@
 pub mod app_errors;
 pub mod configuration;
 pub mod database;
+pub mod external_api;
 pub mod routes;
 pub mod utils;
 
@@ -19,6 +20,7 @@ use axum::{
 use axum_extra::routing::SpaRouter;
 use configuration::{get_config, Settings};
 use database::{get_postgres_pool, get_redis_pool};
+use external_api::{GeolocationData, HttpClient, UserAgentData};
 use secrecy::Secret;
 use serde_json::json;
 use sqlx::PgPool;
@@ -29,6 +31,8 @@ use utils::{auth::errors::AuthError, email::Mailer};
 pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
     let pgpool = test_pool.unwrap_or(get_postgres_pool(config.postgres).await);
     let rdpool = get_redis_pool(config.redis).await;
+
+    let http_client = HttpClient::new();
 
     let origin = config
         .app
@@ -59,6 +63,7 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         .merge(groups)
         .layer(Extension(pgpool))
         .layer(Extension(rdpool))
+        .layer(Extension(http_client))
         .layer(Extension(mailer))
         .layer(Extension(TokenExtensions {
             access: JwtSecret(config.app.access_jwt_secret),
