@@ -183,26 +183,16 @@ async fn set_group_users_role_health_check(db: PgPool) {
 
         let _res = bulk_set_group_users_role(
             &db,
-            &GroupUsersRole(
-                HashMap::from([
-                    (Role::Admin, vec![
-                        GroupUser::new(
-                            Uuid::parse_str(MARCO_ID).unwrap(),
-                            group_id
-                        ),
-                        GroupUser::new(
-                            Uuid::parse_str(ADIMAC_ID).unwrap(),
-                            group_id
-                        )
-                    ]),
-                    (Role::Owner, vec![
-                        GroupUser::new(
-                            Uuid::parse_str(HUBERT_ID).unwrap(),
-                            group_id
-                        )
-                    ])
-                ])
-            )
+            &GroupUsersRole::from((
+                group_id,
+                [(Role::Admin, vec![
+                    Uuid::parse_str(MARCO_ID).unwrap(),
+                    Uuid::parse_str(ADIMAC_ID).unwrap(),
+                ]),
+                (Role::Owner, vec![
+                    Uuid::parse_str(HUBERT_ID).unwrap(),
+                ])]
+            ))
         )
         .await
         .expect("Query failed");
@@ -241,23 +231,29 @@ async fn set_group_users_role_health_check(db: PgPool) {
 async fn preprocess_health_check() {
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let mut data = GroupUsersRole(HashMap::from([(
-        Role::Admin,
-        vec![GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id)],
-    )]));
+    let mut data = GroupUsersRole::from((
+        group_id,
+        [(
+            Role::Admin,
+            vec![Uuid::parse_str(MARCO_ID).unwrap()],
+        )],
+    ));
 
     let res = data.preprocess(
         Role::Admin,
-        GroupUser::new(Uuid::parse_str(HUBERT_ID).unwrap(), group_id),
+        Uuid::parse_str(HUBERT_ID).unwrap(),
     );
 
     assert!(res.is_ok());
     assert_eq!(
         data,
-        GroupUsersRole(HashMap::from([(
-            Role::Admin,
-            vec![GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id)]
-        )]))
+        GroupUsersRole::from((
+            group_id,
+            [(
+                Role::Admin,
+                vec![Uuid::parse_str(MARCO_ID).unwrap()],
+            )],
+        ))
     )
 }
 
@@ -265,32 +261,31 @@ async fn preprocess_health_check() {
 async fn preprocess_owner_gives_1_owner() {
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let mut data = GroupUsersRole(HashMap::from([(
-        Role::Owner,
-        vec![GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id)],
-    )]));
+    let mut data = GroupUsersRole::from((
+        group_id,
+        [(
+            Role::Owner,
+            vec![Uuid::parse_str(MARCO_ID).unwrap()],
+        )],
+    ));
 
     let res = data.preprocess(
         Role::Owner,
-        GroupUser::new(Uuid::parse_str(ADIMAC_ID).unwrap(), group_id),
+        Uuid::parse_str(ADIMAC_ID).unwrap(),
     );
 
     assert!(res.is_ok());
     assert_eq!(
         data,
-        GroupUsersRole(HashMap::from([
-            (
-                Role::Owner,
-                vec![GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id)]
+        GroupUsersRole::from((
+            group_id,
+            [(Role::Owner,
+                vec![Uuid::parse_str(MARCO_ID).unwrap()]
             ),
-            (
-                Role::Admin,
-                vec![GroupUser::new(
-                    Uuid::parse_str(ADIMAC_ID).unwrap(),
-                    group_id
-                )]
-            )
-        ]))
+            (Role::Admin,
+                vec![Uuid::parse_str(ADIMAC_ID).unwrap()]
+            )]
+        ))
     )
 }
 
@@ -298,17 +293,18 @@ async fn preprocess_owner_gives_1_owner() {
 async fn preprocess_owner_gives_2_owners() {
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let mut data = GroupUsersRole(HashMap::from([(
-        Role::Owner,
+    let mut data = GroupUsersRole::from((
+        group_id,
+        [(Role::Owner,
         vec![
-            GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id),
-            GroupUser::new(Uuid::parse_str(POLO_ID).unwrap(), group_id),
-        ],
-    )]));
+            Uuid::parse_str(MARCO_ID).unwrap(),
+            Uuid::parse_str(POLO_ID).unwrap(),
+        ])],
+    ));
 
     let res = data.preprocess(
         Role::Owner,
-        GroupUser::new(Uuid::parse_str(ADIMAC_ID).unwrap(), group_id),
+        Uuid::parse_str(ADIMAC_ID).unwrap(),
     );
 
     assert!(res.is_err());
@@ -318,14 +314,15 @@ async fn preprocess_owner_gives_2_owners() {
 async fn preprocess_admin_gives_1_owner() {
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let mut data = GroupUsersRole(HashMap::from([(
-        Role::Owner,
-        vec![GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id)],
-    )]));
+    let mut data = GroupUsersRole::from((
+        group_id,
+        [(Role::Owner,
+        vec![Uuid::parse_str(MARCO_ID).unwrap()])],
+    ));
 
     let res = data.preprocess(
         Role::Admin,
-        GroupUser::new(Uuid::parse_str(HUBERT_ID).unwrap(), group_id),
+        Uuid::parse_str(HUBERT_ID).unwrap(),
     );
 
     assert!(res.is_err());
@@ -335,14 +332,15 @@ async fn preprocess_admin_gives_1_owner() {
 async fn preprocess_member_changes_role() {
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let mut data = GroupUsersRole(HashMap::from([(
-        Role::Admin,
-        vec![GroupUser::new(Uuid::parse_str(MARCO_ID).unwrap(), group_id)],
-    )]));
+    let mut data = GroupUsersRole::from((
+        group_id,
+        [(Role::Admin,
+        vec![Uuid::parse_str(MARCO_ID).unwrap()])],
+    ));
 
     let res = data.preprocess(
         Role::Member,
-        GroupUser::new(Uuid::parse_str(POLO_ID).unwrap(), group_id),
+        Uuid::parse_str(POLO_ID).unwrap(),
     );
 
     assert!(res.is_err());
@@ -352,21 +350,19 @@ async fn preprocess_member_changes_role() {
 async fn preprocess_self_role() {
     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let mut data = GroupUsersRole(HashMap::from([(
-        Role::Owner,
-        vec![GroupUser::new(
-            Uuid::parse_str(ADIMAC_ID).unwrap(),
-            group_id,
-        )],
-    )]));
+    let mut data = GroupUsersRole::from((
+        group_id,
+        [(Role::Owner,
+        vec![Uuid::parse_str(ADIMAC_ID).unwrap(),])],
+    ));
 
     let res = data.preprocess(
         Role::Owner,
-        GroupUser::new(Uuid::parse_str(ADIMAC_ID).unwrap(), group_id),
+        Uuid::parse_str(ADIMAC_ID).unwrap(),
     );
 
     assert!(res.is_ok());
-    assert_eq!(data, GroupUsersRole(HashMap::from([])))
+    assert_eq!(data, GroupUsersRole::from((group_id, [])));
 }
 
 // #[tokio::test]
@@ -460,10 +456,10 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
     let res: Privileges = serde_json::from_value::<QueryPrivileges>(query_res.privileges).unwrap().into();
     assert_eq!(
         res,
-        Privileges(HashSet::from([
+        Privileges::from([
             Privilege::CanInvite(CanInvite::No),
             Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-        ]))
+        ])
     )
 }
 

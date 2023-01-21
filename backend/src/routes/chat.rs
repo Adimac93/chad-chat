@@ -222,7 +222,7 @@ pub async fn chat_socket(
                 };
 
                 if users
-                    .preprocess(role, GroupUser::new(claims.user_id, group_id))
+                    .preprocess(role, claims.user_id)
                     .is_err() {
                         info!("Role change didn't get through the gate");
                         continue

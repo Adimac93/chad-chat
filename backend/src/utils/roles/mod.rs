@@ -5,11 +5,9 @@ pub mod privileges;
 use sqlx::{query, PgPool};
 use uuid::Uuid;
 
-use crate::utils::roles::privileges::{QueryPrivileges, PrivilegeType, Privileges};
+use crate::utils::roles::privileges::{QueryPrivileges, PrivilegeType};
 
 use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData}};
-
-use super::groups::models::GroupUser;
 
 pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<GroupRolePrivileges, RoleError> {
     let query_res = query!(
@@ -85,7 +83,7 @@ pub async fn single_set_group_role_privileges(pool: &PgPool, data: &PrivilegeCha
 pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &GroupUsersRole) -> Result<(), RoleError> {
     let mut transaction = pool.begin().await?;
     
-    for (role, users) in &roles.0 {
+    for (role, users) in &roles.new_roles {
         // rollbacks automatically on error
         let _res = query!(
             r#"
@@ -96,10 +94,12 @@ pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &GroupUsersRole) ->
                         where group_roles.group_id = group_users.group_id
                         and group_roles.role_type = $1
                 )
-                where (user_id, group_id) = any($2)
+                where user_id = any($2)
+                and group_id = $3
             "#,
             role as &Role,
-            users as &[GroupUser],
+            users as &[Uuid],
+            roles.group_id,
         )
         .execute(&mut transaction)
         .await?;

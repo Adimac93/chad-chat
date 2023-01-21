@@ -260,9 +260,9 @@ impl UserController {
     pub async fn bulk_set_users_role(&self, new_roles: GroupUsersRole) {
         if let Some(conn) = &self.group_conn {
             let mut users_guard = conn.controller.users.0.write().await;
-            for (role, users) in new_roles.0.into_iter() {
+            for (role, users) in new_roles.new_roles.into_iter() {
                 for elem in users.into_iter() {
-                    if let Some(user) = users_guard.get_mut(&elem.user_id) {
+                    if let Some(user) = users_guard.get_mut(&elem) {
                         user.role = role;
 
                         let Some(privileges) = conn.controller.privileges.get_privileges(role).await else {

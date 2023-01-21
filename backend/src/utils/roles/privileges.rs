@@ -1,9 +1,6 @@
 ﻿use std::{collections::{HashSet, HashMap}, cmp::Ordering, hash::Hash, mem::discriminant};
 
 use serde::{Serialize, Deserialize};
-use uuid::Uuid;
-
-use super::models::Role;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -11,10 +8,16 @@ pub struct Privileges(pub HashSet<Privilege>);
 
 impl Privileges {
     pub fn max() -> Self {
-        Self(HashSet::from([
+        Self::from([
             Privilege::CanInvite(CanInvite::Yes),
             Privilege::CanSendMessages(CanSendMessages::Yes(0)),
-        ]))
+        ])
+    }
+}
+
+impl<const N: usize> From<[Privilege; N]> for Privileges {
+    fn from(val: [Privilege; N]) -> Self {
+        Self(HashSet::from(val))
     }
 }
 
@@ -75,6 +78,7 @@ impl Hash for Privilege {
     }
 }
 
+// deprecated soon
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "privilege_type", rename_all = "snake_case")]

@@ -1,9 +1,8 @@
 ﻿use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
 use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    sync::Arc, mem::discriminant,
+    collections::HashMap,
+    sync::Arc,
     hash::Hash,
 };
 use tokio::sync::RwLock;
@@ -11,7 +10,7 @@ use uuid::Uuid;
 
 use crate::utils::groups::models::GroupUser;
 
-use super::{errors::RoleError, privileges::{PrivilegeType, Privileges, Privilege, CanInvite, CanSendMessages}};
+use super::{errors::RoleError, privileges::{PrivilegeType, Privileges, Privilege}};
 
 #[derive(
     sqlx::Type, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy,
@@ -43,19 +42,20 @@ pub enum Role {
 // }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct GroupUsersRole(pub HashMap<Role, Vec<GroupUser>>);
-
-pub struct ChangedPrivilegeSet(pub HashSet<Role>);
+pub struct GroupUsersRole {
+    pub group_id: Uuid,
+    pub new_roles: HashMap<Role, Vec<Uuid>>,
+}
 
 impl GroupUsersRole {
-    pub fn preprocess(&mut self, role: Role, user: GroupUser) -> Result<(), RoleError> {
-        self.0.iter_mut().for_each(|(_, vec)| {
-            vec.retain(|x| x.user_id != user.user_id);
+    pub fn preprocess(&mut self, role: Role, user: Uuid) -> Result<(), RoleError> {
+        self.new_roles.iter_mut().for_each(|(_, vec)| {
+            vec.retain(|&x| x != user);
         });
-        self.0.retain(|_, vec| !vec.is_empty());
+        self.new_roles.retain(|_, vec| !vec.is_empty());
 
         if self.verify_before_role_change(role)? {
-            self.0
+            self.new_roles
                 .entry(Role::Admin)
                 .and_modify(|vec| vec.push(user))
                 .or_insert(vec![user]);
@@ -68,16 +68,25 @@ impl GroupUsersRole {
         if role == Role::Member {
             return Err(RoleError::RoleChangeRejection);
         };
-        if self.0.get(&Role::Owner).is_none() {
+        if self.new_roles.get(&Role::Owner).is_none() {
             return Ok(false);
         };
-        let new_owners = self.0.get(&Role::Owner).unwrap();
+        let new_owners = self.new_roles.get(&Role::Owner).unwrap();
         if new_owners.is_empty() {
             Ok(false)
         } else if new_owners.len() == 1 && role == Role::Owner {
             Ok(true)
         } else {
             Err(RoleError::RoleChangeRejection)
+        }
+    }
+}
+
+impl<const N: usize> From<(Uuid, [(Role, Vec<Uuid>); N])> for GroupUsersRole {
+    fn from(val: (Uuid, [(Role, Vec<Uuid>); N])) -> Self {
+        Self {
+            group_id: val.0,
+            new_roles: HashMap::from(val.1),
         }
     }
 }
@@ -98,6 +107,12 @@ impl SocketGroupRolePrivileges {
     }
 }
 
+impl GroupRolePrivileges {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+}
+
 impl From<GroupRolePrivileges> for SocketGroupRolePrivileges {
     fn from(val: GroupRolePrivileges) -> Self {
         SocketGroupRolePrivileges(
@@ -109,45 +124,39 @@ impl From<GroupRolePrivileges> for SocketGroupRolePrivileges {
     }
 }
 
-impl GroupRolePrivileges {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-}
+// impl Privileges {
+//     fn cmp_with_lower(&mut self, other: &Self) -> Result<(), RoleError> {
+//         for privilege_type in privilege_type_iter {
+//             let self_privilege = self
+//                 .0
+//                 .get_mut(&privilege_type)
+//                 .context("Mismatched privileges")?;
+//             let other_privilege = other
+//                 .0
+//                 .get(&privilege_type)
+//                 .context("Mismatched privileges")?;
+//             self_privilege.cmp_with_lower(other_privilege)?;
+//         }
+//         Ok(())
+//     }
 
-impl Privileges {
-    // fn cmp_with_lower(&mut self, other: &Self) -> Result<(), RoleError> {
-    //     for privilege_type in privilege_type_iter {
-    //         let self_privilege = self
-    //             .0
-    //             .get_mut(&privilege_type)
-    //             .context("Mismatched privileges")?;
-    //         let other_privilege = other
-    //             .0
-    //             .get(&privilege_type)
-    //             .context("Mismatched privileges")?;
-    //         self_privilege.cmp_with_lower(other_privilege)?;
-    //     }
-    //     Ok(())
-    // }
+//     fn cmp_with_higher(&mut self, other: &Self) -> Result<(), RoleError> {
+//         let privilege_type_iter = self.0.keys().copied().collect::<Vec<PrivilegeType>>();
 
-    // fn cmp_with_higher(&mut self, other: &Self) -> Result<(), RoleError> {
-    //     let privilege_type_iter = self.0.keys().copied().collect::<Vec<PrivilegeType>>();
-
-    //     for privilege_type in privilege_type_iter {
-    //         let self_privilege = self
-    //             .0
-    //             .get_mut(&privilege_type)
-    //             .context("Mismatched privileges")?;
-    //         let other_privilege = other
-    //             .0
-    //             .get(&privilege_type)
-    //             .context("Mismatched privileges")?;
-    //         self_privilege.cmp_with_higher(other_privilege)?;
-    //     }
-    //     Ok(())
-    // }
-}
+//         for privilege_type in privilege_type_iter {
+//             let self_privilege = self
+//                 .0
+//                 .get_mut(&privilege_type)
+//                 .context("Mismatched privileges")?;
+//             let other_privilege = other
+//                 .0
+//                 .get(&privilege_type)
+//                 .context("Mismatched privileges")?;
+//             self_privilege.cmp_with_higher(other_privilege)?;
+//         }
+//         Ok(())
+//     }
+// }
 
 // impl Privilege {
 //     fn cmp_with_lower(&mut self, other: &Self) -> Result<(), RoleError> {
@@ -209,37 +218,37 @@ pub struct PrivilegeChangeData {
     pub value: Privilege,
 }
 
-impl PrivilegeChangeData {
-    // pub async fn maintain_hierarchy(
-    //     &mut self,
-    //     other: &SocketGroupRolePrivileges,
-    // ) -> Result<(), RoleError> {
-    //     if let Some(other_role) = self.role.decrement() {
-    //         if let Some(other_privileges_lock) = other.0.get(&other_role) {
-    //             let other_privileges = other_privileges_lock.read().await;
-    //             if let Some(privilege) = other_privileges.0.get(&self.privilege) {
-    //                 let ref_mut = &mut self.value;
-    //                 ref_mut.cmp_with_lower(privilege)?;
-    //             }
-    //         }
-    //     };
+// impl PrivilegeChangeData {
+//     pub async fn maintain_hierarchy(
+//         &mut self,
+//         other: &SocketGroupRolePrivileges,
+//     ) -> Result<(), RoleError> {
+//         if let Some(other_role) = self.role.decrement() {
+//             if let Some(other_privileges_lock) = other.0.get(&other_role) {
+//                 let other_privileges = other_privileges_lock.read().await;
+//                 if let Some(privilege) = other_privileges.0.get(&self.privilege) {
+//                     let ref_mut = &mut self.value;
+//                     ref_mut.cmp_with_lower(privilege)?;
+//                 }
+//             }
+//         };
 
-    //     match self.role.increment() {
-    //         Some(other_role) if other_role != Role::Owner => {
-    //             if let Some(other_privileges_lock) = other.0.get(&other_role) {
-    //                 let other_privileges = other_privileges_lock.read().await;
-    //                 if let Some(privilege) = other_privileges.0.get(&self.privilege) {
-    //                     let ref_mut = &mut self.value;
-    //                     ref_mut.cmp_with_higher(privilege)?;
-    //                 }
-    //             }
-    //         }
-    //         _ => (),
-    //     };
+//         match self.role.increment() {
+//             Some(other_role) if other_role != Role::Owner => {
+//                 if let Some(other_privileges_lock) = other.0.get(&other_role) {
+//                     let other_privileges = other_privileges_lock.read().await;
+//                     if let Some(privilege) = other_privileges.0.get(&self.privilege) {
+//                         let ref_mut = &mut self.value;
+//                         ref_mut.cmp_with_higher(privilege)?;
+//                     }
+//                 }
+//             }
+//             _ => (),
+//         };
 
-    //     Ok(())
-    // }
-}
+//         Ok(())
+//     }
+// }
 
 #[derive(Serialize, Deserialize)]
 pub struct UserRoleChangeData {

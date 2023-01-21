@@ -13,8 +13,7 @@ pub struct Group {
     pub name: String,
 }
 
-#[derive(sqlx::Type, Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
-#[sqlx(type_name = "group_user")]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 pub struct GroupUser {
     pub user_id: Uuid,
     pub group_id: Uuid,
@@ -23,13 +22,6 @@ pub struct GroupUser {
 impl GroupUser {
     pub fn new(user_id: Uuid, group_id: Uuid) -> Self {
         Self { user_id, group_id }
-    }
-}
-
-impl sqlx::postgres::PgHasArrayType for GroupUser {
-    fn array_type_info() -> PgTypeInfo {
-        // array types in pgsql have underscores before their type name
-        PgTypeInfo::with_name("_group_user")
     }
 }
 
