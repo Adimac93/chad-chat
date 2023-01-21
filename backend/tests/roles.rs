@@ -1,5 +1,5 @@
 ﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::{GroupUsersRole, Privilege, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, PrivilegeType, QueryPrivileges};
+use backend::utils::roles::models::{GroupUsersRole, Privilege, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, PrivilegeType, QueryPrivileges};
 use backend::utils::roles::models::{
     CanInvite, CanSendMessages, GroupRolePrivileges, Privileges, Role,
 };
@@ -112,7 +112,7 @@ async fn set_group_role_privileges_health_check(db: PgPool) {
         let _res = bulk_set_group_role_privileges(
             &db,
             &group_id,
-            &BulkNewGroupRolePrivileges (
+            &GroupRolePrivileges (
                 HashMap::from([
                     (Role::Admin, Privileges (HashSet::from([
                         Privilege::CanInvite(CanInvite::Yes),
@@ -417,29 +417,29 @@ async fn preprocess_self_role() {
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
 async fn single_set_group_role_privileges_health_check(db: PgPool) {
-    let mut data = PrivilegeChangeData {
+    let data = PrivilegeChangeData {
         group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
         role: Role::Member,
         privilege: PrivilegeType::CanInvite,
         value: Privilege::CanInvite(CanInvite::No),
     };
 
-    let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
-        (
-            Role::Admin,
-            Arc::new(RwLock::new(Privileges(HashSet::from([
-                Privilege::CanInvite(CanInvite::Yes),
-                Privilege::CanSendMessages(CanSendMessages::Yes(5)),
-            ])))),
-        ),
-        (
-            Role::Member,
-            Arc::new(RwLock::new(Privileges(HashSet::from([
-                Privilege::CanInvite(CanInvite::Yes),
-                Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-            ])))),
-        ),
-    ]));
+    // let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
+    //     (
+    //         Role::Admin,
+    //         Arc::new(RwLock::new(Privileges(HashSet::from([
+    //             Privilege::CanInvite(CanInvite::Yes),
+    //             Privilege::CanSendMessages(CanSendMessages::Yes(5)),
+    //         ])))),
+    //     ),
+    //     (
+    //         Role::Member,
+    //         Arc::new(RwLock::new(Privileges(HashSet::from([
+    //             Privilege::CanInvite(CanInvite::Yes),
+    //             Privilege::CanSendMessages(CanSendMessages::Yes(10)),
+    //         ])))),
+    //     ),
+    // ]));
 
     // data.maintain_hierarchy(&old_privileges).await.unwrap();
     single_set_group_role_privileges(&db, &data).await.unwrap();

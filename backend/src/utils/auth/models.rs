@@ -1,4 +1,4 @@
-use crate::{utils::auth::errors::*, JwtSecret, RefreshJwtSecret, TokenExtensions};
+use crate::{utils::auth::errors::*, JwtAccessSecret, JwtRefreshSecret, TokenExtensions};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -41,7 +41,7 @@ impl AuthToken for Claims {
     const JWT_EXPIRATION: Duration = Duration::seconds(15);
 
     async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String> {
-        let JwtSecret(jwt_key) = ext.access.clone();
+        let JwtAccessSecret(jwt_key) = ext.access.clone();
 
         jwt_key
     }
@@ -131,7 +131,7 @@ impl AuthToken for RefreshClaims {
     const JWT_EXPIRATION: Duration = Duration::days(7);
 
     async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String> {
-        let RefreshJwtSecret(jwt_key) = ext.refresh.clone();
+        let JwtRefreshSecret(jwt_key) = ext.refresh.clone();
 
         jwt_key
     }

@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::utils::roles::models::{QueryPrivileges, PrivilegeType};
 
-use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, BulkNewGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, Privileges}};
+use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData, Privileges}};
 
 use super::groups::models::GroupUser;
 
@@ -32,7 +32,7 @@ pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<
     Ok(res)
 }
 
-pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &BulkNewGroupRolePrivileges) -> Result<(), RoleError> {
+pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &GroupRolePrivileges) -> Result<(), RoleError> {
     let mut transaction = pool.begin().await?;
 
     for (role, privileges) in &new_privileges.0 {

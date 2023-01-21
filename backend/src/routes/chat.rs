@@ -7,7 +7,7 @@ use crate::utils::chat::socket::{
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::groups::models::GroupUser;
-use crate::utils::roles::models::{GroupUsersRole, BulkNewGroupRolePrivileges, SocketGroupRolePrivileges};
+use crate::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges};
 use crate::utils::roles::{get_group_role_privileges, get_user_role, bulk_set_group_role_privileges, bulk_set_group_users_role, single_set_group_role_privileges, single_set_group_user_role};
 use axum::http::HeaderMap;
 use axum::{

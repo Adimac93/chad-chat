@@ -26,7 +26,7 @@ use serde::Serialize;
 use serde_json::json;
 use tower_http::cors::CorsLayer;
 use tracing::{debug, error};
-use utils::auth::errors::AuthError;
+use utils::{auth::errors::AuthError, email::Mailer};
 
 pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
     let pgpool = test_pool.unwrap_or(get_postgres_pool(config.postgres).await);
@@ -137,7 +137,7 @@ async fn user_agent_info(ua: UserAgentData) -> impl IntoResponse {
 
 use axum::extract::connect_info::Connected;
 use hyper::server::conn::AddrStream;
-use sqlx::types::ipnetwork::IpNetwork;
+use sqlx::{types::ipnetwork::IpNetwork, PgPool};
 
 #[derive(Clone)]
 pub struct ClientAddr(IpNetwork);

@@ -1,5 +1,5 @@
 use crate::utils::roles::errors::RoleError;
-use crate::utils::roles::models::{Privileges, Role, GroupUsersRole, SocketGroupRolePrivileges, BulkNewGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
+use crate::utils::roles::models::{Privileges, Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges};
 
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;
@@ -208,7 +208,7 @@ impl UserController {
         }
     }
 
-    pub async fn bulk_set_privileges(&self, group_privileges: &BulkNewGroupRolePrivileges) {
+    pub async fn bulk_set_privileges(&self, group_privileges: &GroupRolePrivileges) {
         if let Some(conn) = &self.group_conn {
             for (role, new_privileges) in &group_privileges.0 {
                 let Some(privilege_ref) =
@@ -476,7 +476,7 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    BulkChangePrivileges { group_id: Uuid, privileges: BulkNewGroupRolePrivileges },
+    BulkChangePrivileges { group_id: Uuid, privileges: GroupRolePrivileges },
     BulkChangeUsersRole { group_id: Uuid, users: GroupUsersRole },
     SingleChangePrivileges { data: PrivilegeChangeData },
     SingleChangeUserRole { data: UserRoleChangeData },
