@@ -256,3 +256,9 @@ pub struct UserRoleChangeData {
     pub user_id: Uuid,
     pub value: Role,
 }
+
+impl UserRoleChangeData {
+    pub fn new(group_id: Uuid, user_id: Uuid, value: Role) -> Self {
+        Self { group_id, user_id, value }
+    }
+}

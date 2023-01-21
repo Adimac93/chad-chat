@@ -4,6 +4,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum RoleError {
+    #[error("User not found in the group")]
+    UserNotFound,
     #[error("Role not found in the group")]
     RoleNotFound,
     #[error("Role change rejected")]
@@ -17,6 +19,7 @@ pub enum RoleError {
 impl IntoResponse for RoleError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
+            RoleError::UserNotFound => StatusCode::BAD_REQUEST,
             RoleError::RoleNotFound => StatusCode::BAD_REQUEST,
             RoleError::RoleChangeRejection => StatusCode::BAD_REQUEST,
             RoleError::RoleParseError => StatusCode::BAD_REQUEST,

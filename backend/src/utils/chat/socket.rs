@@ -8,6 +8,7 @@ use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
+use serde::de::Unexpected;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -209,47 +210,26 @@ impl UserController {
         }
     }
 
-    pub async fn bulk_set_privileges(&self, group_privileges: &GroupRolePrivileges) {
-        if let Some(conn) = &self.group_conn {
-            for (role, new_privileges) in &group_privileges.0 {
-                let Some(privilege_ref) =
-                    conn.controller.privileges.0.get(&role) else {
-                        error!("No role {role:?} found in a group");
-                        continue
-                    };
+    pub async fn bulk_set_privileges(&self, group_privileges: &GroupRolePrivileges) -> Result<(), RoleError> {
+        let conn = self.group_conn.as_ref()
+            .ok_or(RoleError::Unexpected(anyhow!("No group connection found in the user controller")))?;
 
-                let mut privilege_guard = privilege_ref.write().await;
-
-                let users_guard = conn.controller.users.0.read().await;
-                *privilege_guard = new_privileges.clone();
-
-                // send new privileges to every user, whose privileges were changed
-                for (_, data) in users_guard.iter() {
-                    if data.role == *role {
-                        data.connections.send_across_all(&ServerAction::SetPrivileges(new_privileges.clone())).await;
-                    }
-                }
-            }
-        }
-    }
-
-    pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), RoleError> {
-        if let Some(conn) = &self.group_conn {
+        for (role, new_privileges) in &group_privileges.0 {
             let Some(privilege_ref) =
-                conn.controller.privileges.0.get(&data.role) else {
-                    return Err(RoleError::Unexpected(anyhow!("No role {:?} found in a group", &data.role)));
+                conn.controller.privileges.0.get(&role) else {
+                    error!("No role {role:?} found in a group");
+                    continue
                 };
 
             let mut privilege_guard = privilege_ref.write().await;
-            
-            privilege_guard.0.replace(data.value);
 
             let users_guard = conn.controller.users.0.read().await;
+            *privilege_guard = new_privileges.clone();
 
             // send new privileges to every user, whose privileges were changed
-            for (_, user_data) in users_guard.iter() {
-                if user_data.role == data.role {
-                    user_data.connections.send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone())).await;
+            for (_, data) in users_guard.iter() {
+                if data.role == *role {
+                    data.connections.send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone())).await;
                 }
             }
         }
@@ -257,45 +237,59 @@ impl UserController {
         Ok(())
     }
 
-    pub async fn bulk_set_users_role(&self, new_roles: GroupUsersRole) {
-        if let Some(conn) = &self.group_conn {
-            let mut users_guard = conn.controller.users.0.write().await;
-            for (role, users) in new_roles.new_roles.into_iter() {
-                for elem in users.into_iter() {
-                    if let Some(user) = users_guard.get_mut(&elem) {
-                        user.role = role;
+    pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), RoleError> {
+        let conn = self.group_conn.as_ref()
+            .ok_or(RoleError::Unexpected(anyhow!("No group connection found in the user controller")))?;
 
-                        let Some(privileges) = conn.controller.privileges.get_privileges(role).await else {
-                            error!("No role {role:?} found in a group");
-                            continue
-                        };
+        let privilege_ref = conn.controller.privileges.0.get(&data.role)
+            .ok_or(RoleError::Unexpected(anyhow!("No role {:?} found in a group", &data.role)))?;
 
-                        // send new privileges to every user with changed role
-                        user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await;
-                    };
-                }
-            };
-        }
-    }
+        let mut privilege_guard = privilege_ref.write().await;
+        privilege_guard.0.replace(data.value);
 
-    pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), RoleError> {
-        if let Some(conn) = &self.group_conn {
-            let mut users_guard = conn.controller.users.0.write().await;
-            if let Some(user) = users_guard.get_mut(&data.user_id) {
-                user.role = data.value;
+        let users_guard = conn.controller.users.0.read().await;
 
-                let Some(privileges) = conn.controller.privileges.get_privileges(data.value).await else {
-                    error!("No role {:#?} found in a group", &data.value);
-                    // todo: add this variant
-                    return Err(RoleError::RoleNotFound);
-                };
-
-                // send new privileges to every user with changed role
-                user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await;
-            };
+        // send new privileges to every user, whose privileges were changed
+        for (_, user_data) in users_guard.iter() {
+            if user_data.role == data.role {
+                user_data.connections.send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone())).await;
+            }
         }
 
         Ok(())
+    }
+
+    pub async fn bulk_set_users_role(&self, new_roles: GroupUsersRole) -> Result<(), RoleError> {
+        for (role, users) in new_roles.new_roles.into_iter() {
+            for user_id in users {
+                let role_set_res = self.single_set_role(&UserRoleChangeData::new(
+                    new_roles.group_id,
+                    user_id,
+                    role,
+                )).await;
+
+                if let Err(RoleError::Unexpected(_)) = role_set_res {
+                    return role_set_res;
+                }
+            }
+        };
+
+        Ok(())
+    }
+
+    pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), RoleError> {
+        let conn = self.group_conn.as_ref()
+            .ok_or(RoleError::Unexpected(anyhow!("No group connection found in the user controller")))?;
+
+        let mut users_guard = conn.controller.users.0.write().await;
+        let user = users_guard.get_mut(&data.user_id).ok_or(RoleError::UserNotFound)?;
+
+        user.role = data.value;
+
+        let privileges = conn.controller.privileges.get_privileges(data.value).await
+            .ok_or(RoleError::Unexpected(anyhow!("No role {:?} found in the group", data.value)))?;
+
+        Ok(user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await)
     }
 
     pub async fn get_role(&self) -> Option<Role> {
@@ -478,7 +472,7 @@ pub enum ClientAction {
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
     BulkChangePrivileges { group_id: Uuid, privileges: GroupRolePrivileges },
-    BulkChangeUsersRole { group_id: Uuid, users: GroupUsersRole },
+    BulkChangeUsersRole { users: GroupUsersRole },
     SingleChangePrivileges { data: PrivilegeChangeData },
     SingleChangeUserRole { data: UserRoleChangeData },
     RequestMessages { loaded: i64 },

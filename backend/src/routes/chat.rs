@@ -6,7 +6,6 @@ use crate::utils::chat::socket::{
 };
 use crate::utils::chat::*;
 use crate::utils::groups::*;
-use crate::utils::groups::models::GroupUser;
 use crate::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges};
 use crate::utils::roles::{get_group_role_privileges, get_user_role, bulk_set_group_role_privileges, bulk_set_group_users_role, single_set_group_role_privileges, single_set_group_user_role};
 use axum::http::HeaderMap;
@@ -192,24 +191,27 @@ pub async fn chat_socket(
 
                 // todo: disconnect group controllers
             }
-            ClientAction::BulkChangePrivileges { group_id, mut privileges } => {
-                let Some(socket_privileges) = controller.get_privileges() else {
-                    debug!("User trying to change privileges not in group");
-                    continue
-                };
+            ClientAction::BulkChangePrivileges { group_id, privileges } => {
+                // let Some(socket_privileges) = controller.get_privileges() else {
+                //     debug!("User trying to change privileges not in group");
+                //     continue
+                // };
 
                 // if privileges.maintain_hierarchy(socket_privileges).await.is_err() {
                 //     error!("Error when maintaining role hierarchy");
                 //     continue
                 // };
 
-                controller.bulk_set_privileges(&privileges).await;
+                let res = controller.bulk_set_privileges(&privileges).await;
+                if res.is_err() {
+                    error!("Failed to bulk change privileges: {:#?}", res);
+                }
+
                 if bulk_set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
                     error!("Error when setting group role privileges");
-                    continue
                 };
             }
-            ClientAction::BulkChangeUsersRole { group_id, users } => {
+            ClientAction::BulkChangeUsersRole { users } => {
                 let Ok(mut users) = GroupUsersRole::try_from(users) else {
                     error!("Invalid JSON from client");
                     continue
@@ -233,13 +235,16 @@ pub async fn chat_socket(
                     continue
                 };
 
-                controller.bulk_set_users_role(users).await;
+                let res = controller.bulk_set_users_role(users).await;
+                if res.is_err() {
+                    error!("Failed to bulk change user role: {:#?}", res);
+                }
             }
-            ClientAction::SingleChangePrivileges { mut data } => {
-                let Some(socket_privileges) = controller.get_privileges() else {
-                    debug!("User trying to change privileges not in group");
-                    continue
-                };
+            ClientAction::SingleChangePrivileges { data } => {
+                // let Some(socket_privileges) = controller.get_privileges() else {
+                //     debug!("User trying to change privileges not in group");
+                //     continue
+                // };
 
                 // if data.maintain_hierarchy(socket_privileges).await.is_err() {
                 //     error!("Error when maintaining role hierarchy");
@@ -253,7 +258,6 @@ pub async fn chat_socket(
 
                 if single_set_group_role_privileges(&pool, &data).await.is_err() {
                     error!("Error when setting group role privileges");
-                    continue
                 };
             },
             ClientAction::SingleChangeUserRole { data } => {
@@ -261,9 +265,9 @@ pub async fn chat_socket(
                     continue
                 };
 
-                if single_set_group_user_role(&pool, &data).await.is_err() {
-                    error!("Error when setting user role");
-                    continue
+                let res = single_set_group_user_role(&pool, &data).await;
+                if res.is_err() {
+                    debug!("Failed to change user role: {:#?}", res);
                 };
             }
             ClientAction::Close => {
