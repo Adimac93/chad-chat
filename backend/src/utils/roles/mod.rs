@@ -1,12 +1,13 @@
 ﻿pub mod errors;
 pub mod models;
+pub mod privileges;
 
 use sqlx::{query, PgPool};
 use uuid::Uuid;
 
-use crate::utils::roles::models::{QueryPrivileges, PrivilegeType};
+use crate::utils::roles::privileges::{QueryPrivileges, PrivilegeType, Privileges};
 
-use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData, Privileges}};
+use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData}};
 
 use super::groups::models::GroupUser;
 

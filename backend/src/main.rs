@@ -1,13 +1,12 @@
 use std::net::SocketAddr;
 
-use backend::{app, configuration::get_config, database::get_postgres_pool, utils::roles::models::{QueryPrivileges, Privileges}};
+use backend::{app, configuration::get_config, database::get_postgres_pool};
 use dotenv::dotenv;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    println!("{:?}", serde_json::to_string(&QueryPrivileges::from(Privileges::max())));
     dotenv().ok();
 
     let config = get_config().expect("Failed to read configuration");

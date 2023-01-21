@@ -1,8 +1,7 @@
 ﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::{GroupUsersRole, Privilege, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, PrivilegeType, QueryPrivileges};
-use backend::utils::roles::models::{
-    CanInvite, CanSendMessages, GroupRolePrivileges, Privileges, Role,
-};
+use backend::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
+use backend::utils::roles::models::{GroupRolePrivileges, Role};
+use backend::utils::roles::privileges::{Privileges, CanInvite, Privilege, CanSendMessages, QueryPrivileges, PrivilegeType};
 use backend::utils::roles::{
     get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges, single_set_group_role_privileges, single_set_group_user_role,
 };

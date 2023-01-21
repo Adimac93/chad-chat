@@ -1,5 +1,6 @@
 use crate::utils::roles::errors::RoleError;
-use crate::utils::roles::models::{Privileges, Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges};
+use crate::utils::roles::models::{Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges};
+use crate::utils::roles::privileges::Privileges;
 
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;
