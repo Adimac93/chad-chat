@@ -4,7 +4,8 @@ use axum::{http::StatusCode, Json};
 use redis::aio::ConnectionManager;
 use redis::Client;
 use serde_json::json;
-use sqlx::{migrate, PgPool};
+use sqlx::migrate;
+pub use sqlx::PgPool;
 use thiserror::Error;
 use tracing::error;
 

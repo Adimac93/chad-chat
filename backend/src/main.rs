@@ -1,14 +1,17 @@
-use std::net::SocketAddr;
-
-use backend::{app, configuration::get_config, database::get_postgres_pool};
+use backend::modules::extractors::addr::ClientAddr;
+use backend::utils::roles::privileges::{Privileges, QueryPrivileges};
+use backend::{app, configuration::get_config};
 use dotenv::dotenv;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
+    println!(
+        "{:?}",
+        serde_json::to_string(&QueryPrivileges::from(Privileges::max()))
+    );
     dotenv().ok();
-
     let config = get_config().expect("Failed to read configuration");
 
     tracing_subscriber::registry()
@@ -25,7 +28,7 @@ async fn main() {
         .serve(
             app(config, None)
                 .await
-                .into_make_service_with_connect_info::<SocketAddr>(),
+                .into_make_service_with_connect_info::<ClientAddr>(),
         )
         .await
         .expect("Failed to run axum server");

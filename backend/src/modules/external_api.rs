@@ -5,6 +5,10 @@ use serde::Serialize;
 use serde::{de, Deserialize};
 use serde_json::json;
 use serde_json::Value;
+use sqlx::query;
+use sqlx::query_as;
+use sqlx::types::ipnetwork::IpNetwork;
+use sqlx::PgPool;
 use tracing::debug;
 use tracing_subscriber::field::debug;
 use tracing_test::traced_test;
@@ -17,7 +21,7 @@ impl HttpClient {
         Self(Client::builder().user_agent("Chadnet").build().unwrap())
     }
 
-    pub async fn parse_user_agent(&self, agent: &str) -> anyhow::Result<UserAgentData> {
+    pub async fn parse_user_agent(&self, agent: &str) -> anyhow::Result<UserAgentParsed> {
         let res = self
             .0
             .post("https://user-agents.net/parser")
@@ -25,7 +29,7 @@ impl HttpClient {
             .send()
             .await?;
 
-        let user_agent = res.json::<ParsedUserAgent>().await?;
+        let user_agent = res.json::<UserAgentParsed>().await?;
         if user_agent.isfake {
             debug!("Aha! Fake user agent");
         }
@@ -33,7 +37,7 @@ impl HttpClient {
             debug!("Aha! Crawler agent, beware of bots!");
         }
 
-        Ok(UserAgentData::new(user_agent))
+        Ok(user_agent)
     }
 
     pub async fn fetch_geolocation(&self, ip: IpAddr) -> anyhow::Result<GeolocationData> {
@@ -47,9 +51,9 @@ impl HttpClient {
             return Err(anyhow::Error::msg(json["message"].clone()));
         }
 
-        let geolocation = serde_json::from_value::<GeolocationData>(json)?;
+        let geolocation = serde_json::from_value::<GeolocationParsed>(json)?;
 
-        Ok(geolocation)
+        Ok(GeolocationData::new(geolocation))
     }
 }
 
@@ -70,37 +74,41 @@ pub struct GeolocationData {
     hosting: bool,
 }
 
-#[derive(sqlx::Type, Serialize, Deserialize, Debug)]
-#[sqlx(type_name = "user_agent_data")]
-pub struct UserAgentData {
-    browser: String,
-    device_brand_name: String,
-    device_name: String,
-    device_type: String,
-    platform: String,
-    crawler: bool,
-    is_fake: bool,
-}
-
-impl UserAgentData {
-    fn new(ua: ParsedUserAgent) -> Self {
+impl GeolocationData {
+    pub fn new(geo: GeolocationParsed) -> Self {
         Self {
-            browser: ua.browser,
-            device_brand_name: ua.device_brand_name,
-            device_name: ua.device_name,
-            device_type: ua.device_type,
-            platform: ua.platform,
-            crawler: ua.crawler,
-            is_fake: ua.isfake,
+            country: geo.country,
+            region_name: geo.region_name,
+            city: geo.city,
+            zip: geo.zip,
+            lat: geo.lat,
+            lon: geo.lon,
+            timezone: geo.timezone,
+            isp: geo.isp,
+            mobile: geo.mobile,
+            proxy: geo.proxy,
+            hosting: geo.hosting,
         }
     }
-    pub fn is_trusted(&self) -> bool {
-        !(self.crawler || self.is_fake)
-    }
+}
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GeolocationParsed {
+    country: String,
+    #[serde(rename(deserialize = "regionName"))]
+    region_name: String,
+    city: String,
+    zip: String,
+    lat: f32,
+    lon: f32,
+    timezone: String,
+    isp: String,
+    mobile: bool,
+    proxy: bool,
+    hosting: bool,
 }
 
 #[derive(Deserialize, Debug)]
-pub struct ParsedUserAgent {
+pub struct UserAgentParsed {
     #[serde(deserialize_with = "bool_from_string")]
     activexcontrols: bool,
     #[serde(deserialize_with = "bool_from_string")]
@@ -110,7 +118,7 @@ pub struct ParsedUserAgent {
     backgroundsounds: bool,
     #[serde(deserialize_with = "bool_from_string")]
     beta: bool,
-    browser: String,
+    pub browser: String,
     browser_bits: String,
     browser_maker: String,
     browser_modus: String,
@@ -119,14 +127,14 @@ pub struct ParsedUserAgent {
     #[serde(deserialize_with = "bool_from_string")]
     cookies: bool,
     #[serde(deserialize_with = "bool_from_string")]
-    crawler: bool, // is bot
+    pub crawler: bool, // is bot
     cssversion: String,
-    device_brand_name: String,
+    pub device_brand_name: String,
     device_code_name: String,
     device_maker: String,
-    device_name: String,
+    pub device_name: String,
     device_pointing_method: String,
-    device_type: String,
+    pub device_type: String,
     #[serde(deserialize_with = "bool_from_string")]
     frames: bool,
     #[serde(deserialize_with = "bool_from_string")]
@@ -134,7 +142,7 @@ pub struct ParsedUserAgent {
     #[serde(deserialize_with = "bool_from_string")]
     isanonymized: bool,
     #[serde(deserialize_with = "bool_from_string")]
-    isfake: bool,
+    pub isfake: bool,
     #[serde(deserialize_with = "bool_from_string")]
     ismobiledevice: bool,
     #[serde(deserialize_with = "bool_from_string")]
@@ -150,7 +158,7 @@ pub struct ParsedUserAgent {
     majorver: String,
     minorver: String,
     parent: String,
-    platform: String,
+    pub platform: String,
     platform_bits: String,
     platform_description: String,
     platform_maker: String,
@@ -174,6 +182,11 @@ pub struct ParsedUserAgent {
 
 use std::net::IpAddr;
 use std::str::FromStr;
+
+use crate::configuration::get_config;
+use crate::modules::database::get_postgres_pool;
+
+use super::extractors::user_agent::UserAgentData;
 fn bool_from_string<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: de::Deserializer<'de>,
@@ -197,7 +210,47 @@ async fn parse_user_agent_test() {
 #[traced_test]
 #[tokio::test]
 async fn fetch_ip_info_test() {
-    let ip = IpAddr::from_str("194.79.23.4").unwrap();
+    let ip = IpAddr::from_str("194.79.23.20").unwrap();
     let geo = HttpClient::new().fetch_geolocation(ip).await.unwrap();
     debug!("{geo:#?}");
 }
+
+// #[traced_test]
+// #[tokio::test]
+// async fn fetch_ip_info_test_db() {
+//     let cfg = get_config().unwrap();
+//     let db = get_postgres_pool(cfg.postgres).await;
+//     let ip = IpAddr::from_str("194.79.23.20").unwrap();
+//     let geo = HttpClient::new().fetch_geolocation(ip).await.unwrap();
+//     query!(
+//         r#"
+//             insert into user_networks (ip, is_trusted, geolocation_data)
+//             values ($1, true, $2)
+//         "#,
+//         IpNetwork::from(ip),
+//         sqlx::types::Json(&geo) as _
+//     )
+//     .execute(&db)
+//     .await
+//     .unwrap();
+//     debug!("{geo:#?}");
+// }
+
+// #[tokio::test]
+// async fn get_geo_db() {
+//     let cfg = get_config().unwrap();
+//     let db = get_postgres_pool(cfg.postgres).await;
+
+//     let geo = query!(
+//         r#"
+//             select * from user_networks
+//             join
+//         "#
+//     )
+//     .fetch_one(&db)
+//     .await
+//     .unwrap()
+//     .geolocation_data;
+
+//     let res = serde_json::from_value::<GeolocationData>(geo).unwrap();
+// }
