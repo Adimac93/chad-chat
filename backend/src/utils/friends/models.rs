@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::utils::auth::ActivityStatus;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IdentifiedFriendIvitation {
     pub user_id: Uuid,
 }
@@ -15,7 +15,7 @@ pub struct FriendInvitationResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Friend {
+pub struct FriendModel {
     pub note: String,
     pub status: ActivityStatus,
     pub profile_picture_url: String,
@@ -23,5 +23,5 @@ pub struct Friend {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct FriendList {
-    pub friends: Vec<Friend>,
+    pub friends: Vec<FriendModel>,
 }

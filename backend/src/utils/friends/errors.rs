@@ -10,6 +10,8 @@ pub enum FriendError {
     RequestSendAlready,
     #[error("Friend request is missing")]
     RequestMissing,
+    #[error("Unknown username")]
+    UnknownUsername,
     #[error(transparent)]
     Unexpected(#[from] anyhow::Error),
 }
@@ -20,6 +22,7 @@ impl IntoResponse for FriendError {
             FriendError::AlreadyFriend => StatusCode::BAD_REQUEST,
             FriendError::RequestSendAlready => StatusCode::BAD_REQUEST,
             FriendError::RequestMissing => StatusCode::BAD_REQUEST,
+            FriendError::UnknownUsername => StatusCode::BAD_REQUEST,
             FriendError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
