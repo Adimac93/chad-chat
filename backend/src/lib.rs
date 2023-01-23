@@ -19,13 +19,13 @@ use axum_extra::routing::SpaRouter;
 use configuration::Settings;
 use modules::{
     database::{get_postgres_pool, get_redis_pool, PgPool},
-    extractors::jwt::{JwtAccessSecret, JwtRefreshSecret, TokenExtractors},
+    extractors::{
+        jwt::{JwtAccessSecret, JwtRefreshSecret, TokenExtractors},
+        user_agent::UserAgentData,
+    },
     smtp::Mailer,
 };
-use modules::{
-    external_api::{HttpClient, UserAgentData},
-    extractors::geolocation::NetworkData,
-};
+use modules::{external_api::HttpClient, extractors::geolocation::NetworkData};
 use serde_json::json;
 use tower_http::cors::CorsLayer;
 use tracing::{debug, error};
