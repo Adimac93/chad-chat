@@ -4,13 +4,9 @@ pub mod modules;
 pub mod routes;
 pub mod utils;
 
-use std::{io, net::IpAddr};
-
 use axum::{
-    async_trait,
     http::header::CONTENT_TYPE,
-    http::{self, StatusCode},
-    http::{HeaderValue, Method, Uri},
+    http::{HeaderValue, Method, StatusCode, Uri},
     response::IntoResponse,
     routing::get,
     Extension, Json, Router,
@@ -27,6 +23,7 @@ use modules::{
 };
 use modules::{external_api::HttpClient, extractors::geolocation::NetworkData};
 use serde_json::json;
+use std::io;
 use tower_http::cors::CorsLayer;
 use tracing::{debug, error};
 

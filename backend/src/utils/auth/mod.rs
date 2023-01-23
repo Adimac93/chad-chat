@@ -2,7 +2,9 @@ pub mod additions;
 pub mod errors;
 pub mod models;
 pub mod tokens;
-use crate::modules::{database::RdPool, extractors::jwt::TokenExtractors, smtp::Mailer};
+use crate::modules::{
+    database::RdPool, extractors::jwt::TokenExtractors, smtp::Mailer, tokens::Token,
+};
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
@@ -16,7 +18,7 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 use validator::Validate;
 
-use self::{additions::random_username_tag, tokens::Token};
+use self::additions::random_username_tag;
 
 #[derive(sqlx::Type, Debug, Serialize, Deserialize)]
 #[sqlx(type_name = "status", rename_all = "snake_case")]
