@@ -3,10 +3,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 mod tools;
 
-use backend::utils::{
-    auth::{errors::AuthError, try_register_user, verify_user_credentials},
-    email::Mailer,
-};
+use backend::utils::auth::{errors::AuthError, try_register_user, verify_user_credentials};
 use secrecy::SecretString;
 use sqlx::PgPool;
 

@@ -1,4 +1,4 @@
-use crate::{utils::auth::errors::*, JwtAccessSecret, JwtRefreshSecret, TokenExtensions};
+use crate::{utils::auth::errors::*, JwtAccessSecret, JwtRefreshSecret, TokenExtractors};
 use anyhow::Context;
 use axum::{
     async_trait,
@@ -27,7 +27,7 @@ pub trait AuthToken {
         duration: Duration,
         key: &Secret<String>,
     ) -> Result<String, AuthError>;
-    async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String>;
+    async fn get_jwt_key(ext: &TokenExtractors) -> Secret<String>;
     async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError>;
     async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError>
     where
@@ -40,7 +40,7 @@ pub trait AuthToken {
 impl AuthToken for Claims {
     const JWT_EXPIRATION: Duration = Duration::seconds(15);
 
-    async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String> {
+    async fn get_jwt_key(ext: &TokenExtractors) -> Secret<String> {
         let JwtAccessSecret(jwt_key) = ext.access.clone();
 
         jwt_key
@@ -130,7 +130,7 @@ impl AuthToken for Claims {
 impl AuthToken for RefreshClaims {
     const JWT_EXPIRATION: Duration = Duration::days(7);
 
-    async fn get_jwt_key(ext: &TokenExtensions) -> Secret<String> {
+    async fn get_jwt_key(ext: &TokenExtractors) -> Secret<String> {
         let JwtRefreshSecret(jwt_key) = ext.refresh.clone();
 
         jwt_key
@@ -289,7 +289,7 @@ where
     let ext = req.extensions();
 
     let token_ext = ext
-        .get::<TokenExtensions>()
+        .get::<TokenExtractors>()
         .expect("Can't find token extensions")
         .clone();
 

@@ -1,9 +1,9 @@
-﻿use crate::database::RdPool;
+﻿use crate::modules::database::RdPool;
+use crate::modules::extractors::addr::ClientAddr;
+use crate::modules::smtp::Mailer;
 use crate::utils::auth::models::*;
-use crate::utils::auth::tokens::Token;
-use crate::utils::email::Mailer;
-use crate::{app_errors::AppError, utils::auth::*, TokenExtensions};
-use axum::extract::Path;
+use crate::{app_errors::AppError, utils::auth::*, TokenExtractors};
+use axum::extract::{ConnectInfo, Path};
 use axum::response::IntoResponse;
 use axum::{debug_handler, extract, http::StatusCode, Extension, Json};
 use axum::{
@@ -19,7 +19,6 @@ use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
 use uuid::Uuid;
-
 pub fn router() -> Router {
     Router::new()
         .route("/register", post(post_register_user))
@@ -34,13 +33,15 @@ async fn post_register_user(
     Extension(pgpool): Extension<PgPool>,
     Extension(mut rdpool): Extension<RdPool>,
     Extension(mailer): Extension<Mailer>,
+    ConnectInfo(addr): ConnectInfo<ClientAddr>,
     Json(register_credentials): extract::Json<RegisterCredentials>,
-    token_ext: TokenExtensions,
+    token_ext: TokenExtractors,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
         &pgpool,
         &mut rdpool,
+        addr.network(),
         Some(mailer),
         register_credentials.email.trim(),
         SecretString::new(register_credentials.password.trim().to_string()),
@@ -62,7 +63,8 @@ async fn post_register_user(
 
 async fn post_login_user(
     Extension(pool): Extension<PgPool>,
-    token_ext: TokenExtensions,
+    token_ext: TokenExtractors,
+    ConnectInfo(addr): ConnectInfo<ClientAddr>,
     Json(login_credentials): extract::Json<LoginCredentials>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
@@ -90,7 +92,7 @@ async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
 
 async fn post_user_logout(
     Extension(pool): Extension<PgPool>,
-    Extension(token_extensions): Extension<TokenExtensions>,
+    Extension(token_extensions): Extension<TokenExtractors>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let mut validation = Validation::default();
@@ -137,7 +139,7 @@ fn remove_cookie(name: &str) -> Cookie {
 #[debug_handler]
 async fn post_refresh_user_token(
     Extension(pool): Extension<PgPool>,
-    ext: TokenExtensions,
+    ext: TokenExtractors,
     refresh_claims: RefreshClaims,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {

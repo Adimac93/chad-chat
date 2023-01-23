@@ -2,8 +2,7 @@ pub mod additions;
 pub mod errors;
 pub mod models;
 pub mod tokens;
-
-use crate::{database::RdPool, TokenExtensions};
+use crate::modules::{database::RdPool, extractors::jwt::TokenExtractors, smtp::Mailer};
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
@@ -11,15 +10,13 @@ use errors::*;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use sqlx::{query, Acquire, PgPool, Postgres};
+use sqlx::{query, types::ipnetwork::IpNetwork, Acquire, PgPool, Postgres};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
 use uuid::Uuid;
 use validator::Validate;
 
 use self::{additions::random_username_tag, tokens::Token};
-
-use super::email::Mailer;
 
 #[derive(sqlx::Type, Debug, Serialize, Deserialize)]
 #[sqlx(type_name = "status", rename_all = "snake_case")]
@@ -33,6 +30,7 @@ pub enum ActivityStatus {
 pub async fn try_register_user<'c>(
     pool: &PgPool,
     rdpool: &mut RdPool,
+    ip: IpNetwork,
     mailer: Option<Mailer>,
     email: &str,
     password: SecretString,
@@ -114,6 +112,17 @@ pub async fn try_register_user<'c>(
     .execute(&mut transaction)
     .await?;
 
+    // query!(
+    //     r#"
+    //         insert into user_networks (ip, user_id, is_trusted)
+    //         values ($1, $2, true)
+    //     "#,
+    //     ip,
+    //     user_id
+    // )
+    // .execute(&mut transaction)
+    // .await?;
+
     transaction.commit().await?;
 
     if let Some(mailer) = mailer {
@@ -159,7 +168,7 @@ pub async fn verify_user_credentials(
 pub async fn generate_token_cookies(
     user_id: Uuid,
     login: &str,
-    ext: &TokenExtensions,
+    ext: &TokenExtractors,
     jar: CookieJar,
 ) -> Result<CookieJar, AuthError> {
     let access_cookie = generate_jwt_in_cookie::<Claims>(user_id, login, ext).await?;
@@ -176,7 +185,7 @@ pub async fn generate_token_cookies(
 async fn generate_jwt_in_cookie<'a, T>(
     user_id: Uuid,
     login: &str,
-    ext: &TokenExtensions,
+    ext: &TokenExtractors,
 ) -> Result<Cookie<'a>, AuthError>
 where
     T: AuthToken,

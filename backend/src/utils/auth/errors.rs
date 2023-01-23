@@ -2,7 +2,7 @@ use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 use thiserror::Error;
 
-use crate::database::DatabaseError;
+use crate::modules::database::DatabaseError;
 
 #[derive(Error, Debug)]
 pub enum AuthError {

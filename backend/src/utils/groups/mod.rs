@@ -10,8 +10,6 @@ use sqlx::{query, query_as, Acquire, Executor, PgPool, Postgres};
 use tracing::debug;
 use uuid::Uuid;
 
-use super::email::Mailer;
-
 pub async fn try_add_user_to_group<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: &Uuid,
