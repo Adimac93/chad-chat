@@ -5,7 +5,7 @@ pub mod privileges;
 use sqlx::{query, PgPool, Acquire, Postgres};
 use uuid::Uuid;
 
-use self::{errors::RoleError, models::{PrivilegeInterpretationData, GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges}, privileges::{QueryPrivilege, Privilege, Privileges}};
+use self::{errors::RoleError, models::{PrivilegeInterpretationData, GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges, BulkRoleChangeData}, privileges::{QueryPrivilege, Privilege, Privileges}};
 
 pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<GroupRolePrivileges, RoleError> {
     let query_res = query!(
@@ -56,29 +56,11 @@ pub async fn single_set_group_role_privileges<'c>(
     Ok(())
 }
 
-pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &GroupUsersRole) -> Result<(), RoleError> {
+pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &BulkRoleChangeData) -> Result<(), RoleError> {
     let mut transaction = pool.begin().await?;
     
-    for (role, users) in &roles.new_roles {
-        // rollbacks automatically on error
-        let _res = query!(
-            r#"
-                update group_users
-                set role_id = (
-                    select role_id
-                        from group_roles
-                        where group_roles.group_id = group_users.group_id
-                        and group_roles.role_type = $1
-                )
-                where user_id = any($2)
-                and group_id = $3
-            "#,
-            role as &Role,
-            users as &[Uuid],
-            roles.group_id,
-        )
-        .execute(&mut transaction)
-        .await?;
+    for data in &roles.0 {
+        single_set_group_user_role(&mut transaction, data).await?;
     }
 
     transaction.commit().await?;
@@ -86,21 +68,26 @@ pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &GroupUsersRole) ->
     Ok(())
 }
 
-pub async fn single_set_group_user_role(pool: &PgPool, data: &UserRoleChangeData) -> Result<(), RoleError> {
-    // rollbacks automatically on error
+pub async fn single_set_group_user_role<'c>(conn: impl Acquire<'c, Database = Postgres>, data: &UserRoleChangeData) -> Result<(), RoleError> {
+    let mut transaction = conn.begin().await?;
+    
     let _res = query!(
         r#"
             update group_users
                 set role_id = group_roles.role_id
                 from group_roles
                 where group_roles.group_id = $1
-                and group_roles.role_type = $2
+                and group_users.user_id = $2
+                and group_roles.role_type = $3
         "#,
         data.group_id,
+        data.user_id,
         data.value as Role,
     )
-    .execute(pool)
+    .execute(&mut transaction)
     .await?;
+
+    transaction.commit().await?;
 
     Ok(())
 }

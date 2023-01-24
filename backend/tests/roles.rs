@@ -1,5 +1,5 @@
 ﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges, PrivilegeInterpretationData};
+use backend::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges, PrivilegeInterpretationData, BulkRoleChangeData};
 use backend::utils::roles::models::{GroupRolePrivileges, Role};
 use backend::utils::roles::privileges::{Privileges, CanInvite, Privilege, CanSendMessages};
 use backend::utils::roles::{
@@ -139,16 +139,13 @@ async fn set_group_users_role_health_check(db: PgPool) {
 
         let _res = bulk_set_group_users_role(
             &db,
-            &GroupUsersRole::from((
-                group_id,
-                [(Role::Admin, vec![
-                    Uuid::parse_str(MARCO_ID).unwrap(),
-                    Uuid::parse_str(ADIMAC_ID).unwrap(),
-                ]),
-                (Role::Owner, vec![
-                    Uuid::parse_str(HUBERT_ID).unwrap(),
-                ])]
-            ))
+            &BulkRoleChangeData(
+                vec![
+                    UserRoleChangeData::new(group_id, Uuid::parse_str(MARCO_ID).unwrap(), Role::Admin),
+                    UserRoleChangeData::new(group_id, Uuid::parse_str(ADIMAC_ID).unwrap(), Role::Admin),
+                    UserRoleChangeData::new(group_id, Uuid::parse_str(HUBERT_ID).unwrap(), Role::Owner),
+                ]
+            )
         )
         .await
         .expect("Query failed");
@@ -157,7 +154,8 @@ async fn set_group_users_role_health_check(db: PgPool) {
         r#"
             select group_users.user_id, group_roles.role_type as "role: Role" from
             group_users join group_roles on group_users.role_id = group_roles.role_id
-            where group_roles.group_id = $1
+                and group_users.group_id = group_roles.group_id
+            where group_users.group_id = $1;
         "#,
         group_id
     )

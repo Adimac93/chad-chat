@@ -1,5 +1,5 @@
 use crate::utils::roles::errors::RoleError;
-use crate::utils::roles::models::{Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges, BulkChangePrivileges};
+use crate::utils::roles::models::{Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges, BulkChangePrivileges, BulkRoleChangeData};
 use crate::utils::roles::privileges::Privileges;
 
 use super::models::{GroupUserMessage, KickMessage};
@@ -240,19 +240,9 @@ impl UserController {
         Ok(())
     }
 
-    pub async fn bulk_set_users_role(&self, new_roles: GroupUsersRole) -> Result<(), RoleError> {
-        for (role, users) in new_roles.new_roles.into_iter() {
-            for user_id in users {
-                let role_set_res = self.single_set_role(&UserRoleChangeData::new(
-                    new_roles.group_id,
-                    user_id,
-                    role,
-                )).await;
-
-                if let Err(RoleError::Unexpected(_)) = role_set_res {
-                    return role_set_res;
-                }
-            }
+    pub async fn bulk_set_users_role(&self, new_roles: &BulkRoleChangeData) -> Result<(), RoleError> {
+        for data in new_roles.0.iter() {
+            self.single_set_role(data);
         };
 
         Ok(())
@@ -453,7 +443,7 @@ pub enum ClientAction {
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
     BulkChangePrivileges { group_id: Uuid, privileges: BulkChangePrivileges },
-    BulkChangeUsersRole { users: GroupUsersRole },
+    BulkChangeUsersRole { users: BulkRoleChangeData },
     SingleChangePrivileges { data: PrivilegeChangeData },
     SingleChangeUserRole { data: UserRoleChangeData },
     RequestMessages { loaded: i64 },

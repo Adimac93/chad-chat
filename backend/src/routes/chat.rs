@@ -212,10 +212,10 @@ pub async fn chat_socket(
                 };
             }
             ClientAction::BulkChangeUsersRole { users } => {
-                let Ok(mut users) = GroupUsersRole::try_from(users) else {
-                    error!("Invalid JSON from client");
-                    continue
-                };
+                // let Ok(mut users) = GroupUsersRole::try_from(users) else {
+                //     error!("Invalid JSON from client");
+                //     continue
+                // };
 
                 // security checks
                 let Some(role) = controller.get_role().await else {
@@ -223,19 +223,20 @@ pub async fn chat_socket(
                     continue
                 };
 
-                if users
-                    .preprocess(role, claims.user_id)
-                    .is_err() {
-                        info!("Role change didn't get through the gate");
-                        continue
-                    };
+                // todo: set gates for a new model
+                // if users
+                //     .preprocess(role, claims.user_id)
+                //     .is_err() {
+                //         info!("Role change didn't get through the gate");
+                //         continue
+                //     };
 
                 if bulk_set_group_users_role(&pool, &users).await.is_err() {
                     error!("Cannot set roles in group");
                     continue
                 };
 
-                let res = controller.bulk_set_users_role(users).await;
+                let res = controller.bulk_set_users_role(&users).await;
                 if res.is_err() {
                     error!("Failed to bulk change user role: {:#?}", res);
                 }

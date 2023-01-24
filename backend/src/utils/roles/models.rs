@@ -271,6 +271,9 @@ impl UserRoleChangeData {
 #[derive(Serialize, Deserialize)]
 pub struct BulkChangePrivileges(pub Vec<PrivilegeChangeData>);
 
+#[derive(Serialize, Deserialize)]
+pub struct BulkRoleChangeData(pub Vec<UserRoleChangeData>);
+
 #[derive(Debug)]
 pub struct PrivilegeInterpretationData {
     pub can_invite: bool,
