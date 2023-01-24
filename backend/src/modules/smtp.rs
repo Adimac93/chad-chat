@@ -18,6 +18,7 @@ use uuid::Uuid;
 pub struct Mailer {
     transport: AsyncSmtpTransport<Tokio1Executor>,
     origin: String,
+    address: Address
 }
 
 impl Mailer {
@@ -28,6 +29,7 @@ impl Mailer {
                 .credentials(config.get_credentials())
                 .build(),
             origin,
+            address: config.get_address()
         }
     }
 
@@ -43,7 +45,7 @@ impl Mailer {
                 Message::builder()
                     .from(Mailbox::new(
                         Some(String::from("Chad")),
-                        Address::new("adimac93", "gmail.com").unwrap(),
+                        self.address.clone(),
                     ))
                     .to(email)
                     .subject(subject)

@@ -18,15 +18,18 @@ pub struct SmtpSettings {
     username: Secret<String>,
     password: Secret<String>,
     pub relay: String,
-    pub address: String,
+    address: String,
 }
 
 impl SmtpSettings {
-    pub fn get_credentials(self) -> Credentials {
+    pub fn get_credentials(&self) -> Credentials {
         Credentials::new(
             self.username.expose_secret().to_owned(),
             self.password.expose_secret().to_owned(),
         )
+    }
+    pub fn get_address(&self) -> Address {
+        self.address.parse::<Address>().unwrap()
     }
 
     fn from_env() -> Self {
@@ -66,13 +69,6 @@ impl ApplicationSettings {
 }
 
 #[derive(Deserialize, Clone)]
-pub struct PostgresSettings {
-    database_url: Option<String>,
-    fields: Option<DatabaseFields>,
-    is_migrating: Option<bool>,
-}
-
-#[derive(Deserialize, Clone)]
 pub struct DatabaseFields {
     username: String,
     password: Secret<String>,
@@ -94,19 +90,13 @@ impl DatabaseFields {
     }
 }
 
-#[derive(Deserialize, Clone)]
-pub struct RedisSettings {
-    database_url: Option<String>,
-    fields: Option<DatabaseFields>,
-}
-
 pub trait ConnectionPrep {
     fn compose_database_url(&self) -> Option<String>;
     fn get_database_url(&self) -> Option<String>;
     fn env_database_url() -> Option<String>;
     fn get_connection_string(&self) -> String
-    where
-        Self: ToString,
+        where
+            Self: ToString,
     {
         let info = format!("url for {}", self.to_string());
         if let Some(url) = self.compose_database_url() {
@@ -125,31 +115,11 @@ pub trait ConnectionPrep {
     }
 }
 
-impl RedisSettings {
-    fn from_env() -> Self {
-        Self {
-            database_url: Self::env_database_url(),
-            fields: None,
-        }
-    }
-}
-
-impl ToString for RedisSettings {
-    fn to_string(&self) -> String {
-        String::from("redis")
-    }
-}
-
-impl ConnectionPrep for RedisSettings {
-    fn compose_database_url(&self) -> Option<String> {
-        Some(self.fields.clone()?.compose(self.to_string()))
-    }
-    fn get_database_url(&self) -> Option<String> {
-        self.database_url.clone()
-    }
-    fn env_database_url() -> Option<String> {
-        try_get_env("REDIS_URL")
-    }
+#[derive(Deserialize, Clone)]
+pub struct PostgresSettings {
+    database_url: Option<String>,
+    fields: Option<DatabaseFields>,
+    is_migrating: Option<bool>,
 }
 
 impl PostgresSettings {
@@ -180,6 +150,40 @@ impl ConnectionPrep for PostgresSettings {
     }
     fn env_database_url() -> Option<String> {
         try_get_env("DATABASE_URL")
+    }
+}
+
+#[derive(Deserialize, Clone)]
+pub struct RedisSettings {
+    database_url: Option<String>,
+    fields: Option<DatabaseFields>,
+}
+
+
+impl RedisSettings {
+    fn from_env() -> Self {
+        Self {
+            database_url: Self::env_database_url(),
+            fields: None,
+        }
+    }
+}
+
+impl ToString for RedisSettings {
+    fn to_string(&self) -> String {
+        String::from("redis")
+    }
+}
+
+impl ConnectionPrep for RedisSettings {
+    fn compose_database_url(&self) -> Option<String> {
+        Some(self.fields.clone()?.compose(self.to_string()))
+    }
+    fn get_database_url(&self) -> Option<String> {
+        self.database_url.clone()
+    }
+    fn env_database_url() -> Option<String> {
+        try_get_env("REDIS_URL")
     }
 }
 
