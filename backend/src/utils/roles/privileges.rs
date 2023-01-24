@@ -1,6 +1,12 @@
 ﻿use std::{collections::{HashSet, HashMap}, cmp::Ordering, hash::Hash, mem::discriminant};
 
+use axum::async_trait;
 use serde::{Serialize, Deserialize};
+use sqlx::{query, Acquire, Postgres};
+
+use crate::utils::roles::models::Role;
+
+use super::{errors::RoleError, models::PrivilegeChangeData};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -78,31 +84,99 @@ impl Hash for Privilege {
     }
 }
 
-// deprecated soon
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug, sqlx::Type)]
-#[serde(rename_all = "snake_case")]
-#[sqlx(type_name = "privilege_type", rename_all = "snake_case")]
-pub enum PrivilegeType {
-    CanInvite,
-    CanSendMessages,
+#[async_trait]
+pub trait QueryPrivilege<'c> {
+    async fn set_privilege(&self, conn: impl Acquire<'c, Database = Postgres> + std::marker::Send, data: &PrivilegeChangeData) -> Result<(), RoleError>;
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct QueryPrivileges(pub HashMap<PrivilegeType, Privilege>);
+#[async_trait]
+impl<'c> QueryPrivilege<'c> for CanInvite {
+    async fn set_privilege(
+        &self,
+        conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
+        data: &PrivilegeChangeData
+    ) -> Result<(), RoleError> {
+        let mut transaction = conn.begin().await?;
+        
+        let val = match self {
+            CanInvite::Yes => true,
+            CanInvite::No => false,
+        };
 
-impl From<Privileges> for QueryPrivileges {
-    fn from(val: Privileges) -> Self {
-        QueryPrivileges(val.0.into_iter().map(|x| {
-            (match x {
-                Privilege::CanInvite(_) => PrivilegeType::CanInvite,
-                Privilege::CanSendMessages(_) => PrivilegeType::CanSendMessages,
-            }, x)
-        }).collect::<HashMap<_, _>>())
+        let _res = query!(
+            r#"
+                update roles
+                    set can_invite = $1
+                    from group_roles
+                    where group_roles.group_id = $2
+                    and group_roles.role_type = $3
+            "#,
+            val,
+            data.group_id,
+            data.role as Role,
+        )
+        .execute(&mut transaction)
+        .await?;
+
+        transaction.commit().await?;
+
+        Ok(())
     }
 }
 
-impl From<QueryPrivileges> for Privileges {
-    fn from(val: QueryPrivileges) -> Self {
-        Privileges(val.0.into_iter().map(|(_, x)| x).collect::<HashSet<_>>())
+impl From<bool> for CanInvite {
+    fn from(val: bool) -> Self {
+        match val {
+            true => CanInvite::Yes,
+            false => CanInvite::No,
+        }
+    }
+}
+
+#[async_trait]
+impl<'c> QueryPrivilege<'c> for CanSendMessages {
+    async fn set_privilege(
+        &self,
+        conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
+        data: &PrivilegeChangeData
+    ) -> Result<(), RoleError> {
+        let mut transaction = conn.begin().await?;
+        
+        let val = match self {
+            CanSendMessages::Yes(x) => *x as i32,
+            CanSendMessages::No => -1,
+        };
+
+        let _res = query!(
+            r#"
+                update roles
+                    set can_send_messages = $1
+                    from group_roles
+                    where group_roles.group_id = $2
+                    and group_roles.role_type = $3
+            "#,
+            val,
+            data.group_id,
+            data.role as Role,
+        )
+        .execute(&mut transaction)
+        .await?;
+
+        transaction.commit().await?;
+
+        Ok(())
+    }
+}
+
+impl TryFrom<i32> for CanSendMessages {
+    type Error = RoleError;
+
+    fn try_from(val: i32) -> Result<Self, Self::Error> {
+        match val {
+            ..=-2 => Err(RoleError::PrivilegeInterpretationFailed),
+            -1 => Ok(CanSendMessages::No),
+            // an extra assertion is used to ensure that it won't panic (not necessary)
+            x if x >= 0 => Ok(CanSendMessages::Yes(x as usize)),
+        }
     }
 }

@@ -4,6 +4,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum RoleError {
+    // todo: maybe change this error to an unexpected one
+    #[error("Failed to interpret role privileges")]
+    PrivilegeInterpretationFailed,
     #[error("User not found in the group")]
     UserNotFound,
     #[error("Role not found in the group")]
@@ -19,6 +22,7 @@ pub enum RoleError {
 impl IntoResponse for RoleError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
+            RoleError::PrivilegeInterpretationFailed => StatusCode::INTERNAL_SERVER_ERROR,
             RoleError::UserNotFound => StatusCode::BAD_REQUEST,
             RoleError::RoleNotFound => StatusCode::BAD_REQUEST,
             RoleError::RoleChangeRejection => StatusCode::BAD_REQUEST,

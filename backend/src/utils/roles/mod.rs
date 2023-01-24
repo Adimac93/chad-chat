@@ -2,17 +2,15 @@
 pub mod models;
 pub mod privileges;
 
-use sqlx::{query, PgPool};
+use sqlx::{query, PgPool, Acquire, Postgres};
 use uuid::Uuid;
 
-use crate::utils::roles::privileges::{QueryPrivileges, PrivilegeType};
-
-use self::{errors::RoleError, models::{GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData}};
+use self::{errors::RoleError, models::{PrivilegeInterpretationData, GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges}, privileges::{QueryPrivilege, Privilege, Privileges}};
 
 pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<GroupRolePrivileges, RoleError> {
     let query_res = query!(
         r#"
-            select group_roles.role_type as "role_type: Role", roles.privileges from
+            select group_roles.role_type as "role_type: Role", roles.can_invite, roles.can_send_messages from
                 group_roles join roles on group_roles.role_id = roles.id
                 where group_roles.group_id = $1
                 and group_roles.role_type in ('member', 'admin')
@@ -25,34 +23,20 @@ pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<
 
     let mut res = GroupRolePrivileges::new();
     for role_data in query_res {
-        res.0.insert(role_data.role_type, serde_json::from_value::<QueryPrivileges>(role_data.privileges)?.into());
+        res.0.insert(role_data.role_type, Privileges::try_from(PrivilegeInterpretationData {
+            can_invite: role_data.can_invite,
+            can_send_messages: role_data.can_send_messages,
+        })?);
     }
 
     Ok(res)
 }
 
-pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &GroupRolePrivileges) -> Result<(), RoleError> {
+pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &BulkChangePrivileges) -> Result<(), RoleError> {
     let mut transaction = pool.begin().await?;
 
-    for (role, privileges) in &new_privileges.0 {
-        // rollbacks automatically on error
-        let _res = query!(
-            r#"
-                update roles
-                    set privileges = $1
-                    where roles.id = (
-                        select role_id
-                            from group_roles
-                            where group_roles.role_type = $2
-                            and group_roles.group_id = $3
-                    )
-            "#,
-            &serde_json::to_value(&QueryPrivileges::from(privileges.clone()))?,
-            &role as &Role,
-            &group_id,
-        )
-        .execute(&mut transaction)
-        .await?;
+    for data in &new_privileges.0 {
+        single_set_group_role_privileges(&mut transaction, data).await?;
     }
 
     transaction.commit().await?;
@@ -60,22 +44,14 @@ pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_
     Ok(())
 }
 
-pub async fn single_set_group_role_privileges(pool: &PgPool, data: &PrivilegeChangeData) -> Result<(), RoleError> {
-    let _res = query!(
-        r#"
-            update roles
-                set privileges[$1::text] = $2
-                from group_roles
-                where group_roles.group_id = $3
-                and group_roles.role_type = $4
-        "#,
-        &data.privilege as &PrivilegeType,
-        serde_json::to_value(&data.value)?,
-        &data.group_id,
-        &data.role as &Role,
-    )
-    .execute(pool)
-    .await?;
+pub async fn single_set_group_role_privileges<'c>(
+    conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
+    data: &PrivilegeChangeData
+) -> Result<(), RoleError> {
+    match data.value {
+        Privilege::CanInvite(x) => x.set_privilege(conn, data).await?,
+        Privilege::CanSendMessages(x) => x.set_privilege(conn, data).await?,
+    };
 
     Ok(())
 }

@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::utils::groups::models::GroupUser;
 
-use super::{errors::RoleError, privileges::{PrivilegeType, Privileges, Privilege}};
+use super::{errors::RoleError, privileges::{Privileges, Privilege, CanInvite, CanSendMessages}};
 
 #[derive(
     sqlx::Type, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy,
@@ -214,7 +214,6 @@ impl From<GroupRolePrivileges> for SocketGroupRolePrivileges {
 pub struct PrivilegeChangeData {
     pub group_id: Uuid,
     pub role: Role,
-    pub privilege: PrivilegeType,
     pub value: Privilege,
 }
 
@@ -260,5 +259,25 @@ pub struct UserRoleChangeData {
 impl UserRoleChangeData {
     pub fn new(group_id: Uuid, user_id: Uuid, value: Role) -> Self {
         Self { group_id, user_id, value }
+    }
+}
+
+pub struct BulkChangePrivileges(pub Vec<PrivilegeChangeData>);
+
+#[derive(Debug)]
+pub struct PrivilegeInterpretationData {
+    pub can_invite: bool,
+    pub can_send_messages: i32,
+}
+
+impl TryFrom<PrivilegeInterpretationData> for Privileges {
+    type Error = RoleError;
+
+    fn try_from(val: PrivilegeInterpretationData) -> Result<Self, Self::Error> {
+        let mut res: Privileges;
+        res.0.insert(Privilege::CanInvite(CanInvite::from(val.can_invite)));
+        res.0.insert(Privilege::CanSendMessages(CanSendMessages::try_from(val.can_send_messages)?));
+
+        Ok(res)
     }
 }
