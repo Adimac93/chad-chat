@@ -14,17 +14,17 @@ pub async fn send_friend_request_by_user_id<'c>(
 ) -> Result<(), FriendError> {
     let mut transaction = conn.begin().await?;
 
-    let friend = Friend::new(user_id, request_user_id);
-    if friend.is_friend(&mut transaction).await? {
+    let mut friend = Friend::new(user_id, request_user_id, &mut transaction);
+    if friend.is_friend().await? {
         return Err(FriendError::AlreadyFriend);
     }
 
-    let inv = Invitation::new(user_id, request_user_id);
-    if inv.is_pending(&mut transaction).await? {
+    let mut inv = Invitation::new(user_id, request_user_id,&mut transaction);
+    if inv.is_pending().await? {
         return Err(FriendError::RequestSendAlready);
     }
 
-    inv.send(&mut transaction).await?;
+    inv.send().await?;
     transaction.commit().await?;
     Ok(())
 }
@@ -40,17 +40,17 @@ pub async fn send_friend_request_by_username_and_tag<'c>(
         return Err(FriendError::UnknownUsername);
     };
 
-    let friend = Friend::new(user_id, receiver_id);
-    if friend.is_friend(&mut transaction).await? {
+    let mut friend = Friend::new(user_id, receiver_id, &mut transaction);
+    if friend.is_friend().await? {
         return Err(FriendError::AlreadyFriend);
     }
 
-    let inv = Invitation::new(user_id, receiver_id);
-    if inv.is_pending(&mut transaction).await? {
+    let mut inv = Invitation::new(user_id, receiver_id, &mut transaction);
+    if inv.is_pending().await? {
         return Err(FriendError::RequestSendAlready);
     }
 
-    inv.send(&mut transaction).await?;
+    inv.send().await?;
     transaction.commit().await?;
     Ok(())
 }
@@ -60,7 +60,7 @@ pub async fn fetch_friends<'c>(
     user_id: Uuid,
 ) -> Result<Vec<FriendModel>, FriendError> {
     let mut transaction = conn.begin().await?;
-    let friends = User::new(user_id).friends(&mut transaction).await?;
+    let friends = User::new(user_id,&mut transaction).friends().await?;
     transaction.commit().await?;
     Ok(friends)
 }
@@ -72,8 +72,8 @@ pub async fn respond_to_friend_request<'c>(
     is_accepted: bool,
 ) -> Result<(), FriendError> {
     let mut transaction = conn.begin().await?;
-    Invitation::new(sender_id, receiver_id)
-        .respond(&mut transaction, is_accepted)
+    Invitation::new(sender_id, receiver_id, &mut transaction)
+        .respond( is_accepted)
         .await?;
     transaction.commit().await?;
     Ok(())
@@ -85,8 +85,8 @@ pub async fn remove_friend<'c>(
     friend_id: Uuid,
 ) -> Result<(), FriendError> {
     let mut transaction = conn.begin().await?;
-    Friend::new(user_id, friend_id)
-        .remove(&mut transaction)
+    Friend::new(user_id, friend_id, &mut transaction)
+        .remove()
         .await?;
     transaction.commit().await?;
     Ok(())
@@ -99,8 +99,8 @@ pub async fn update_friend_note<'c>(
     note: String,
 ) -> Result<(), FriendError> {
     let mut transaction = conn.begin().await?;
-    Friend::new(user_id, friend_id)
-        .change_note(&mut transaction, note)
+    Friend::new(user_id, friend_id, &mut transaction)
+        .change_note(note)
         .await?;
     transaction.commit().await?;
     Ok(())
@@ -129,20 +129,22 @@ impl TaggedUsername {
     }
 }
 
-pub struct Invitation {
+pub struct Invitation<'c> {
     pub sender_id: Uuid,
     pub receiver_id: Uuid,
+    conn: &'c mut PgConnection
 }
 
-impl Invitation {
-    pub fn new(sender_id: Uuid, receiver_id: Uuid) -> Self {
+impl<'c> Invitation<'c> {
+    pub fn new(sender_id: Uuid, receiver_id: Uuid, conn: &'c mut PgConnection) -> Self {
         Self {
             sender_id,
             receiver_id,
+            conn
         }
     }
 
-    pub async fn send(&self, conn: &mut PgConnection) -> Result<(), FriendError> {
+    pub async fn send(&mut self) -> Result<(), FriendError> {
         query!(
             r#"
                 insert into friend_requests (sender_id, receiver_id)
@@ -151,15 +153,14 @@ impl Invitation {
             self.sender_id,
             self.receiver_id
         )
-        .execute(&mut *conn)
+        .execute(&mut *self.conn)
         .await?;
 
         Ok(())
     }
 
     pub async fn respond(
-        &self,
-        conn: &mut PgConnection,
+        &mut self,
         is_accepted: bool,
     ) -> Result<(), FriendError> {
         query!(
@@ -171,7 +172,7 @@ impl Invitation {
             self.sender_id,
             self.receiver_id,
         )
-        .fetch_optional(&mut *conn)
+        .fetch_optional(&mut *self.conn)
         .await?
         .ok_or(FriendError::RequestMissing)?;
 
@@ -179,13 +180,13 @@ impl Invitation {
             return Ok(());
         }
 
-        Friend::new(self.sender_id, self.receiver_id)
-            .add(&mut *conn)
+        Friend::new(self.sender_id, self.receiver_id, &mut *self.conn)
+            .add()
             .await?;
 
         Ok(())
     }
-    pub async fn is_pending(&self, conn: &mut PgConnection) -> Result<bool, FriendError> {
+    pub async fn is_pending(&mut self) -> Result<bool, FriendError> {
         let is_pending = query!(
             r#"
                 select * from friend_requests
@@ -194,7 +195,7 @@ impl Invitation {
             self.sender_id,
             self.receiver_id
         )
-        .fetch_optional(&mut *conn)
+        .fetch_optional(&mut *self.conn)
         .await?
         .is_some();
 
@@ -202,16 +203,17 @@ impl Invitation {
     }
 }
 
-pub struct Friend {
+pub struct Friend<'c> {
     pub user_id: Uuid,
     pub friend_id: Uuid,
+    conn: &'c mut PgConnection
 }
 
-impl Friend {
-    fn new(user_id: Uuid, friend_id: Uuid) -> Self {
-        Self { user_id, friend_id }
+impl<'c> Friend<'c> {
+    fn new(user_id: Uuid, friend_id: Uuid, conn: &'c mut PgConnection) -> Self {
+        Self { user_id, friend_id, conn }
     }
-    async fn add(&self, conn: &mut PgConnection) -> Result<(), FriendError> {
+    async fn add(&mut self) -> Result<(), FriendError> {
         let res = query!(
             r#"
                 insert into user_friends (user_id, friend_id, note)
@@ -220,7 +222,7 @@ impl Friend {
             self.user_id,
             self.friend_id
         )
-        .execute(&mut *conn)
+        .execute(&mut *self.conn)
         .await?;
 
         let res = query!(
@@ -231,13 +233,13 @@ impl Friend {
             self.friend_id,
             self.user_id,
         )
-        .execute(&mut *conn)
+        .execute(&mut *self.conn)
         .await?;
 
         Ok(())
     }
 
-    async fn remove(&self, conn: &mut PgConnection) -> Result<(), FriendError> {
+    async fn remove(&mut self) -> Result<(), FriendError> {
         query!(
             r#"
                 delete from user_friends
@@ -249,15 +251,14 @@ impl Friend {
             self.user_id,
             self.friend_id
         )
-        .execute(&mut *conn)
+        .execute(&mut *self.conn)
         .await?;
 
         Ok(())
     }
 
     pub async fn change_note(
-        &self,
-        conn: &mut PgConnection,
+        &mut self,
         note: String,
     ) -> Result<(), FriendError> {
         query!(
@@ -270,12 +271,12 @@ impl Friend {
             self.user_id,
             self.friend_id
         )
-        .execute(&mut *conn)
+        .execute(&mut *self.conn)
         .await?;
 
         Ok(())
     }
-    pub async fn is_friend(&self, conn: &mut PgConnection) -> Result<bool, FriendError> {
+    pub async fn is_friend(&mut self) -> Result<bool, FriendError> {
         let is_friend = query!(
             r#"
                 select * from user_friends
@@ -284,7 +285,7 @@ impl Friend {
             self.user_id,
             self.friend_id
         )
-        .fetch_optional(&mut *conn)
+        .fetch_optional(&mut *self.conn)
         .await?
         .is_some();
 
@@ -292,16 +293,17 @@ impl Friend {
     }
 }
 
-pub struct User {
+pub struct User<'c> {
     user_id: Uuid,
+    conn: &'c mut PgConnection
 }
 
-impl User {
-    pub fn new(user_id: Uuid) -> Self {
-        Self { user_id }
+impl<'c> User<'c> {
+    pub fn new(user_id: Uuid, conn: &'c mut PgConnection) -> Self {
+        Self { user_id, conn }
     }
 
-    pub async fn friends(&self, conn: &mut PgConnection) -> Result<Vec<FriendModel>, FriendError> {
+    pub async fn friends(&mut self) -> Result<Vec<FriendModel>, FriendError> {
         let friends = query_as!(
         FriendModel,
         r#"
@@ -311,7 +313,7 @@ impl User {
         "#,
         self.user_id
         )
-        .fetch_all(&mut *conn)
+        .fetch_all(&mut *self.conn)
         .await?;
 
         Ok(friends)
