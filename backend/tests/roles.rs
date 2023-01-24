@@ -1,7 +1,7 @@
 ﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
+use backend::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges, PrivilegeInterpretationData};
 use backend::utils::roles::models::{GroupRolePrivileges, Role};
-use backend::utils::roles::privileges::{Privileges, CanInvite, Privilege, CanSendMessages, QueryPrivileges, PrivilegeType};
+use backend::utils::roles::privileges::{Privileges, CanInvite, Privilege, CanSendMessages};
 use backend::utils::roles::{
     get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges, single_set_group_role_privileges, single_set_group_user_role,
 };
@@ -21,46 +21,6 @@ const ADIMAC_ID: &str = "ba34ff10-4b89-44cb-9b36-31eb57c41556";
 const HUBERT_ID: &str = "263541a8-fa1e-4f13-9e5d-5b250a5a71e6";
 const MARCO_ID: &str = "4bd30a6a-7dfe-46a2-b741-f49612aa85c1";
 const POLO_ID: &str = "6666e44f-14ce-4aa5-b5f9-8a4cc5ee5c58";
-
-    #[sqlx::test]
-    async fn json_conversion_health_check(db: PgPool) {
-        let role_id = query!(
-            r#"
-                insert into roles(privileges)
-                    values($1)
-                    returning (id)
-            "#,
-            serde_json::to_value(&Privileges (HashSet::from([
-                Privilege::CanInvite(CanInvite::Yes),
-                Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-            ]))).expect("Failed to serialize privileges to json")
-        )
-        .fetch_one(&db)
-        .await
-        .expect("Failed to store json in the db")
-        .id;
-
-    let res = query!(
-        r#"
-            select privileges from roles
-                where id = $1
-        "#,
-        role_id
-    )
-    .fetch_one(&db)
-    .await
-    .expect("Failed to fetch privileges by role id")
-    .privileges;
-
-        let privileges = serde_json::from_value::<Privileges>(res).expect("Failed to deserialize json from db");
-        assert_eq!(
-            Privileges (HashSet::from([
-                Privilege::CanInvite(CanInvite::Yes),
-                Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-            ])),
-            privileges
-        )
-    }
 
 #[sqlx::test(fixtures("groups", "roles", "group_roles"))]
 async fn get_group_role_privileges_health_check(db: PgPool) {
@@ -111,24 +71,20 @@ async fn set_group_role_privileges_health_check(db: PgPool) {
         let _res = bulk_set_group_role_privileges(
             &db,
             &group_id,
-            &GroupRolePrivileges (
-                HashMap::from([
-                    (Role::Admin, Privileges (HashSet::from([
-                        Privilege::CanInvite(CanInvite::Yes),
-                        Privilege::CanSendMessages(CanSendMessages::Yes(1)),
-                    ]))),
-                    (Role::Member, Privileges (HashSet::from([
-                        Privilege::CanInvite(CanInvite::Yes),
-                        Privilege::CanSendMessages(CanSendMessages::Yes(15)),
-                    ]))),
-            ])),
+            &BulkChangePrivileges (
+                vec![
+                    PrivilegeChangeData::new(group_id, Role::Admin, Privilege::CanSendMessages(CanSendMessages::Yes(1))),
+                    PrivilegeChangeData::new(group_id, Role::Member, Privilege::CanSendMessages(CanSendMessages::Yes(15))),
+                    PrivilegeChangeData::new(group_id, Role::Member, Privilege::CanInvite(CanInvite::Yes)),
+                ]
+            ),
         )
         .await
         .expect("Query failed");
 
     let res = query!(
         r#"
-            select group_roles.role_type as "role: Role", roles.privileges from
+            select group_roles.role_type as "role: Role", roles.can_invite, roles.can_send_messages from
             group_roles join roles on group_roles.role_id = roles.id
             where group_roles.group_id = $1
         "#,
@@ -142,7 +98,7 @@ async fn set_group_role_privileges_health_check(db: PgPool) {
         .into_iter()
         .map(|x| RoleData {
             role: x.role,
-            privileges: serde_json::from_value::<QueryPrivileges>(x.privileges).unwrap().into(),
+            privileges: Privileges::try_from(PrivilegeInterpretationData::new(x.can_invite, x.can_send_messages)).unwrap(),
         })
         .collect::<Vec<_>>();
 
@@ -415,7 +371,6 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
     let data = PrivilegeChangeData {
         group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
         role: Role::Member,
-        privilege: PrivilegeType::CanInvite,
         value: Privilege::CanInvite(CanInvite::No),
     };
 
@@ -441,7 +396,7 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
 
     let query_res = query!(
         r#"
-            select roles.privileges
+            select roles.can_invite, roles.can_send_messages
                 from group_roles join roles on group_roles.role_id = roles.id
                 where group_roles.group_id = $1
                 and group_roles.role_type = $2
@@ -453,7 +408,7 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
     .await
     .unwrap();
 
-    let res: Privileges = serde_json::from_value::<QueryPrivileges>(query_res.privileges).unwrap().into();
+    let res = Privileges::try_from(PrivilegeInterpretationData::new(query_res.can_invite, query_res.can_send_messages)).unwrap();
     assert_eq!(
         res,
         Privileges::from([

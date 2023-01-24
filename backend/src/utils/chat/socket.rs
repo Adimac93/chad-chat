@@ -1,5 +1,5 @@
 use crate::utils::roles::errors::RoleError;
-use crate::utils::roles::models::{Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges};
+use crate::utils::roles::models::{Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges, BulkChangePrivileges};
 use crate::utils::roles::privileges::Privileges;
 
 use super::models::{GroupUserMessage, KickMessage};
@@ -210,28 +210,9 @@ impl UserController {
         }
     }
 
-    pub async fn bulk_set_privileges(&self, group_privileges: &GroupRolePrivileges) -> Result<(), RoleError> {
-        let conn = self.group_conn.as_ref()
-            .ok_or(RoleError::Unexpected(anyhow!("No group connection found in the user controller")))?;
-
-        for (role, new_privileges) in &group_privileges.0 {
-            let Some(privilege_ref) =
-                conn.controller.privileges.0.get(&role) else {
-                    error!("No role {role:?} found in a group");
-                    continue
-                };
-
-            let mut privilege_guard = privilege_ref.write().await;
-
-            let users_guard = conn.controller.users.0.read().await;
-            *privilege_guard = new_privileges.clone();
-
-            // send new privileges to every user, whose privileges were changed
-            for (_, data) in users_guard.iter() {
-                if data.role == *role {
-                    data.connections.send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone())).await;
-                }
-            }
+    pub async fn bulk_set_privileges(&self, group_privileges: &BulkChangePrivileges) -> Result<(), RoleError> {
+        for data in &group_privileges.0 {
+            self.set_privilege(data).await?;
         }
 
         Ok(())
@@ -471,7 +452,7 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    BulkChangePrivileges { group_id: Uuid, privileges: GroupRolePrivileges },
+    BulkChangePrivileges { group_id: Uuid, privileges: BulkChangePrivileges },
     BulkChangeUsersRole { users: GroupUsersRole },
     SingleChangePrivileges { data: PrivilegeChangeData },
     SingleChangeUserRole { data: UserRoleChangeData },

@@ -217,6 +217,12 @@ pub struct PrivilegeChangeData {
     pub value: Privilege,
 }
 
+impl PrivilegeChangeData {
+    pub fn new(group_id: Uuid, role: Role, value: Privilege) -> Self {
+        Self { group_id, role, value }
+    }
+}
+
 // impl PrivilegeChangeData {
 //     pub async fn maintain_hierarchy(
 //         &mut self,
@@ -262,6 +268,7 @@ impl UserRoleChangeData {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct BulkChangePrivileges(pub Vec<PrivilegeChangeData>);
 
 #[derive(Debug)]
@@ -270,11 +277,17 @@ pub struct PrivilegeInterpretationData {
     pub can_send_messages: i32,
 }
 
+impl PrivilegeInterpretationData {
+    pub fn new(can_invite: bool, can_send_messages: i32) -> Self {
+        Self { can_invite, can_send_messages }
+    }
+}
+
 impl TryFrom<PrivilegeInterpretationData> for Privileges {
     type Error = RoleError;
 
     fn try_from(val: PrivilegeInterpretationData) -> Result<Self, Self::Error> {
-        let mut res: Privileges;
+        let mut res = Privileges::new();
         res.0.insert(Privilege::CanInvite(CanInvite::from(val.can_invite)));
         res.0.insert(Privilege::CanSendMessages(CanSendMessages::try_from(val.can_send_messages)?));
 

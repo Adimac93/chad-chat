@@ -1,5 +1,4 @@
 use backend::modules::extractors::addr::ClientAddr;
-use backend::utils::roles::privileges::{Privileges, QueryPrivileges};
 use backend::{app, configuration::get_config};
 use dotenv::dotenv;
 use tracing::info;
@@ -7,10 +6,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    println!(
-        "{:?}",
-        serde_json::to_string(&QueryPrivileges::from(Privileges::max()))
-    );
     dotenv().ok();
     let config = get_config().expect("Failed to read configuration");
 

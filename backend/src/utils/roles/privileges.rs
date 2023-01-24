@@ -13,6 +13,10 @@ use super::{errors::RoleError, models::PrivilegeChangeData};
 pub struct Privileges(pub HashSet<Privilege>);
 
 impl Privileges {
+    pub fn new() -> Self {
+        Self(HashSet::new())
+    }
+
     pub fn max() -> Self {
         Self::from([
             Privilege::CanInvite(CanInvite::Yes),
@@ -176,7 +180,7 @@ impl TryFrom<i32> for CanSendMessages {
             ..=-2 => Err(RoleError::PrivilegeInterpretationFailed),
             -1 => Ok(CanSendMessages::No),
             // an extra assertion is used to ensure that it won't panic (not necessary)
-            x if x >= 0 => Ok(CanSendMessages::Yes(x as usize)),
+            0..=i32::MAX => Ok(CanSendMessages::Yes(val as usize)),
         }
     }
 }
