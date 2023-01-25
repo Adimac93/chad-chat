@@ -191,16 +191,17 @@ pub async fn chat_socket(
 
                 // todo: disconnect group controllers
             }
-            ClientAction::SingleChangePrivileges { data } => {
-                // let Some(socket_privileges) = controller.get_privileges() else {
-                //     debug!("User trying to change privileges not in group");
-                //     continue
-                // };
+            ClientAction::SingleChangePrivileges { mut data } => {
+                let Some(socket_privileges) = controller.get_privileges() else {
+                    debug!("User trying to change privileges not in group");
+                    continue
+                };
 
-                // if data.maintain_hierarchy(socket_privileges).await.is_err() {
-                //     error!("Error when maintaining role hierarchy");
-                //     continue
-                // };
+                // there is a concurrency-related edge case which bypasses corrections
+                if data.maintain_hierarchy(socket_privileges).await.is_err() {
+                    error!("Error when maintaining role hierarchy");
+                    continue
+                };
 
                 if controller.set_privilege(&data).await.is_err() {
                     error!("Error when changing privilege");
