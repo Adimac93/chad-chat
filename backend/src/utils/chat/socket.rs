@@ -1,5 +1,5 @@
 use crate::utils::roles::errors::RoleError;
-use crate::utils::roles::models::{Role, GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, GroupRolePrivileges, BulkChangePrivileges, BulkRoleChangeData};
+use crate::utils::roles::models::{Role, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
 use crate::utils::roles::privileges::Privileges;
 
 use super::models::{GroupUserMessage, KickMessage};
@@ -8,7 +8,6 @@ use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use serde::de::Unexpected;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -210,14 +209,6 @@ impl UserController {
         }
     }
 
-    pub async fn bulk_set_privileges(&self, group_privileges: &BulkChangePrivileges) -> Result<(), RoleError> {
-        for data in &group_privileges.0 {
-            self.set_privilege(data).await?;
-        }
-
-        Ok(())
-    }
-
     pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), RoleError> {
         let conn = self.group_conn.as_ref()
             .ok_or(RoleError::Unexpected(anyhow!("No group connection found in the user controller")))?;
@@ -236,14 +227,6 @@ impl UserController {
                 user_data.connections.send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone())).await;
             }
         }
-
-        Ok(())
-    }
-
-    pub async fn bulk_set_users_role(&self, new_roles: &BulkRoleChangeData) -> Result<(), RoleError> {
-        for data in new_roles.0.iter() {
-            self.single_set_role(data);
-        };
 
         Ok(())
     }
@@ -442,8 +425,6 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    BulkChangePrivileges { group_id: Uuid, privileges: BulkChangePrivileges },
-    BulkChangeUsersRole { users: BulkRoleChangeData },
     SingleChangePrivileges { data: PrivilegeChangeData },
     SingleChangeUserRole { data: UserRoleChangeData },
     RequestMessages { loaded: i64 },

@@ -5,7 +5,19 @@ pub mod privileges;
 use sqlx::{query, PgPool, Acquire, Postgres};
 use uuid::Uuid;
 
-use self::{errors::RoleError, models::{PrivilegeInterpretationData, GroupUsersRole, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges, BulkRoleChangeData}, privileges::{QueryPrivilege, Privilege, Privileges}};
+use self::{errors::RoleError, models::{PrivilegeInterpretationData, GroupRolePrivileges, Role, PrivilegeChangeData, UserRoleChangeData}, privileges::{QueryPrivilege, Privilege, Privileges}};
+
+pub async fn single_set_group_role_privileges<'c>(
+    conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
+    data: &PrivilegeChangeData
+) -> Result<(), RoleError> {
+    match data.value {
+        Privilege::CanInvite(x) => x.set_privilege(conn, data).await?,
+        Privilege::CanSendMessages(x) => x.set_privilege(conn, data).await?,
+    };
+
+    Ok(())
+}
 
 pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<GroupRolePrivileges, RoleError> {
     let query_res = query!(
@@ -30,42 +42,6 @@ pub async fn get_group_role_privileges(pool: &PgPool, group_id: Uuid) -> Result<
     }
 
     Ok(res)
-}
-
-pub async fn bulk_set_group_role_privileges(pool: &PgPool, group_id: &Uuid, new_privileges: &BulkChangePrivileges) -> Result<(), RoleError> {
-    let mut transaction = pool.begin().await?;
-
-    for data in &new_privileges.0 {
-        single_set_group_role_privileges(&mut transaction, data).await?;
-    }
-
-    transaction.commit().await?;
-
-    Ok(())
-}
-
-pub async fn single_set_group_role_privileges<'c>(
-    conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
-    data: &PrivilegeChangeData
-) -> Result<(), RoleError> {
-    match data.value {
-        Privilege::CanInvite(x) => x.set_privilege(conn, data).await?,
-        Privilege::CanSendMessages(x) => x.set_privilege(conn, data).await?,
-    };
-
-    Ok(())
-}
-
-pub async fn bulk_set_group_users_role(pool: &PgPool, roles: &BulkRoleChangeData) -> Result<(), RoleError> {
-    let mut transaction = pool.begin().await?;
-    
-    for data in &roles.0 {
-        single_set_group_user_role(&mut transaction, data).await?;
-    }
-
-    transaction.commit().await?;
-
-    Ok(())
 }
 
 pub async fn single_set_group_user_role<'c>(conn: impl Acquire<'c, Database = Postgres>, data: &UserRoleChangeData) -> Result<(), RoleError> {

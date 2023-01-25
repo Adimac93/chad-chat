@@ -6,8 +6,8 @@ use crate::utils::chat::socket::{
 };
 use crate::utils::chat::*;
 use crate::utils::groups::*;
-use crate::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges};
-use crate::utils::roles::{get_group_role_privileges, get_user_role, bulk_set_group_role_privileges, bulk_set_group_users_role, single_set_group_role_privileges, single_set_group_user_role};
+use crate::utils::roles::models::SocketGroupRolePrivileges;
+use crate::utils::roles::{get_group_role_privileges, get_user_role, single_set_group_role_privileges, single_set_group_user_role};
 use axum::http::HeaderMap;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
@@ -190,56 +190,6 @@ pub async fn chat_socket(
                 controller.kick(user_id).await;
 
                 // todo: disconnect group controllers
-            }
-            ClientAction::BulkChangePrivileges { group_id, privileges } => {
-                // let Some(socket_privileges) = controller.get_privileges() else {
-                //     debug!("User trying to change privileges not in group");
-                //     continue
-                // };
-
-                // if privileges.maintain_hierarchy(socket_privileges).await.is_err() {
-                //     error!("Error when maintaining role hierarchy");
-                //     continue
-                // };
-
-                let res = controller.bulk_set_privileges(&privileges).await;
-                if res.is_err() {
-                    error!("Failed to bulk change privileges: {:#?}", res);
-                }
-
-                if bulk_set_group_role_privileges(&pool, &group_id, &privileges).await.is_err() {
-                    error!("Error when setting group role privileges");
-                };
-            }
-            ClientAction::BulkChangeUsersRole { users } => {
-                // let Ok(mut users) = GroupUsersRole::try_from(users) else {
-                //     error!("Invalid JSON from client");
-                //     continue
-                // };
-
-                // security checks
-                let Some(role) = controller.get_role().await else {
-                    error!("Can't get role of user {}", claims.user_id);
-                    continue
-                };
-
-                // todo: set gates for a new model
-                // if users
-                //     .preprocess(role, claims.user_id)
-                //     .is_err() {
-                //         info!("Role change didn't get through the gate");
-                //         continue
-                //     };
-
-                if bulk_set_group_users_role(&pool, &users).await.is_err() {
-                    error!("Cannot set roles in group");
-                    continue
-                };
-
-                let res = controller.bulk_set_users_role(&users).await;
-                if res.is_err() {
-                    error!("Failed to bulk change user role: {:#?}", res);
-                }
             }
             ClientAction::SingleChangePrivileges { data } => {
                 // let Some(socket_privileges) = controller.get_privileges() else {

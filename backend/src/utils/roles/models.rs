@@ -8,8 +8,6 @@ use std::{
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::utils::groups::models::GroupUser;
-
 use super::{errors::RoleError, privileges::{Privileges, Privilege, CanInvite, CanSendMessages}};
 
 #[derive(
@@ -40,56 +38,6 @@ pub enum Role {
 //         }
 //     }
 // }
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct GroupUsersRole {
-    pub group_id: Uuid,
-    pub new_roles: HashMap<Role, Vec<Uuid>>,
-}
-
-impl GroupUsersRole {
-    pub fn preprocess(&mut self, role: Role, user: Uuid) -> Result<(), RoleError> {
-        self.new_roles.iter_mut().for_each(|(_, vec)| {
-            vec.retain(|&x| x != user);
-        });
-        self.new_roles.retain(|_, vec| !vec.is_empty());
-
-        if self.verify_before_role_change(role)? {
-            self.new_roles
-                .entry(Role::Admin)
-                .and_modify(|vec| vec.push(user))
-                .or_insert(vec![user]);
-        };
-
-        Ok(())
-    }
-
-    fn verify_before_role_change(&mut self, role: Role) -> Result<bool, RoleError> {
-        if role == Role::Member {
-            return Err(RoleError::RoleChangeRejection);
-        };
-        if self.new_roles.get(&Role::Owner).is_none() {
-            return Ok(false);
-        };
-        let new_owners = self.new_roles.get(&Role::Owner).unwrap();
-        if new_owners.is_empty() {
-            Ok(false)
-        } else if new_owners.len() == 1 && role == Role::Owner {
-            Ok(true)
-        } else {
-            Err(RoleError::RoleChangeRejection)
-        }
-    }
-}
-
-impl<const N: usize> From<(Uuid, [(Role, Vec<Uuid>); N])> for GroupUsersRole {
-    fn from(val: (Uuid, [(Role, Vec<Uuid>); N])) -> Self {
-        Self {
-            group_id: val.0,
-            new_roles: HashMap::from(val.1),
-        }
-    }
-}
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct GroupRolePrivileges(pub HashMap<Role, Privileges>);
@@ -267,12 +215,6 @@ impl UserRoleChangeData {
         Self { group_id, user_id, value }
     }
 }
-
-#[derive(Serialize, Deserialize)]
-pub struct BulkChangePrivileges(pub Vec<PrivilegeChangeData>);
-
-#[derive(Serialize, Deserialize)]
-pub struct BulkRoleChangeData(pub Vec<UserRoleChangeData>);
 
 #[derive(Debug)]
 pub struct PrivilegeInterpretationData {

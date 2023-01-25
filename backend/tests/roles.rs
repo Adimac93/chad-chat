@@ -1,14 +1,11 @@
-﻿use backend::utils::groups::models::GroupUser;
-use backend::utils::roles::models::{GroupUsersRole, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData, BulkChangePrivileges, PrivilegeInterpretationData, BulkRoleChangeData};
+﻿use backend::utils::roles::models::{GroupUsersRole, PrivilegeChangeData, UserRoleChangeData, PrivilegeInterpretationData};
 use backend::utils::roles::models::{GroupRolePrivileges, Role};
 use backend::utils::roles::privileges::{Privileges, CanInvite, Privilege, CanSendMessages};
 use backend::utils::roles::{
-    get_group_role_privileges, get_user_role, bulk_set_group_users_role, bulk_set_group_role_privileges, single_set_group_role_privileges, single_set_group_user_role,
+    get_group_role_privileges, get_user_role, single_set_group_role_privileges, single_set_group_user_role,
 };
 use sqlx::{query, PgPool};
-use tokio::sync::RwLock;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, PartialEq)]
@@ -61,124 +58,6 @@ async fn get_user_role_health_check(db: PgPool) {
     .expect("Query failed");
 
     assert_eq!(res, Role::Admin)
-}
-
-#[sqlx::test(fixtures("groups", "roles", "group_roles"))]
-async fn set_group_role_privileges_health_check(db: PgPool) {
-    // Hard working rust programmers
-    let group_id = Uuid::parse_str("a1fd5c51-326f-476e-a4f7-2e61a692bb56").unwrap();
-
-        let _res = bulk_set_group_role_privileges(
-            &db,
-            &group_id,
-            &BulkChangePrivileges (
-                vec![
-                    PrivilegeChangeData::new(group_id, Role::Admin, Privilege::CanSendMessages(CanSendMessages::Yes(1))),
-                    PrivilegeChangeData::new(group_id, Role::Member, Privilege::CanSendMessages(CanSendMessages::Yes(15))),
-                    PrivilegeChangeData::new(group_id, Role::Member, Privilege::CanInvite(CanInvite::Yes)),
-                ]
-            ),
-        )
-        .await
-        .expect("Query failed");
-
-    let res = query!(
-        r#"
-            select group_roles.role_type as "role: Role", roles.can_invite, roles.can_send_messages from
-            group_roles join roles on group_roles.role_id = roles.id
-            where group_roles.group_id = $1
-        "#,
-        group_id
-    )
-    .fetch_all(&db)
-    .await
-    .expect("Select query failed");
-
-    let mut res = res
-        .into_iter()
-        .map(|x| RoleData {
-            role: x.role,
-            privileges: Privileges::try_from(PrivilegeInterpretationData::new(x.can_invite, x.can_send_messages)).unwrap(),
-        })
-        .collect::<Vec<_>>();
-
-    res.sort_by_key(|k| k.role);
-
-        assert_eq!(
-            res,
-            vec![
-                RoleData {
-                    role: Role::Member,
-                    privileges: Privileges (HashSet::from([
-                        Privilege::CanInvite(CanInvite::Yes),
-                        Privilege::CanSendMessages(CanSendMessages::Yes(15)),
-                    ])),
-                },
-                RoleData {
-                    role: Role::Admin,
-                    privileges: Privileges (HashSet::from([
-                        Privilege::CanInvite(CanInvite::Yes),
-                        Privilege::CanSendMessages(CanSendMessages::Yes(1)),
-                    ])),
-                },
-                RoleData {
-                    role: Role::Owner,
-                    privileges: Privileges (HashSet::from([
-                        Privilege::CanInvite(CanInvite::Yes),
-                        Privilege::CanSendMessages(CanSendMessages::Yes(0)),
-                    ])),
-                }
-            ]
-        )
-    }
-
-#[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
-async fn set_group_users_role_health_check(db: PgPool) {
-    // Chadders - Marco and Adimac get Admin and Hubert gets Owner
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-        let _res = bulk_set_group_users_role(
-            &db,
-            &BulkRoleChangeData(
-                vec![
-                    UserRoleChangeData::new(group_id, Uuid::parse_str(MARCO_ID).unwrap(), Role::Admin),
-                    UserRoleChangeData::new(group_id, Uuid::parse_str(ADIMAC_ID).unwrap(), Role::Admin),
-                    UserRoleChangeData::new(group_id, Uuid::parse_str(HUBERT_ID).unwrap(), Role::Owner),
-                ]
-            )
-        )
-        .await
-        .expect("Query failed");
-
-    let res = query!(
-        r#"
-            select group_users.user_id, group_roles.role_type as "role: Role" from
-            group_users join group_roles on group_users.role_id = group_roles.role_id
-                and group_users.group_id = group_roles.group_id
-            where group_users.group_id = $1;
-        "#,
-        group_id
-    )
-    .fetch_all(&db)
-    .await
-    .expect("Select query failed");
-
-    let mut res = res
-        .into_iter()
-        .map(|x| (x.user_id, x.role))
-        .collect::<Vec<_>>();
-
-    res.sort_by_key(|x| x.0);
-
-    assert_eq!(
-        res,
-        vec![
-            (Uuid::parse_str(HUBERT_ID).unwrap(), Role::Owner),
-            (Uuid::parse_str(MARCO_ID).unwrap(), Role::Admin),
-            (Uuid::parse_str(POLO_ID).unwrap(), Role::Member),
-            (Uuid::parse_str(ADIMAC_ID).unwrap(), Role::Admin),
-        ]
-    );
 }
 
 #[tokio::test]
