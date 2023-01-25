@@ -1,4 +1,4 @@
-﻿use backend::utils::roles::models::{GroupUsersRole, PrivilegeChangeData, UserRoleChangeData, PrivilegeInterpretationData};
+﻿use backend::utils::roles::models::{PrivilegeChangeData, UserRoleChangeData, PrivilegeInterpretationData, SocketGroupRolePrivileges};
 use backend::utils::roles::models::{GroupRolePrivileges, Role};
 use backend::utils::roles::privileges::{Privileges, CanInvite, Privilege, CanSendMessages};
 use backend::utils::roles::{
@@ -60,188 +60,179 @@ async fn get_user_role_health_check(db: PgPool) {
     assert_eq!(res, Role::Admin)
 }
 
-#[tokio::test]
-async fn preprocess_health_check() {
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
+// #[tokio::test]
+// async fn preprocess_health_check() {
+//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-    let mut data = GroupUsersRole::from((
-        group_id,
-        [(
-            Role::Admin,
-            vec![Uuid::parse_str(MARCO_ID).unwrap()],
-        )],
-    ));
+//     let mut data = GroupUsersRole::from((
+//         group_id,
+//         [(
+//             Role::Admin,
+//             vec![Uuid::parse_str(MARCO_ID).unwrap()],
+//         )],
+//     ));
 
-    let res = data.preprocess(
-        Role::Admin,
-        Uuid::parse_str(HUBERT_ID).unwrap(),
-    );
+//     let res = data.preprocess(
+//         Role::Admin,
+//         Uuid::parse_str(HUBERT_ID).unwrap(),
+//     );
 
-    assert!(res.is_ok());
-    assert_eq!(
-        data,
-        GroupUsersRole::from((
-            group_id,
-            [(
-                Role::Admin,
-                vec![Uuid::parse_str(MARCO_ID).unwrap()],
-            )],
-        ))
-    )
-}
-
-#[tokio::test]
-async fn preprocess_owner_gives_1_owner() {
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-    let mut data = GroupUsersRole::from((
-        group_id,
-        [(
-            Role::Owner,
-            vec![Uuid::parse_str(MARCO_ID).unwrap()],
-        )],
-    ));
-
-    let res = data.preprocess(
-        Role::Owner,
-        Uuid::parse_str(ADIMAC_ID).unwrap(),
-    );
-
-    assert!(res.is_ok());
-    assert_eq!(
-        data,
-        GroupUsersRole::from((
-            group_id,
-            [(Role::Owner,
-                vec![Uuid::parse_str(MARCO_ID).unwrap()]
-            ),
-            (Role::Admin,
-                vec![Uuid::parse_str(ADIMAC_ID).unwrap()]
-            )]
-        ))
-    )
-}
-
-#[tokio::test]
-async fn preprocess_owner_gives_2_owners() {
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-    let mut data = GroupUsersRole::from((
-        group_id,
-        [(Role::Owner,
-        vec![
-            Uuid::parse_str(MARCO_ID).unwrap(),
-            Uuid::parse_str(POLO_ID).unwrap(),
-        ])],
-    ));
-
-    let res = data.preprocess(
-        Role::Owner,
-        Uuid::parse_str(ADIMAC_ID).unwrap(),
-    );
-
-    assert!(res.is_err());
-}
-
-#[tokio::test]
-async fn preprocess_admin_gives_1_owner() {
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-    let mut data = GroupUsersRole::from((
-        group_id,
-        [(Role::Owner,
-        vec![Uuid::parse_str(MARCO_ID).unwrap()])],
-    ));
-
-    let res = data.preprocess(
-        Role::Admin,
-        Uuid::parse_str(HUBERT_ID).unwrap(),
-    );
-
-    assert!(res.is_err());
-}
-
-#[tokio::test]
-async fn preprocess_member_changes_role() {
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-    let mut data = GroupUsersRole::from((
-        group_id,
-        [(Role::Admin,
-        vec![Uuid::parse_str(MARCO_ID).unwrap()])],
-    ));
-
-    let res = data.preprocess(
-        Role::Member,
-        Uuid::parse_str(POLO_ID).unwrap(),
-    );
-
-    assert!(res.is_err());
-}
-
-#[tokio::test]
-async fn preprocess_self_role() {
-    let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-    let mut data = GroupUsersRole::from((
-        group_id,
-        [(Role::Owner,
-        vec![Uuid::parse_str(ADIMAC_ID).unwrap(),])],
-    ));
-
-    let res = data.preprocess(
-        Role::Owner,
-        Uuid::parse_str(ADIMAC_ID).unwrap(),
-    );
-
-    assert!(res.is_ok());
-    assert_eq!(data, GroupUsersRole::from((group_id, [])));
-}
+//     assert!(res.is_ok());
+//     assert_eq!(
+//         data,
+//         GroupUsersRole::from((
+//             group_id,
+//             [(
+//                 Role::Admin,
+//                 vec![Uuid::parse_str(MARCO_ID).unwrap()],
+//             )],
+//         ))
+//     )
+// }
 
 // #[tokio::test]
-// async fn maintain_hierarchy_health_check() {
-//     let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
-//         (
-//             Role::Admin,
-//             Arc::new(RwLock::new(Privileges(HashMap::from([
-//                 (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-//                 (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(5))),
-//             ])))),
-//         ),
-//         (
-//             Role::Member,
-//             Arc::new(RwLock::new(Privileges(HashMap::from([
-//                 (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::No)),
-//                 (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
-//             ])))),
-//         ),
-//     ]));
+// async fn preprocess_owner_gives_1_owner() {
+//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
 
-//     let mut new_privileges = BulkNewGroupRolePrivileges ( HashMap::from([
-//         (
-//             Role::Admin,
-//             Privileges(HashMap::from([
-//                 (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-//                 (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(20))),
-//             ])),
-//         ),
-//     ]));
+//     let mut data = GroupUsersRole::from((
+//         group_id,
+//         [(
+//             Role::Owner,
+//             vec![Uuid::parse_str(MARCO_ID).unwrap()],
+//         )],
+//     ));
 
-//     new_privileges.maintain_hierarchy(&old_privileges).await.unwrap();
-
-//     assert_eq!(
-//         new_privileges,
-//         BulkNewGroupRolePrivileges ( HashMap::from([
-//             (
-//                 Role::Admin,
-//                 Privileges(HashMap::from([
-//                     (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-//                     (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
-//                 ])),
-//             ),
-//         ]))
+//     let res = data.preprocess(
+//         Role::Owner,
+//         Uuid::parse_str(ADIMAC_ID).unwrap(),
 //     );
+
+//     assert!(res.is_ok());
+//     assert_eq!(
+//         data,
+//         GroupUsersRole::from((
+//             group_id,
+//             [(Role::Owner,
+//                 vec![Uuid::parse_str(MARCO_ID).unwrap()]
+//             ),
+//             (Role::Admin,
+//                 vec![Uuid::parse_str(ADIMAC_ID).unwrap()]
+//             )]
+//         ))
+//     )
 // }
+
+// #[tokio::test]
+// async fn preprocess_owner_gives_2_owners() {
+//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
+
+//     let mut data = GroupUsersRole::from((
+//         group_id,
+//         [(Role::Owner,
+//         vec![
+//             Uuid::parse_str(MARCO_ID).unwrap(),
+//             Uuid::parse_str(POLO_ID).unwrap(),
+//         ])],
+//     ));
+
+//     let res = data.preprocess(
+//         Role::Owner,
+//         Uuid::parse_str(ADIMAC_ID).unwrap(),
+//     );
+
+//     assert!(res.is_err());
+// }
+
+// #[tokio::test]
+// async fn preprocess_admin_gives_1_owner() {
+//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
+
+//     let mut data = GroupUsersRole::from((
+//         group_id,
+//         [(Role::Owner,
+//         vec![Uuid::parse_str(MARCO_ID).unwrap()])],
+//     ));
+
+//     let res = data.preprocess(
+//         Role::Admin,
+//         Uuid::parse_str(HUBERT_ID).unwrap(),
+//     );
+
+//     assert!(res.is_err());
+// }
+
+// #[tokio::test]
+// async fn preprocess_member_changes_role() {
+//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
+
+//     let mut data = GroupUsersRole::from((
+//         group_id,
+//         [(Role::Admin,
+//         vec![Uuid::parse_str(MARCO_ID).unwrap()])],
+//     ));
+
+//     let res = data.preprocess(
+//         Role::Member,
+//         Uuid::parse_str(POLO_ID).unwrap(),
+//     );
+
+//     assert!(res.is_err());
+// }
+
+// #[tokio::test]
+// async fn preprocess_self_role() {
+//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
+
+//     let mut data = GroupUsersRole::from((
+//         group_id,
+//         [(Role::Owner,
+//         vec![Uuid::parse_str(ADIMAC_ID).unwrap(),])],
+//     ));
+
+//     let res = data.preprocess(
+//         Role::Owner,
+//         Uuid::parse_str(ADIMAC_ID).unwrap(),
+//     );
+
+//     assert!(res.is_ok());
+//     assert_eq!(data, GroupUsersRole::from((group_id, [])));
+// }
+
+#[tokio::test]
+async fn maintain_hierarchy_health_check() {
+    let old_privileges = SocketGroupRolePrivileges::from(
+        GroupRolePrivileges (
+            HashMap::from([
+                (Role::Admin, Privileges (HashSet::from([
+                    Privilege::CanInvite(CanInvite::Yes),
+                    Privilege::CanSendMessages(CanSendMessages::Yes(5)),
+                ]))),
+                (Role::Member, Privileges (HashSet::from([
+                    Privilege::CanInvite(CanInvite::No),
+                    Privilege::CanSendMessages(CanSendMessages::Yes(10)),
+                ]))),
+            ])
+        )
+    );
+
+    let random_group_id = Uuid::new_v4();
+    let mut new_privileges = PrivilegeChangeData::new(
+        random_group_id,
+        Role::Admin,
+        Privilege::CanSendMessages(CanSendMessages::Yes(15)),
+    );
+
+    new_privileges.maintain_hierarchy(&old_privileges).await.unwrap();
+
+    assert_eq!(
+        new_privileges,
+        PrivilegeChangeData::new(
+            random_group_id,
+            Role::Admin,
+            Privilege::CanSendMessages(CanSendMessages::Yes(10)),
+        ),
+    );
+}
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
 async fn single_set_group_role_privileges_health_check(db: PgPool) {

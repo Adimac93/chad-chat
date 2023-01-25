@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::Arc,
-    hash::Hash,
+    hash::Hash, cmp::Ordering,
 };
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -21,23 +21,23 @@ pub enum Role {
     Owner,
 }
 
-// impl Role {
-//     fn increment(self) -> Option<Self> {
-//         match self {
-//             Role::Member => Some(Role::Admin),
-//             Role::Admin => Some(Role::Owner),
-//             Role::Owner => None,
-//         }
-//     }
+impl Role {
+    fn increment(self) -> Option<Self> {
+        match self {
+            Role::Member => Some(Role::Admin),
+            Role::Admin => Some(Role::Owner),
+            Role::Owner => None,
+        }
+    }
 
-//     fn decrement(self) -> Option<Self> {
-//         match self {
-//             Role::Member => None,
-//             Role::Admin => Some(Role::Member),
-//             Role::Owner => Some(Role::Admin),
-//         }
-//     }
-// }
+    fn decrement(self) -> Option<Self> {
+        match self {
+            Role::Member => None,
+            Role::Admin => Some(Role::Member),
+            Role::Owner => Some(Role::Admin),
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct GroupRolePrivileges(pub HashMap<Role, Privileges>);
@@ -72,93 +72,40 @@ impl From<GroupRolePrivileges> for SocketGroupRolePrivileges {
     }
 }
 
-// impl Privileges {
-//     fn cmp_with_lower(&mut self, other: &Self) -> Result<(), RoleError> {
-//         for privilege_type in privilege_type_iter {
-//             let self_privilege = self
-//                 .0
-//                 .get_mut(&privilege_type)
-//                 .context("Mismatched privileges")?;
-//             let other_privilege = other
-//                 .0
-//                 .get(&privilege_type)
-//                 .context("Mismatched privileges")?;
-//             self_privilege.cmp_with_lower(other_privilege)?;
-//         }
-//         Ok(())
-//     }
+impl Privilege {
+    fn partial_cmp_max(self, other: Self) -> Option<Self> {
+        match &self.partial_cmp(&other) {
+            Some(Ordering::Greater) | Some(Ordering::Equal) => Some(self),
+            Some(Ordering::Less) => Some(other),
+            None => None,
+        }
+    }
 
-//     fn cmp_with_higher(&mut self, other: &Self) -> Result<(), RoleError> {
-//         let privilege_type_iter = self.0.keys().copied().collect::<Vec<PrivilegeType>>();
+    fn partial_cmp_min(self, other: Self) -> Option<Self> {
+        match &self.partial_cmp(&other) {
+            Some(Ordering::Greater) | Some(Ordering::Equal) => Some(other),
+            Some(Ordering::Less) => Some(self),
+            None => None,
+        }
+    }
+}
 
-//         for privilege_type in privilege_type_iter {
-//             let self_privilege = self
-//                 .0
-//                 .get_mut(&privilege_type)
-//                 .context("Mismatched privileges")?;
-//             let other_privilege = other
-//                 .0
-//                 .get(&privilege_type)
-//                 .context("Mismatched privileges")?;
-//             self_privilege.cmp_with_higher(other_privilege)?;
-//         }
-//         Ok(())
-//     }
-// }
+impl PartialOrd for Privilege {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self {
+            Privilege::CanInvite(x) => match other {
+                Privilege::CanInvite(y) => x.partial_cmp(y),
+                _ => None,
+            },
+            Privilege::CanSendMessages(x) => match other {
+                Privilege::CanSendMessages(y) => x.partial_cmp(y),
+                _ => None,
+            },
+        }
+    }
+}
 
-// impl Privilege {
-//     fn cmp_with_lower(&mut self, other: &Self) -> Result<(), RoleError> {
-//         if (&*self)
-//             .partial_cmp(other)
-//             .context("Mismatched privileges")?
-//             == Ordering::Less
-//         {
-//             self.try_set(other)?;
-//         };
-//         Ok(())
-//     }
-
-//     fn cmp_with_higher(&mut self, other: &Self) -> Result<(), RoleError> {
-//         if (&*self)
-//             .partial_cmp(other)
-//             .context("Mismatched privileges")?
-//             == Ordering::Greater
-//         {
-//             self.try_set(other)?;
-//         };
-//         Ok(())
-//     }
-
-//     fn try_set(&mut self, other: &Self) -> Result<(), RoleError> {
-//         match self {
-//             Privilege::CanInvite(x) => match other {
-//                 Privilege::CanInvite(y) => Ok(*x = *y),
-//                 _ => Err(RoleError::Unexpected(anyhow!("Mismatched privileges"))),
-//             },
-//             Privilege::CanSendMessages(x) => match other {
-//                 Privilege::CanSendMessages(y) => Ok(*x = *y),
-//                 _ => Err(RoleError::Unexpected(anyhow!("Mismatched privileges"))),
-//             },
-//         }
-//     }
-// }
-
-// impl PartialOrd for Privilege {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         match self {
-//             Privilege::CanInvite(x) => match other {
-//                 Privilege::CanInvite(y) => x.partial_cmp(y),
-//                 _ => None,
-//             },
-//             Privilege::CanSendMessages(x) => match other {
-//                 Privilege::CanSendMessages(y) => x.partial_cmp(y),
-//                 _ => None,
-//             },
-//         }
-//     }
-// }
-
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 pub struct PrivilegeChangeData {
     pub group_id: Uuid,
     pub role: Role,
@@ -171,37 +118,47 @@ impl PrivilegeChangeData {
     }
 }
 
-// impl PrivilegeChangeData {
-//     pub async fn maintain_hierarchy(
-//         &mut self,
-//         other: &SocketGroupRolePrivileges,
-//     ) -> Result<(), RoleError> {
-//         if let Some(other_role) = self.role.decrement() {
-//             if let Some(other_privileges_lock) = other.0.get(&other_role) {
-//                 let other_privileges = other_privileges_lock.read().await;
-//                 if let Some(privilege) = other_privileges.0.get(&self.privilege) {
-//                     let ref_mut = &mut self.value;
-//                     ref_mut.cmp_with_lower(privilege)?;
-//                 }
-//             }
-//         };
+impl PrivilegeChangeData {
+    pub async fn maintain_hierarchy(
+        &mut self,
+        other: &SocketGroupRolePrivileges,
+    ) -> Result<(), RoleError> {
+        self.maintain_hierarchy_l(other).await?;
+        self.maintain_hierarchy_h(other).await?;
+        Ok(())
+    }
 
-//         match self.role.increment() {
-//             Some(other_role) if other_role != Role::Owner => {
-//                 if let Some(other_privileges_lock) = other.0.get(&other_role) {
-//                     let other_privileges = other_privileges_lock.read().await;
-//                     if let Some(privilege) = other_privileges.0.get(&self.privilege) {
-//                         let ref_mut = &mut self.value;
-//                         ref_mut.cmp_with_higher(privilege)?;
-//                     }
-//                 }
-//             }
-//             _ => (),
-//         };
+    pub async fn maintain_hierarchy_l(
+        &mut self,
+        other: &SocketGroupRolePrivileges,
+    ) -> Result<(), RoleError> {
+        let Some(other_role) = self.role.decrement() else { return Ok(()) };
 
-//         Ok(())
-//     }
-// }
+        let other_privileges_ref = other.0.get(&other_role).ok_or(RoleError::RoleNotFound)?;
+        let other_privileges = other_privileges_ref.read().await;
+        let privilege = other_privileges.0.get(&self.value).ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
+        
+        self.value = self.value.partial_cmp_max(*privilege).ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
+
+        Ok(())
+    }
+
+    pub async fn maintain_hierarchy_h(
+        &mut self,
+        other: &SocketGroupRolePrivileges,
+    ) -> Result<(), RoleError> {
+        let Some(other_role) = self.role.increment() else { return Ok(()) };
+        if other_role == Role::Owner { return Ok(()) }
+
+        let other_privileges_ref = other.0.get(&other_role).ok_or(RoleError::RoleNotFound)?;
+        let other_privileges = other_privileges_ref.read().await;
+        let privilege = other_privileges.0.get(&self.value).ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
+
+        self.value = self.value.partial_cmp_min(*privilege).ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
+
+        Ok(())
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct UserRoleChangeData {
