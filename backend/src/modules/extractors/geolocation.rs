@@ -4,6 +4,7 @@ use axum::{
     response::IntoResponse,
 };
 use hyper::StatusCode;
+use serde::{Deserialize, Serialize};
 use sqlx::types::ipnetwork::IpNetwork;
 use tracing::error;
 
@@ -13,8 +14,8 @@ use super::addr::ClientAddr;
 
 #[derive(Debug)]
 pub struct NetworkData {
-    pub net: IpNetwork,
-    pub geo: GeolocationData,
+    pub ip: IpNetwork,
+    pub geolocation_data: GeolocationData,
 }
 
 #[async_trait]
@@ -40,7 +41,7 @@ where
                 error!("Faield to fetch geolocation: {e}");
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
-            return Ok(Self { net, geo });
+            return Ok(Self { ip: net, geolocation_data: geo });
         } else {
             error!("Failed to get http client");
             return Err(StatusCode::INTERNAL_SERVER_ERROR);

@@ -98,8 +98,8 @@ async fn not_found(method: Method, uri: Uri, err: io::Error) -> String {
 }
 
 async fn geolocation_info(net: NetworkData) -> impl IntoResponse {
-    debug!("Connection from {:?}", net.net.ip().to_string());
-    Json(json!({"ip": net.net.ip(), "geo": net.geo}))
+    debug!("Connection from {:?}", net.ip.ip().to_string());
+    Json(json!({"ip": net.ip.ip(), "geo": net.geolocation_data}))
 }
 async fn user_agent_info(ua: UserAgentData) -> impl IntoResponse {
     debug!("User agent {ua:#?}");
