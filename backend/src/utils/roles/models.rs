@@ -53,6 +53,19 @@ impl SocketGroupRolePrivileges {
             Some(self.0.get(&role)?.read().await.clone())
         }
     }
+
+    pub async fn get_privilege(&self, role: Role, val: Privilege) -> Option<Privilege> {
+        self.0.get(&role)?.read().await.0.get(&val).copied()
+    }
+
+    pub async fn verify_with_privilege(&self, role: Role, min_val: Privilege) -> Result<bool, RoleError> {
+        let cmp_res = self
+            .get_privilege(role, min_val)
+            .await
+            .ok_or(RoleError::Unexpected(anyhow!("No privilege found")))?
+            .partial_cmp(&min_val);
+        Ok(cmp_res == Some(Ordering::Greater) && cmp_res == Some(Ordering::Equal))
+    }
 }
 
 impl GroupRolePrivileges {

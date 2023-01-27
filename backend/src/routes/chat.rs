@@ -7,6 +7,7 @@ use crate::utils::chat::socket::{
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::roles::models::{SocketGroupRolePrivileges, Gate, Role};
+use crate::utils::roles::privileges::{Privilege, CanInvite, CanSendMessages};
 use crate::utils::roles::{get_group_role_privileges, get_user_role, single_set_group_role_privileges, single_set_group_user_role};
 use axum::http::HeaderMap;
 use axum::{
@@ -16,6 +17,7 @@ use axum::{
     Extension, Router,
 };
 use sqlx::PgPool;
+use std::cmp::Ordering;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 use uuid::Uuid;
@@ -159,6 +161,18 @@ pub async fn chat_socket(
             }
             // todo: send group invites in chat
             ClientAction::GroupInvite { group_id } => {
+                match controller.verify_with_privilege(claims.user_id, Privilege::CanInvite(CanInvite::Yes)).await {
+                    Ok(false) => {
+                        info!("User does not have privileges to invite other users");
+                        continue;
+                    },
+                    Err(e) => {
+                        error!("Failed to verify with privilege: {:?}", e);
+                        continue;
+                    },
+                    _ => (),
+                }
+
                 let Ok(_is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await else {
                     error!("Failed to check whether a user {} ({}) is a group {} member (during sending a group invite)", &claims.user_id, &claims.login, &group_id);
                     continue;
@@ -180,12 +194,24 @@ pub async fn chat_socket(
                     _ => (),
                 };
 
-                // todo: check for user priviliges
-                let role_verified = gate.verify(Role::Admin, Role::Member, (Uuid::new_v4(), Uuid::new_v4()));
+                let Some(user_role) = controller.get_role(claims.user_id).await else {
+                    error!("Failed to get the controller's role");
+                    continue;
+                };
+
+                let Some(target_user_role) = controller.get_role(user_id).await else {
+                    error!("Failed to get the target user's role");
+                    continue;
+                };
+
+                if !gate.verify(user_role, target_user_role, (claims.user_id, user_id)) {
+                    info!("User does not have privileges to kick another user");
+                    continue;
+                }
 
                 // Remove user from group
                 let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
-                    error!("ws closed: Failed to remove user {} from a group {}", &user_id, &group_id);
+                    error!("Failed to remove user {} from a group {}", &user_id, &group_id);
                     continue;
                 };
 
@@ -195,7 +221,7 @@ pub async fn chat_socket(
                 // todo: disconnect group controllers
             }
             ClientAction::SingleChangePrivileges { mut data } => {
-                let Some(socket_privileges) = controller.get_privileges() else {
+                let Some(socket_privileges) = controller.get_group_privileges() else {
                     debug!("User trying to change privileges not in group");
                     continue
                 };

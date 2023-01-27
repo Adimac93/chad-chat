@@ -1,6 +1,6 @@
 use crate::utils::roles::errors::RoleError;
 use crate::utils::roles::models::{Role, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
-use crate::utils::roles::privileges::Privileges;
+use crate::utils::roles::privileges::{Privileges, Privilege};
 
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;
@@ -246,20 +246,29 @@ impl UserController {
         Ok(user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await)
     }
 
-    pub async fn get_role(&self) -> Option<Role> {
+    pub async fn get_role(&self, user_id: Uuid) -> Option<Role> {
         let Some(conn) = &self.group_conn else {
             return None
         };
 
-        match conn.controller.users.0.read().await.get(&self.user_id) {
-            Some(user_data) => Some(user_data.role),
-            None => None,
-        }
+        conn.controller.users.0.read().await.get(&user_id)
+            .and_then(|x| Some(x.role))
     }
 
-    pub fn get_privileges(&self) -> Option<&SocketGroupRolePrivileges> {
+    pub fn get_group_privileges(&self) -> Option<&SocketGroupRolePrivileges> {
         let connection = self.group_conn.as_ref()?;
         Some(&connection.controller.privileges)
+    }
+
+    pub async fn get_user_privilege(&self, user_id: Uuid, val: Privilege) -> Option<Privilege> {
+        let role = self.get_role(user_id).await?;
+        self.get_group_privileges()?.get_privilege(role, val).await
+    }
+
+    pub async fn verify_with_privilege(&self, user_id: Uuid, min_val: Privilege) -> Result<bool, RoleError> {
+        let role = self.get_role(user_id).await.ok_or(RoleError::Unexpected(anyhow!("No role found for user_id")))?;
+        let privileges = self.get_group_privileges().ok_or(RoleError::Unexpected(anyhow!("No socket privileges found")))?;
+        privileges.verify_with_privilege(role, min_val).await
     }
 }
 
