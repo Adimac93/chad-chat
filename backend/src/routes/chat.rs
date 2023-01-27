@@ -6,7 +6,7 @@ use crate::utils::chat::socket::{
 };
 use crate::utils::chat::*;
 use crate::utils::groups::*;
-use crate::utils::roles::models::SocketGroupRolePrivileges;
+use crate::utils::roles::models::{SocketGroupRolePrivileges, Gate, Role};
 use crate::utils::roles::{get_group_role_privileges, get_user_role, single_set_group_role_privileges, single_set_group_user_role};
 use axum::http::HeaderMap;
 use axum::{
@@ -35,9 +35,10 @@ async fn chat_handler(
     claims: Claims,
     Extension(state): Extension<Arc<ChatState>>,
     Extension(pool): Extension<PgPool>,
+    Extension(gate): Extension<Gate<Role, (Uuid, Uuid)>>,
 ) -> Response {
     let connection_id = get_connection_id(headers);
-    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, connection_id))
+    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, connection_id, gate))
 }
 
 fn get_connection_id(headers: HeaderMap) -> String {
@@ -56,6 +57,7 @@ pub async fn chat_socket(
     claims: Claims,
     pool: PgPool,
     connection_id: String,
+    gate: Gate<Role, (Uuid, Uuid)>
 ) {
     let mut controller = UserController::new(stream, claims.user_id, connection_id);
 
@@ -179,6 +181,7 @@ pub async fn chat_socket(
                 };
 
                 // todo: check for user priviliges
+                let role_verified = gate.verify(Role::Admin, Role::Member, (Uuid::new_v4(), Uuid::new_v4()));
 
                 // Remove user from group
                 let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
