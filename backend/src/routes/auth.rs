@@ -1,9 +1,12 @@
-﻿use crate::modules::extractors::addr::ClientAddr;
+﻿use crate::AppState;
+use crate::errors::AppError;
+use crate::modules::extractors::addr::ClientAddr;
 use crate::modules::smtp::Mailer;
 use crate::utils::auth::models::*;
-use crate::{errors::AppError, utils::auth::*, TokenExtractors};
-use axum::extract::{ConnectInfo, Path};
-use axum::{debug_handler, extract, http::StatusCode, Extension, Json};
+use crate::{utils::auth::*, TokenExtractors};
+use axum::extract::{ConnectInfo, Path, State};
+use axum::response::IntoResponse;
+use axum::{debug_handler, extract, http::StatusCode, Json};
 use axum::{
     routing::{get, post},
     Router,
@@ -16,8 +19,8 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
-
-pub fn router() -> Router {
+use uuid::Uuid;
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/register", post(post_register_user))
         .route("/login", post(post_login_user))
@@ -26,13 +29,14 @@ pub fn router() -> Router {
         .route("/refresh", post(post_refresh_user_token))
 }
 
+#[debug_handler(state = AppState)]
 async fn post_register_user(
-    Extension(pgpool): Extension<PgPool>,
-    Extension(mailer): Extension<Mailer>,
+    State(pgpool): State<PgPool>,
+    State(mailer): State<Mailer>,
+    State(token_ext): State<TokenExtractors>,
     ConnectInfo(addr): ConnectInfo<ClientAddr>,
-    Json(register_credentials): extract::Json<RegisterCredentials>,
-    token_ext: TokenExtractors,
     jar: CookieJar,
+    Json(register_credentials): extract::Json<RegisterCredentials>,
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
         &pgpool,
@@ -56,12 +60,13 @@ async fn post_register_user(
     Ok(jar)
 }
 
+#[debug_handler(state = AppState)]
 async fn post_login_user(
-    Extension(pool): Extension<PgPool>,
-    token_ext: TokenExtractors,
+    State(pool): State<PgPool>,
+    State(token_ext): State<TokenExtractors>,
     ConnectInfo(addr): ConnectInfo<ClientAddr>,
-    Json(login_credentials): extract::Json<LoginCredentials>,
     jar: CookieJar,
+    Json(login_credentials): extract::Json<LoginCredentials>,
 ) -> Result<CookieJar, AppError> {
     // returns if credentials are wrong
     let user_id = verify_user_credentials(
@@ -86,8 +91,8 @@ async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
 }
 
 async fn post_user_logout(
-    Extension(pool): Extension<PgPool>,
-    Extension(token_extensions): Extension<TokenExtractors>,
+    State(pool): State<PgPool>,
+    State(token_extensions): State<TokenExtractors>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let mut validation = Validation::default();
@@ -131,11 +136,11 @@ fn remove_cookie(name: &str) -> Cookie {
         .finish()
 }
 
-#[debug_handler]
+// #[debug_handler]
 async fn post_refresh_user_token(
-    Extension(pool): Extension<PgPool>,
-    ext: TokenExtractors,
     refresh_claims: RefreshClaims,
+    State(pool): State<PgPool>,
+    State(ext): State<TokenExtractors>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let jar =

@@ -9,9 +9,9 @@ use axum::{
     http::{HeaderValue, Method, StatusCode, Uri},
     response::IntoResponse,
     routing::get,
-    Extension, Json, Router,
+    Json, Router, extract::{FromRef, State},
 };
-use configuration::Settings;
+use configuration::{Settings, ApplicationSettings, PostgresSettings, SmtpSettings};
 use modules::{
     database::{get_postgres_pool, PgPool},
     extractors::{
@@ -22,6 +22,7 @@ use modules::{
 };
 use modules::{external_api::HttpClient, extractors::geolocation::NetworkData};
 use serde_json::json;
+use uuid::Uuid;
 use std::io;
 use tower_http::{
     cors::CorsLayer,
@@ -32,11 +33,44 @@ use utils::roles::models::{is_id_the_same, Gate, Role};
 #[macro_use]
 pub extern crate tracing;
 
+#[derive(FromRef, Clone)]
+pub struct AppState {
+    pub postgres: PgPool,
+    pub client: HttpClient,
+    pub smtp: Mailer,
+    pub kick_gate: Gate<Role, (Uuid, Uuid)>,
+    pub token_ext: TokenExtractors,
+    // pub chat_state: Arc<ChatState>,
+}
+
+impl AppState {
+    pub async fn new(config: Settings, test_pool: Option<PgPool>) -> Self {
+        let kick_gate = Gate::build()
+            .role(Role::Owner, 3)
+            .role(Role::Admin, 1)
+            .role(Role::Member, 0)
+            .req(Role::Owner, 4)
+            .req(Role::Admin, 1)
+            .req(Role::Member, 0)
+            .condition(is_id_the_same)
+            .finish();
+
+        let token_ext = TokenExtractors {
+            access: JwtAccessSecret(config.app.access_jwt_secret),
+            refresh: JwtRefreshSecret(config.app.refresh_jwt_secret),
+        };
+        
+        AppState {
+            postgres: test_pool.unwrap_or(get_postgres_pool(config.postgres).await),
+            client: HttpClient::new(),
+            smtp: Mailer::new(config.smtp, config.app.origin),
+            kick_gate,
+            token_ext,
+        }
+    }
+}
+
 pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
-    let pgpool = test_pool.unwrap_or(get_postgres_pool(config.postgres).await);
-
-    let http_client = HttpClient::new();
-
     let origin = config
         .app
         .origin
@@ -47,8 +81,6 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         .allow_headers([CONTENT_TYPE])
         .allow_credentials(true);
 
-    let mailer = Mailer::new(config.smtp, config.app.origin);
-
     let groups = Router::new().nest(
         "/groups",
         routes::groups::router().nest("/invitations", routes::invitations::router()),
@@ -58,30 +90,13 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         .route("/geo", get(geolocation_info))
         .route("/ua", get(user_agent_info));
 
-    let kick_gate = Gate::build()
-        .role(Role::Owner, 3)
-        .role(Role::Admin, 1)
-        .role(Role::Member, 0)
-        .req(Role::Owner, 4)
-        .req(Role::Admin, 1)
-        .req(Role::Member, 0)
-        .condition(is_id_the_same)
-        .finish();
-
     let api = Router::new()
         .nest("/auth", routes::auth::router())
         .nest("/chat", routes::chat::router())
         .route("/health", get(health_check))
         .nest("/test", test)
         .merge(groups)
-        .layer(Extension(pgpool))
-        .layer(Extension(http_client))
-        .layer(Extension(mailer))
-        .layer(Extension(kick_gate))
-        .layer(Extension(TokenExtractors {
-            access: JwtAccessSecret(config.app.access_jwt_secret),
-            refresh: JwtRefreshSecret(config.app.refresh_jwt_secret),
-        }))
+        .with_state(AppState::new(config, test_pool).await)
         .layer(cors);
 
     Router::new().nest("/api", api).nest_service(
@@ -91,7 +106,7 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
     )
 }
 
-async fn health_check(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
+async fn health_check(State(pool): State<PgPool>) -> impl IntoResponse {
     let is_database_connected = sqlx::query("select 1").fetch_one(&pool).await.is_ok();
     if is_database_connected {
         return (

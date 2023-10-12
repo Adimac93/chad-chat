@@ -1,21 +1,20 @@
+﻿use crate::AppState;
 use crate::utils::auth::models::Claims;
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
 use crate::utils::chat::socket::{ChatState, ClientAction, ServerAction, UserController};
 use crate::utils::chat::*;
 use crate::utils::groups::*;
-use crate::utils::roles::models::{Gate, Role, SocketGroupRolePrivileges};
-use crate::utils::roles::privileges::{CanInvite, CanSendMessages, Privilege};
-use crate::utils::roles::{
-    get_group_role_privileges, get_user_role, single_set_group_role_privileges,
-    single_set_group_user_role,
-};
+use crate::utils::roles::models::{SocketGroupRolePrivileges, Gate, Role};
+use crate::utils::roles::privileges::{Privilege, CanInvite, CanSendMessages};
+use crate::utils::roles::{get_group_role_privileges, get_user_role, single_set_group_role_privileges, single_set_group_user_role};
+use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
     response::Response,
     routing::get,
-    Extension, Router,
+    Router,
 };
 use sqlx::PgPool;
 use std::cmp::Ordering;
@@ -25,10 +24,9 @@ use uuid::Uuid;
 
 const MAX_MESSAGE_LENGTH: usize = 2000;
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/websocket", get(chat_handler))
-        .layer(Extension(Arc::new(ChatState::new())))
 }
 
 async fn chat_handler(
@@ -36,9 +34,9 @@ async fn chat_handler(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
     claims: Claims,
-    Extension(state): Extension<Arc<ChatState>>,
-    Extension(pool): Extension<PgPool>,
-    Extension(gate): Extension<Gate<Role, (Uuid, Uuid)>>,
+    State(state): State<Arc<ChatState>>,
+    State(pool): State<PgPool>,
+    State(gate): State<Gate<Role, (Uuid, Uuid)>>,
 ) -> Response {
     let connection_id = get_connection_id(headers);
     ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, connection_id, gate))

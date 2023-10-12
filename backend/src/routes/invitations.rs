@@ -1,3 +1,4 @@
+use crate::AppState;
 use crate::errors::AppError;
 use crate::utils::auth::models::*;
 use crate::utils::groups::models::GroupInfo;
@@ -6,13 +7,14 @@ use crate::utils::invitations::{
     GroupInvitationCreate,
 };
 use axum::Router;
-use axum::{extract::Json, routing::post, Extension};
+use axum::extract::State;
+use axum::{extract::Json, routing::post};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tracing::debug;
 
-pub fn router() -> Router {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/info", post(post_fetch_group_info_by_code))
         .route("/create", post(post_generate_group_invitation_code))
@@ -21,7 +23,7 @@ pub fn router() -> Router {
 
 async fn post_generate_group_invitation_code(
     claims: Claims,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
     Json(invitation): Json<GroupInvitationCreate>,
 ) -> Result<Json<Value>, AppError> {
     let invitation =
@@ -41,7 +43,7 @@ struct JoinGroupCode {
 
 async fn post_fetch_group_info_by_code(
     _claims: Claims,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
     Json(payload): Json<JoinGroupCode>,
 ) -> Result<Json<GroupInfo>, AppError> {
     let res = fetch_group_info_by_code(&pool, &payload.code).await?;
@@ -52,7 +54,7 @@ async fn post_fetch_group_info_by_code(
 
 async fn post_join_group_by_code(
     claims: Claims,
-    Extension(pool): Extension<PgPool>,
+    State(pool): State<PgPool>,
     Json(payload): Json<JoinGroupCode>,
 ) -> Result<(), AppError> {
     try_join_group_by_code(&pool, &claims.user_id, &payload.code).await?;
