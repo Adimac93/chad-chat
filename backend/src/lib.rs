@@ -5,13 +5,14 @@ pub mod routes;
 pub mod utils;
 
 use axum::{
+    extract::{FromRef, State},
     http::header::CONTENT_TYPE,
     http::{HeaderValue, Method, StatusCode, Uri},
     response::IntoResponse,
     routing::get,
-    Json, Router, extract::{FromRef, State},
+    Json, Router,
 };
-use configuration::{Settings, ApplicationSettings, PostgresSettings, SmtpSettings};
+use configuration::{ApplicationSettings, PostgresSettings, Settings, SmtpSettings};
 use modules::{
     database::{get_postgres_pool, PgPool},
     extractors::{
@@ -22,13 +23,16 @@ use modules::{
 };
 use modules::{external_api::HttpClient, extractors::geolocation::NetworkData};
 use serde_json::json;
-use uuid::Uuid;
 use std::io;
 use tower_http::{
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
 };
-use utils::roles::models::{is_id_the_same, Gate, Role};
+use utils::{
+    chat::socket::ChatState,
+    roles::models::{is_id_the_same, Gate, Role},
+};
+use uuid::Uuid;
 
 #[macro_use]
 pub extern crate tracing;
@@ -40,7 +44,7 @@ pub struct AppState {
     pub smtp: Mailer,
     pub kick_gate: Gate<Role, (Uuid, Uuid)>,
     pub token_ext: TokenExtractors,
-    // pub chat_state: Arc<ChatState>,
+    pub chat_state: ChatState,
 }
 
 impl AppState {
@@ -59,13 +63,16 @@ impl AppState {
             access: JwtAccessSecret(config.app.access_jwt_secret),
             refresh: JwtRefreshSecret(config.app.refresh_jwt_secret),
         };
-        
+
+        let chat_state = ChatState::new();
+
         AppState {
             postgres: test_pool.unwrap_or(get_postgres_pool(config.postgres).await),
             client: HttpClient::new(),
             smtp: Mailer::new(config.smtp, config.app.origin),
             kick_gate,
             token_ext,
+            chat_state,
         }
     }
 }

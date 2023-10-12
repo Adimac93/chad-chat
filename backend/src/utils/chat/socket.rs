@@ -7,6 +7,7 @@ use crate::utils::roles::privileges::{Privilege, Privileges};
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;
 use axum::extract::ws::{Message, WebSocket};
+use axum::extract::FromRef;
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
@@ -21,18 +22,20 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
+#[derive(Clone, FromRef)]
 pub struct ChatState {
     pub groups: Groups,
 }
 
 impl ChatState {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
+    pub fn new() -> Self {
+        Self {
             groups: Groups::new(),
-        })
+        }
     }
 }
 
+#[derive(Clone)]
 pub struct Groups(DashMap<Uuid, GroupController>);
 impl Groups {
     fn new() -> Self {
