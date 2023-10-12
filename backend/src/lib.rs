@@ -25,8 +25,10 @@ use modules::{external_api::HttpClient, extractors::geolocation::NetworkData};
 use serde_json::json;
 use std::io;
 use tower_http::cors::CorsLayer;
-use tracing::{debug, error};
 use utils::roles::models::{is_id_the_same, Gate, Role};
+
+#[macro_use]
+pub extern crate tracing;
 
 pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
     let pgpool = test_pool.unwrap_or(get_postgres_pool(config.postgres).await);

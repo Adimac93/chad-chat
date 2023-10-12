@@ -1,8 +1,10 @@
 use backend::modules::extractors::addr::ClientAddr;
 use backend::{app, configuration::get_config};
 use dotenv::dotenv;
-use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+#[macro_use]
+pub extern crate tracing;
 
 #[tokio::main]
 async fn main() {
