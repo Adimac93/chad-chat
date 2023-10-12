@@ -1,8 +1,8 @@
-use crate::{utils::auth::errors::*, JwtAccessSecret, JwtRefreshSecret, TokenExtractors};
+use crate::{utils::auth::errors::*, JwtAccessSecret, JwtRefreshSecret, TokenExtractors, AppState};
 use anyhow::Context;
 use axum::{
     async_trait,
-    extract::{self, FromRequest, RequestParts},
+    extract::{self, FromRequest, FromRequestParts}, http::request::Parts,
 };
 use axum_extra::extract::{
     cookie::{Cookie, SameSite},
@@ -238,14 +238,11 @@ impl Claims {
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for Claims
-where
-    B: Send,
-{
+impl FromRequestParts<AppState> for Claims {
     type Rejection = AuthError;
 
-    async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
-        verify_token::<Self, B>(req).await
+    async fn from_request_parts(req: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        verify_token::<Self>(req, state).await
     }
 }
 
@@ -269,40 +266,25 @@ impl RefreshClaims {
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for RefreshClaims
-where
-    B: Send,
-{
+impl FromRequestParts<AppState> for RefreshClaims {
     type Rejection = AuthError;
 
-    async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
-        verify_token::<Self, B>(req).await
+    async fn from_request_parts(req: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        verify_token::<Self>(req, state).await
     }
 }
 
-async fn verify_token<T, B>(req: &mut RequestParts<B>) -> Result<T, AuthError>
+async fn verify_token<T>(req: &mut Parts, state: &AppState) -> Result<T, AuthError>
 where
     T: AuthToken,
-    B: Send,
 {
-    // get extensions
-    let ext = req.extensions();
-
-    let token_ext = ext
-        .get::<TokenExtractors>()
-        .expect("Can't find token extensions")
-        .clone();
-
-    let jwt_key = T::get_jwt_key(&token_ext).await;
+    let jwt_key = T::get_jwt_key(&state.token_ext).await;
 
     // get extensions - PgPool
-    let pool = ext
-        .get::<PgPool>()
-        .expect("Failed to get PgPool to check jwt claims")
-        .clone();
+    let pool = state.postgres.clone();
 
     // get extensions - CookieJar
-    let jar = CookieJar::from_request(req)
+    let jar = CookieJar::from_request_parts(req, state)
         .await
         .context("Failed to fetch cookie jar")?;
 

@@ -1,7 +1,7 @@
-use crate::utils::auth::errors::AuthError;
+use crate::{utils::auth::errors::AuthError, AppState};
 use axum::{
     async_trait,
-    extract::{self, FromRequest},
+    extract::{self, FromRequest, FromRequestParts}, http::request::Parts,
 };
 use secrecy::Secret;
 
@@ -15,20 +15,4 @@ pub struct JwtRefreshSecret(pub Secret<String>);
 pub struct TokenExtractors {
     pub access: JwtAccessSecret,
     pub refresh: JwtRefreshSecret,
-}
-
-#[async_trait]
-impl<B> FromRequest<B> for TokenExtractors
-where
-    B: Send + Sync,
-{
-    type Rejection = AuthError;
-
-    async fn from_request(req: &mut extract::RequestParts<B>) -> Result<Self, Self::Rejection> {
-        Ok(req
-            .extensions()
-            .get::<Self>()
-            .expect("Failed to get jwt secret extension")
-            .clone())
-    }
 }

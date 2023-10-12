@@ -1,12 +1,12 @@
 use axum::{
     async_trait,
-    extract::{FromRequest, RequestParts},
-    http,
+    extract::{FromRequest, FromRequestParts},
+    http::{self, request::Parts},
 };
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use crate::modules::external_api::{HttpClient, UserAgentParsed};
+use crate::{modules::external_api::{HttpClient, UserAgentParsed}, AppState};
 
 #[derive(sqlx::Type, Serialize, Deserialize, Debug)]
 #[sqlx(type_name = "user_agent_data")]
@@ -38,24 +38,16 @@ impl UserAgentData {
 }
 
 #[async_trait]
-impl<B> FromRequest<B> for UserAgentData
-where
-    B: Send + std::marker::Sync,
-{
+impl FromRequestParts<AppState> for UserAgentData {
     type Rejection = hyper::StatusCode;
 
-    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let http_client = req
-            .extensions()
-            .get::<HttpClient>()
-            .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-
+    async fn from_request_parts(req: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let user_agent_header = req
-            .headers()
+            .headers
             .get(http::header::USER_AGENT)
             .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        let user_agent = http_client
+        let user_agent = state.client
             .parse_user_agent(user_agent_header.to_str().unwrap())
             .await
             .unwrap();
