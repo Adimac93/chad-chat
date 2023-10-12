@@ -1,6 +1,8 @@
 use crate::utils::roles::errors::RoleError;
-use crate::utils::roles::models::{Role, SocketGroupRolePrivileges, PrivilegeChangeData, UserRoleChangeData};
-use crate::utils::roles::privileges::{Privileges, Privilege};
+use crate::utils::roles::models::{
+    PrivilegeChangeData, Role, SocketGroupRolePrivileges, UserRoleChangeData,
+};
+use crate::utils::roles::privileges::{Privilege, Privileges};
 
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;
@@ -12,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::select;
-use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, Notify, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
@@ -210,11 +212,22 @@ impl UserController {
     }
 
     pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), RoleError> {
-        let conn = self.group_conn.as_ref()
-            .ok_or(RoleError::Unexpected(anyhow!("No group connection found in the user controller")))?;
+        let conn = self
+            .group_conn
+            .as_ref()
+            .ok_or(RoleError::Unexpected(anyhow!(
+                "No group connection found in the user controller"
+            )))?;
 
-        let privilege_ref = conn.controller.privileges.0.get(&data.role)
-            .ok_or(RoleError::Unexpected(anyhow!("No role {:?} found in a group", &data.role)))?;
+        let privilege_ref =
+            conn.controller
+                .privileges
+                .0
+                .get(&data.role)
+                .ok_or(RoleError::Unexpected(anyhow!(
+                    "No role {:?} found in a group",
+                    &data.role
+                )))?;
 
         let mut privilege_guard = privilege_ref.write().await;
         privilege_guard.0.replace(data.value);
@@ -224,7 +237,10 @@ impl UserController {
         // send new privileges to every user, whose privileges were changed
         for (_, user_data) in users_guard.iter() {
             if user_data.role == data.role {
-                user_data.connections.send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone())).await;
+                user_data
+                    .connections
+                    .send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone()))
+                    .await;
             }
         }
 
@@ -232,26 +248,47 @@ impl UserController {
     }
 
     pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), RoleError> {
-        let conn = self.group_conn.as_ref()
-            .ok_or(RoleError::Unexpected(anyhow!("No group connection found in the user controller")))?;
+        let conn = self
+            .group_conn
+            .as_ref()
+            .ok_or(RoleError::Unexpected(anyhow!(
+                "No group connection found in the user controller"
+            )))?;
 
         let mut users_guard = conn.controller.users.0.write().await;
-        let user = users_guard.get_mut(&data.user_id).ok_or(RoleError::UserNotFound)?;
+        let user = users_guard
+            .get_mut(&data.user_id)
+            .ok_or(RoleError::UserNotFound)?;
 
         user.role = data.value;
 
-        let privileges = conn.controller.privileges.get_privileges(data.value).await
-            .ok_or(RoleError::Unexpected(anyhow!("No role {:?} found in the group", data.value)))?;
+        let privileges = conn
+            .controller
+            .privileges
+            .get_privileges(data.value)
+            .await
+            .ok_or(RoleError::Unexpected(anyhow!(
+                "No role {:?} found in the group",
+                data.value
+            )))?;
 
-        Ok(user.connections.send_across_all(&ServerAction::SetPrivileges(privileges)).await)
+        Ok(user
+            .connections
+            .send_across_all(&ServerAction::SetPrivileges(privileges))
+            .await)
     }
 
     pub async fn get_role(&self, user_id: Uuid) -> Option<Role> {
         let Some(conn) = &self.group_conn else {
-            return None
+            return None;
         };
 
-        conn.controller.users.0.read().await.get(&user_id)
+        conn.controller
+            .users
+            .0
+            .read()
+            .await
+            .get(&user_id)
             .and_then(|x| Some(x.role))
     }
 
@@ -265,9 +302,18 @@ impl UserController {
         self.get_group_privileges()?.get_privilege(role, val).await
     }
 
-    pub async fn verify_with_privilege(&self, user_id: Uuid, min_val: Privilege) -> Result<bool, RoleError> {
-        let role = self.get_role(user_id).await.ok_or(RoleError::Unexpected(anyhow!("No role found for user_id")))?;
-        let privileges = self.get_group_privileges().ok_or(RoleError::Unexpected(anyhow!("No socket privileges found")))?;
+    pub async fn verify_with_privilege(
+        &self,
+        user_id: Uuid,
+        min_val: Privilege,
+    ) -> Result<bool, RoleError> {
+        let role = self
+            .get_role(user_id)
+            .await
+            .ok_or(RoleError::Unexpected(anyhow!("No role found for user_id")))?;
+        let privileges = self
+            .get_group_privileges()
+            .ok_or(RoleError::Unexpected(anyhow!("No socket privileges found")))?;
         privileges.verify_with_privilege(role, min_val).await
     }
 }
@@ -280,13 +326,8 @@ pub struct UserChannelListener {
 impl UserChannelListener {
     async fn new(sender: UserSender, broadcast_receiver: GroupReceiver) -> Self {
         // let notifier = Arc::new(Notify::new());
-        let (task, sender) = sender
-            .listen(broadcast_receiver)
-            .await;
-        Self {
-            task,
-            sender,
-        }
+        let (task, sender) = sender.listen(broadcast_receiver).await;
+        Self { task, sender }
     }
 
     pub fn disconnect(self) {

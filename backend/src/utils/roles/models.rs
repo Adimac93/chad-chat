@@ -1,14 +1,13 @@
-﻿use anyhow::{anyhow, Context};
+use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    hash::Hash, cmp::Ordering,
-};
+use std::{cmp::Ordering, collections::HashMap, hash::Hash, sync::Arc};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use super::{errors::RoleError, privileges::{Privileges, Privilege, CanInvite, CanSendMessages}};
+use super::{
+    errors::RoleError,
+    privileges::{CanInvite, CanSendMessages, Privilege, Privileges},
+};
 
 #[derive(
     sqlx::Type, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy,
@@ -58,7 +57,11 @@ impl SocketGroupRolePrivileges {
         self.0.get(&role)?.read().await.0.get(&val).copied()
     }
 
-    pub async fn verify_with_privilege(&self, role: Role, min_val: Privilege) -> Result<bool, RoleError> {
+    pub async fn verify_with_privilege(
+        &self,
+        role: Role,
+        min_val: Privilege,
+    ) -> Result<bool, RoleError> {
         let cmp_res = self
             .get_privilege(role, min_val)
             .await
@@ -127,7 +130,11 @@ pub struct PrivilegeChangeData {
 
 impl PrivilegeChangeData {
     pub fn new(group_id: Uuid, role: Role, value: Privilege) -> Self {
-        Self { group_id, role, value }
+        Self {
+            group_id,
+            role,
+            value,
+        }
     }
 }
 
@@ -145,13 +152,21 @@ impl PrivilegeChangeData {
         &mut self,
         other: &SocketGroupRolePrivileges,
     ) -> Result<(), RoleError> {
-        let Some(other_role) = self.role.decrement() else { return Ok(()) };
+        let Some(other_role) = self.role.decrement() else {
+            return Ok(());
+        };
 
         let other_privileges_ref = other.0.get(&other_role).ok_or(RoleError::RoleNotFound)?;
         let other_privileges = other_privileges_ref.read().await;
-        let privilege = other_privileges.0.get(&self.value).ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
-        
-        self.value = self.value.partial_cmp_max(*privilege).ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
+        let privilege = other_privileges
+            .0
+            .get(&self.value)
+            .ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
+
+        self.value = self
+            .value
+            .partial_cmp_max(*privilege)
+            .ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
 
         Ok(())
     }
@@ -160,14 +175,24 @@ impl PrivilegeChangeData {
         &mut self,
         other: &SocketGroupRolePrivileges,
     ) -> Result<(), RoleError> {
-        let Some(other_role) = self.role.increment() else { return Ok(()) };
-        if other_role == Role::Owner { return Ok(()) }
+        let Some(other_role) = self.role.increment() else {
+            return Ok(());
+        };
+        if other_role == Role::Owner {
+            return Ok(());
+        }
 
         let other_privileges_ref = other.0.get(&other_role).ok_or(RoleError::RoleNotFound)?;
         let other_privileges = other_privileges_ref.read().await;
-        let privilege = other_privileges.0.get(&self.value).ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
+        let privilege = other_privileges
+            .0
+            .get(&self.value)
+            .ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
 
-        self.value = self.value.partial_cmp_min(*privilege).ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
+        self.value = self
+            .value
+            .partial_cmp_min(*privilege)
+            .ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
 
         Ok(())
     }
@@ -182,7 +207,11 @@ pub struct UserRoleChangeData {
 
 impl UserRoleChangeData {
     pub fn new(group_id: Uuid, user_id: Uuid, value: Role) -> Self {
-        Self { group_id, user_id, value }
+        Self {
+            group_id,
+            user_id,
+            value,
+        }
     }
 }
 
@@ -194,7 +223,10 @@ pub struct PrivilegeInterpretationData {
 
 impl PrivilegeInterpretationData {
     pub fn new(can_invite: bool, can_send_messages: i32) -> Self {
-        Self { can_invite, can_send_messages }
+        Self {
+            can_invite,
+            can_send_messages,
+        }
     }
 }
 
@@ -203,8 +235,12 @@ impl TryFrom<PrivilegeInterpretationData> for Privileges {
 
     fn try_from(val: PrivilegeInterpretationData) -> Result<Self, Self::Error> {
         let mut res = Privileges::new();
-        res.0.insert(Privilege::CanInvite(CanInvite::from(val.can_invite)));
-        res.0.insert(Privilege::CanSendMessages(CanSendMessages::try_from(val.can_send_messages)?));
+        res.0
+            .insert(Privilege::CanInvite(CanInvite::from(val.can_invite)));
+        res.0
+            .insert(Privilege::CanSendMessages(CanSendMessages::try_from(
+                val.can_send_messages,
+            )?));
 
         Ok(res)
     }
@@ -233,8 +269,12 @@ impl<T: Eq + Hash, U> Gate<T, U> {
         let Some(amount_2) = self.requirements.get(&req) else {
             return false;
         };
-        if amount_1 > amount_2 { return true };
-        if amount_1 < amount_2 { return false };
+        if amount_1 > amount_2 {
+            return true;
+        };
+        if amount_1 < amount_2 {
+            return false;
+        };
         let Some(function) = self.extra_condition else {
             return false;
         };

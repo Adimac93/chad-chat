@@ -14,7 +14,7 @@ use axum::{
 use axum_extra::routing::SpaRouter;
 use configuration::Settings;
 use modules::{
-    database::{get_postgres_pool, get_redis_pool, PgPool},
+    database::{get_postgres_pool, PgPool},
     extractors::{
         jwt::{JwtAccessSecret, JwtRefreshSecret, TokenExtractors},
         user_agent::UserAgentData,
@@ -23,14 +23,13 @@ use modules::{
 };
 use modules::{external_api::HttpClient, extractors::geolocation::NetworkData};
 use serde_json::json;
-use utils::roles::models::{Role, is_id_the_same, Gate};
 use std::io;
 use tower_http::cors::CorsLayer;
 use tracing::{debug, error};
+use utils::roles::models::{is_id_the_same, Gate, Role};
 
 pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
     let pgpool = test_pool.unwrap_or(get_postgres_pool(config.postgres).await);
-    let rdpool = get_redis_pool(config.redis).await;
 
     let http_client = HttpClient::new();
 
@@ -76,7 +75,6 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         .nest("/test", test)
         .merge(groups)
         .layer(Extension(pgpool))
-        .layer(Extension(rdpool))
         .layer(Extension(http_client))
         .layer(Extension(mailer))
         .layer(Extension(kick_gate))

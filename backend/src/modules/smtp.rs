@@ -18,7 +18,7 @@ use uuid::Uuid;
 pub struct Mailer {
     transport: AsyncSmtpTransport<Tokio1Executor>,
     origin: String,
-    address: Address
+    address: Address,
 }
 
 impl Mailer {
@@ -29,7 +29,7 @@ impl Mailer {
                 .credentials(config.get_credentials())
                 .build(),
             origin,
-            address: config.get_address()
+            address: config.get_address(),
         }
     }
 

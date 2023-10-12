@@ -1,4 +1,3 @@
-﻿
 use backend::utils::groups::models::GroupInfo;
 use backend::utils::groups::{check_if_group_exists, get_group_info};
 use backend::utils::groups::{
@@ -149,7 +148,9 @@ async fn query_user_groups_health_check(db: PgPool) {
             let objects = json["groups"].as_array().unwrap();
             let mut result_vec: Vec<String> = Vec::new();
             for elem in objects {
-                let Value::String(string_enum_val) = elem.get("id").unwrap() else { panic!() };
+                let Value::String(string_enum_val) = elem.get("id").unwrap() else {
+                    panic!()
+                };
                 result_vec.push(string_enum_val.to_string());
             }
             result_vec.sort();

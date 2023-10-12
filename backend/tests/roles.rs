@@ -1,8 +1,11 @@
-﻿use backend::utils::roles::models::{PrivilegeChangeData, UserRoleChangeData, PrivilegeInterpretationData, SocketGroupRolePrivileges};
 use backend::utils::roles::models::{GroupRolePrivileges, Role};
-use backend::utils::roles::privileges::{Privileges, CanInvite, Privilege, CanSendMessages};
+use backend::utils::roles::models::{
+    PrivilegeChangeData, PrivilegeInterpretationData, SocketGroupRolePrivileges, UserRoleChangeData,
+};
+use backend::utils::roles::privileges::{CanInvite, CanSendMessages, Privilege, Privileges};
 use backend::utils::roles::{
-    get_group_role_privileges, get_user_role, single_set_group_role_privileges, single_set_group_user_role,
+    get_group_role_privileges, get_user_role, single_set_group_role_privileges,
+    single_set_group_user_role,
 };
 use sqlx::{query, PgPool};
 use std::collections::{HashMap, HashSet};
@@ -29,22 +32,26 @@ async fn get_group_role_privileges_health_check(db: PgPool) {
     .await
     .expect("Query failed");
 
-        assert_eq!(
-            res,
-            GroupRolePrivileges (
-                HashMap::from([
-                    (Role::Admin, Privileges (HashSet::from([
-                        Privilege::CanInvite(CanInvite::Yes),
-                        Privilege::CanSendMessages(CanSendMessages::Yes(2)),
-                    ]))),
-                    (Role::Member, Privileges (HashSet::from([
-                        Privilege::CanInvite(CanInvite::No),
-                        Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-                    ]))),
-                ])
-            )
-        )
-    }
+    assert_eq!(
+        res,
+        GroupRolePrivileges(HashMap::from([
+            (
+                Role::Admin,
+                Privileges(HashSet::from([
+                    Privilege::CanInvite(CanInvite::Yes),
+                    Privilege::CanSendMessages(CanSendMessages::Yes(2)),
+                ]))
+            ),
+            (
+                Role::Member,
+                Privileges(HashSet::from([
+                    Privilege::CanInvite(CanInvite::No),
+                    Privilege::CanSendMessages(CanSendMessages::Yes(10)),
+                ]))
+            ),
+        ]))
+    )
+}
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
 async fn get_user_role_health_check(db: PgPool) {
@@ -200,20 +207,22 @@ async fn get_user_role_health_check(db: PgPool) {
 
 #[tokio::test]
 async fn maintain_hierarchy_health_check() {
-    let old_privileges = SocketGroupRolePrivileges::from(
-        GroupRolePrivileges (
-            HashMap::from([
-                (Role::Admin, Privileges (HashSet::from([
-                    Privilege::CanInvite(CanInvite::Yes),
-                    Privilege::CanSendMessages(CanSendMessages::Yes(5)),
-                ]))),
-                (Role::Member, Privileges (HashSet::from([
-                    Privilege::CanInvite(CanInvite::No),
-                    Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-                ]))),
-            ])
-        )
-    );
+    let old_privileges = SocketGroupRolePrivileges::from(GroupRolePrivileges(HashMap::from([
+        (
+            Role::Admin,
+            Privileges(HashSet::from([
+                Privilege::CanInvite(CanInvite::Yes),
+                Privilege::CanSendMessages(CanSendMessages::Yes(5)),
+            ])),
+        ),
+        (
+            Role::Member,
+            Privileges(HashSet::from([
+                Privilege::CanInvite(CanInvite::No),
+                Privilege::CanSendMessages(CanSendMessages::Yes(10)),
+            ])),
+        ),
+    ])));
 
     let random_group_id = Uuid::new_v4();
     let mut new_privileges = PrivilegeChangeData::new(
@@ -222,7 +231,10 @@ async fn maintain_hierarchy_health_check() {
         Privilege::CanSendMessages(CanSendMessages::Yes(15)),
     );
 
-    new_privileges.maintain_hierarchy(&old_privileges).await.unwrap();
+    new_privileges
+        .maintain_hierarchy(&old_privileges)
+        .await
+        .unwrap();
 
     assert_eq!(
         new_privileges,
@@ -276,7 +288,11 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
     .await
     .unwrap();
 
-    let res = Privileges::try_from(PrivilegeInterpretationData::new(query_res.can_invite, query_res.can_send_messages)).unwrap();
+    let res = Privileges::try_from(PrivilegeInterpretationData::new(
+        query_res.can_invite,
+        query_res.can_send_messages,
+    ))
+    .unwrap();
     assert_eq!(
         res,
         Privileges::from([
@@ -341,7 +357,7 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
 // }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
-async fn single_set_group_user_role_health_check (db: PgPool) {
+async fn single_set_group_user_role_health_check(db: PgPool) {
     // Chadders - Marco gets Admin
     let data = UserRoleChangeData {
         group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),

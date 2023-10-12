@@ -1,9 +1,7 @@
 use crate::utils::friends::errors::FriendError;
-use crate::{
-    utils::{
-        auth::errors::AuthError, chat::errors::ChatError, groups::errors::GroupError,
-        invitations::errors::InvitationError, roles::errors::RoleError
-    },
+use crate::utils::{
+    auth::errors::AuthError, chat::errors::ChatError, groups::errors::GroupError,
+    invitations::errors::InvitationError, roles::errors::RoleError,
 };
 use axum::response::IntoResponse;
 use thiserror::Error;

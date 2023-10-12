@@ -44,9 +44,3 @@ impl From<sqlx::Error> for InvitationError {
         Self::Unexpected(anyhow::Error::from(e))
     }
 }
-
-impl From<redis::RedisError> for InvitationError {
-    fn from(e: redis::RedisError) -> Self {
-        Self::Unexpected(anyhow::Error::from(e))
-    }
-}

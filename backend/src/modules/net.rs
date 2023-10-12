@@ -1,11 +1,8 @@
 use crate::modules::external_api::GeolocationData;
 use crate::modules::extractors::geolocation::NetworkData;
-use crate::modules::tokens::Token;
-use serde::{Deserialize, Serialize};
 use sqlx::types::ipnetwork::IpNetwork;
 use sqlx::types::Json;
 use sqlx::{query, query_as, Acquire, PgConnection, Postgres};
-use tracing::warn;
 use uuid::Uuid;
 
 #[derive(Debug)]

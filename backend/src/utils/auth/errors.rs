@@ -56,12 +56,6 @@ impl From<sqlx::Error> for AuthError {
     }
 }
 
-impl From<redis::RedisError> for AuthError {
-    fn from(e: redis::RedisError) -> Self {
-        Self::Unexpected(anyhow::Error::from(e))
-    }
-}
-
 impl From<DatabaseError> for AuthError {
     fn from(e: DatabaseError) -> Self {
         AuthError::Unexpected(e.into())

@@ -41,7 +41,10 @@ where
                 error!("Faield to fetch geolocation: {e}");
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
-            return Ok(Self { ip: net, geolocation_data: geo });
+            return Ok(Self {
+                ip: net,
+                geolocation_data: geo,
+            });
         } else {
             error!("Failed to get http client");
             return Err(StatusCode::INTERNAL_SERVER_ERROR);

@@ -2,9 +2,7 @@ pub mod additions;
 pub mod errors;
 pub mod models;
 pub mod tokens;
-use crate::modules::{
-    database::RdPool, extractors::jwt::TokenExtractors, smtp::Mailer, tokens::Token,
-};
+use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
@@ -12,7 +10,7 @@ use errors::*;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use sqlx::{query, types::ipnetwork::IpNetwork, Acquire, PgPool, Postgres};
+use sqlx::{query, types::ipnetwork::IpNetwork, PgPool};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -31,7 +29,6 @@ pub enum ActivityStatus {
 // todo: make as transaction with Acquire
 pub async fn try_register_user<'c>(
     pool: &PgPool,
-    rdpool: &mut RdPool,
     ip: IpNetwork,
     mailer: Option<Mailer>,
     email: &str,
@@ -114,25 +111,7 @@ pub async fn try_register_user<'c>(
     .execute(&mut *transaction)
     .await?;
 
-    // query!(
-    //     r#"
-    //         insert into user_networks (ip, user_id, is_trusted)
-    //         values ($1, $2, true)
-    //     "#,
-    //     ip,
-    //     user_id
-    // )
-    // .execute(&mut transaction)
-    // .await?;
-
     transaction.commit().await?;
-
-    if let Some(mailer) = mailer {
-        let token_id = Token::Registration
-            .gen_token_with_duration(rdpool, &user_id)
-            .await?;
-        mailer.send_verification(email, &token_id).await?;
-    }
 
     Ok(user_id)
 }
@@ -223,11 +202,5 @@ pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<()
     .await?;
 
     trace!("Adding token to blacklist");
-    Ok(())
-}
-
-pub async fn use_reg_token(rdpool: &mut RdPool, token_id: &Uuid) -> Result<(), AuthError> {
-    Token::Registration.use_token(rdpool, token_id).await?;
-    // todo: change status to verified
     Ok(())
 }

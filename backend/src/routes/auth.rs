@@ -1,10 +1,8 @@
-﻿use crate::modules::database::RdPool;
-use crate::modules::extractors::addr::ClientAddr;
+﻿use crate::modules::extractors::addr::ClientAddr;
 use crate::modules::smtp::Mailer;
 use crate::utils::auth::models::*;
 use crate::{app_errors::AppError, utils::auth::*, TokenExtractors};
 use axum::extract::{ConnectInfo, Path};
-use axum::response::IntoResponse;
 use axum::{debug_handler, extract, http::StatusCode, Extension, Json};
 use axum::{
     routing::{get, post},
@@ -26,12 +24,10 @@ pub fn router() -> Router {
         .route("/validate", post(protected_zone))
         .route("/logout", post(post_user_logout))
         .route("/refresh", post(post_refresh_user_token))
-        .route("/verify/registration/:token_id", get(verify_token))
 }
 
 async fn post_register_user(
     Extension(pgpool): Extension<PgPool>,
-    Extension(mut rdpool): Extension<RdPool>,
     Extension(mailer): Extension<Mailer>,
     ConnectInfo(addr): ConnectInfo<ClientAddr>,
     Json(register_credentials): extract::Json<RegisterCredentials>,
@@ -40,7 +36,6 @@ async fn post_register_user(
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
         &pgpool,
-        &mut rdpool,
         addr.network(),
         Some(mailer),
         register_credentials.email.trim(),
@@ -154,11 +149,4 @@ async fn post_refresh_user_token(
     );
 
     Ok(jar)
-}
-
-async fn verify_token(
-    Extension(mut rdpool): Extension<RdPool>,
-    Path(token_id): Path<Uuid>,
-) -> Result<(), AppError> {
-    Ok(use_reg_token(&mut rdpool, &token_id).await?)
 }

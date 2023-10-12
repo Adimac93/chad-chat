@@ -43,9 +43,3 @@ impl From<sqlx::Error> for FriendError {
         Self::Unexpected(anyhow::Error::from(e))
     }
 }
-
-impl From<redis::RedisError> for FriendError {
-    fn from(e: redis::RedisError) -> Self {
-        Self::Unexpected(anyhow::Error::from(e))
-    }
-}
