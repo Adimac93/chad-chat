@@ -25,7 +25,7 @@ pub async fn try_add_user_to_group<'c>(
         user_id,
         group_id
     )
-    .fetch_optional(&mut transaction)
+    .fetch_optional(&mut *transaction)
     .await?;
 
     if res.is_some() {
@@ -33,12 +33,12 @@ pub async fn try_add_user_to_group<'c>(
         return Err(GroupError::UserAlreadyInGroup);
     }
 
-    if !check_if_group_exists(&mut transaction, group_id).await? {
+    if !check_if_group_exists(&mut *transaction, group_id).await? {
         transaction.rollback().await?;
         return Err(GroupError::GroupDoesNotExist);
     }
 
-    if !check_if_user_exists(&mut transaction, user_id).await? {
+    if !check_if_user_exists(&mut *transaction, user_id).await? {
         transaction.rollback().await?;
         return Err(GroupError::UserDoesNotExist);
     }
@@ -50,7 +50,7 @@ pub async fn try_add_user_to_group<'c>(
         "#,
         user_id
     )
-    .fetch_one(&mut transaction)
+    .fetch_one(&mut *transaction)
     .await?
     .username;
 
@@ -69,7 +69,7 @@ pub async fn try_add_user_to_group<'c>(
         group_id,
         username
     )
-    .execute(&mut transaction)
+    .execute(&mut *transaction)
     .await?;
 
     transaction.commit().await?;
@@ -93,7 +93,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
         "#,
         name
     )
-    .fetch_one(&mut transaction)
+    .fetch_one(&mut *transaction)
     .await?;
 
     let username = query!(
@@ -103,7 +103,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
         "#,
         user_id,
     )
-    .fetch_one(&mut transaction)
+    .fetch_one(&mut *transaction)
     .await?
     .username;
 
@@ -113,7 +113,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
         "#,
         group.id,
     )
-    .execute(&mut transaction)
+    .execute(&mut *transaction)
     .await
     .context("Failed to initiate group roles")?;
 
@@ -131,7 +131,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
         group.id,
         username
     )
-    .execute(&mut transaction)
+    .execute(&mut *transaction)
     .await
     .map_err(|_| GroupError::UserAlreadyInGroup)?;
 

@@ -46,7 +46,7 @@ pub async fn try_register_user<'c>(
         "#,
         email
     )
-    .fetch_optional(&mut transaction)
+    .fetch_optional(&mut *transaction)
     .await?;
 
     if user.is_some() {
@@ -82,7 +82,7 @@ pub async fn try_register_user<'c>(
         "#,
         username
     )
-    .fetch_all(&mut transaction)
+    .fetch_all(&mut *transaction)
     .await?;
 
     let tag = random_username_tag(used_tags.into_iter().map(|record| record.tag).collect())
@@ -98,7 +98,7 @@ pub async fn try_register_user<'c>(
         tag,
         ActivityStatus::Online as ActivityStatus,
     )
-    .fetch_one(&mut transaction)
+    .fetch_one(&mut *transaction)
     .await?
     .id;
 
@@ -111,7 +111,7 @@ pub async fn try_register_user<'c>(
         email,
         hashed_pass
     )
-    .execute(&mut transaction)
+    .execute(&mut *transaction)
     .await?;
 
     // query!(

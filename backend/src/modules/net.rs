@@ -1,28 +1,28 @@
-use serde::{Deserialize, Serialize};
-use sqlx::{Acquire, PgConnection, Postgres, query, query_as};
-use sqlx::types::ipnetwork::IpNetwork;
-use sqlx::types::Json;
-use tracing::warn;
-use uuid::Uuid;
 use crate::modules::external_api::GeolocationData;
 use crate::modules::extractors::geolocation::NetworkData;
 use crate::modules::tokens::Token;
+use serde::{Deserialize, Serialize};
+use sqlx::types::ipnetwork::IpNetwork;
+use sqlx::types::Json;
+use sqlx::{query, query_as, Acquire, PgConnection, Postgres};
+use tracing::warn;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct UserNetworkData {
     ip: IpNetwork,
     geo: GeolocationData,
-    is_trusted: bool
+    is_trusted: bool,
 }
 
 pub struct NetworkQuery<'c> {
     conn: &'c mut PgConnection,
-    ip: IpNetwork
+    ip: IpNetwork,
 }
 
 impl<'c> NetworkQuery<'c> {
     pub fn new(ip: IpNetwork, conn: &'c mut PgConnection) -> Self {
-        Self {conn, ip}
+        Self { conn, ip }
     }
 
     pub async fn add_network(&mut self, geo: GeolocationData) -> anyhow::Result<()> {
@@ -33,7 +33,9 @@ impl<'c> NetworkQuery<'c> {
             "#,
             self.ip,
             Json(geo) as _
-        ).execute(&mut *self.conn).await?;
+        )
+        .execute(&mut *self.conn)
+        .await?;
 
         Ok(())
     }
@@ -47,7 +49,9 @@ impl<'c> NetworkQuery<'c> {
             self.ip,
             user_id,
             is_trusted
-        ).execute(&mut *self.conn).await?;
+        )
+        .execute(&mut *self.conn)
+        .await?;
 
         Ok(())
     }
@@ -82,7 +86,10 @@ impl<'c> NetworkQuery<'c> {
                 where ip = $1
             "#,
             self.ip
-        ).fetch_optional(&mut *self.conn).await?.is_none();
+        )
+        .fetch_optional(&mut *self.conn)
+        .await?
+        .is_none();
 
         Ok(res)
     }
@@ -95,9 +102,10 @@ impl<'c> NetworkQuery<'c> {
             "#,
             user_id,
             &self.ip
-        ).fetch_one(&mut *self.conn).await?.is_trusted;
+        )
+        .fetch_one(&mut *self.conn)
+        .await?
+        .is_trusted;
         Ok(res)
     }
-
 }
-

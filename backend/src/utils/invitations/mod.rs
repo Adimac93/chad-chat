@@ -101,7 +101,7 @@ pub async fn fetch_group_info_by_code(
         "#,
         code,
     )
-    .fetch_optional(&mut transaction)
+    .fetch_optional(&mut *transaction)
     .await?;
 
     let invitation = res.ok_or(InvitationError::InvalidCode)?;
@@ -130,9 +130,10 @@ pub async fn try_join_group_by_code<'c>(
         "#,
         code
     )
-    .fetch_optional(&mut transaction)
-    .await? else {
-        return Err(InvitationError::InvalidCode)?
+    .fetch_optional(&mut *transaction)
+    .await?
+    else {
+        return Err(InvitationError::InvalidCode)?;
     };
 
     match invitation.uses_left {
@@ -144,7 +145,7 @@ pub async fn try_join_group_by_code<'c>(
                 ",
                 invitation.id
             )
-            .execute(&mut transaction)
+            .execute(&mut *transaction)
             .await?;
 
             transaction.commit().await?;
@@ -163,7 +164,7 @@ pub async fn try_join_group_by_code<'c>(
                 ",
                 invitation.id
             )
-            .execute(&mut transaction)
+            .execute(&mut *transaction)
             .await?;
 
             transaction.commit().await?;
@@ -185,7 +186,7 @@ pub async fn try_join_group_by_code<'c>(
             use_number - 1,
             invitation.id,
         )
-        .execute(&mut transaction)
+        .execute(&mut *transaction)
         .await?;
     }
 

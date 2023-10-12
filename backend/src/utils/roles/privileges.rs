@@ -1,7 +1,7 @@
-﻿use std::{collections::HashSet, cmp::Ordering, hash::Hash, mem::discriminant};
+﻿use std::{cmp::Ordering, collections::HashSet, hash::Hash, mem::discriminant};
 
 use axum::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sqlx::{query, Acquire, Postgres};
 
 use crate::utils::roles::models::Role;
@@ -90,7 +90,11 @@ impl Hash for Privilege {
 
 #[async_trait]
 pub trait QueryPrivilege<'c> {
-    async fn set_privilege(&self, conn: impl Acquire<'c, Database = Postgres> + std::marker::Send, data: &PrivilegeChangeData) -> Result<(), RoleError>;
+    async fn set_privilege(
+        &self,
+        conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
+        data: &PrivilegeChangeData,
+    ) -> Result<(), RoleError>;
 }
 
 #[async_trait]
@@ -98,10 +102,10 @@ impl<'c> QueryPrivilege<'c> for CanInvite {
     async fn set_privilege(
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
-        data: &PrivilegeChangeData
+        data: &PrivilegeChangeData,
     ) -> Result<(), RoleError> {
         let mut transaction = conn.begin().await?;
-        
+
         let val = match self {
             CanInvite::Yes => true,
             CanInvite::No => false,
@@ -119,7 +123,7 @@ impl<'c> QueryPrivilege<'c> for CanInvite {
             data.group_id,
             data.role as Role,
         )
-        .execute(&mut transaction)
+        .execute(&mut *transaction)
         .await?;
 
         transaction.commit().await?;
@@ -142,10 +146,10 @@ impl<'c> QueryPrivilege<'c> for CanSendMessages {
     async fn set_privilege(
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
-        data: &PrivilegeChangeData
+        data: &PrivilegeChangeData,
     ) -> Result<(), RoleError> {
         let mut transaction = conn.begin().await?;
-        
+
         let val = match self {
             CanSendMessages::Yes(x) => *x as i32,
             CanSendMessages::No => -1,
@@ -163,7 +167,7 @@ impl<'c> QueryPrivilege<'c> for CanSendMessages {
             data.group_id,
             data.role as Role,
         )
-        .execute(&mut transaction)
+        .execute(&mut *transaction)
         .await?;
 
         transaction.commit().await?;
