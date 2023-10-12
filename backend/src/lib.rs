@@ -11,7 +11,6 @@ use axum::{
     routing::get,
     Extension, Json, Router,
 };
-use axum_extra::routing::SpaRouter;
 use configuration::Settings;
 use modules::{
     database::{get_postgres_pool, PgPool},
@@ -24,7 +23,10 @@ use modules::{
 use modules::{external_api::HttpClient, extractors::geolocation::NetworkData};
 use serde_json::json;
 use std::io;
-use tower_http::cors::CorsLayer;
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+};
 use utils::roles::models::{is_id_the_same, Gate, Role};
 
 #[macro_use]
@@ -51,10 +53,6 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         "/groups",
         routes::groups::router().nest("/invitations", routes::invitations::router()),
     );
-
-    let spa = SpaRouter::new("/assets", "../frontend/dist/assets")
-        .index_file("../index.html")
-        .handle_error(not_found);
 
     let test = Router::new()
         .route("/geo", get(geolocation_info))
@@ -86,7 +84,11 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
         }))
         .layer(cors);
 
-    Router::new().nest("/api", api).merge(spa)
+    Router::new().nest("/api", api).nest_service(
+        "/",
+        ServeDir::new("../frontend/dist")
+            .not_found_service(ServeFile::new("../frontend/dist/index.html")),
+    )
 }
 
 async fn health_check(Extension(pool): Extension<PgPool>) -> impl IntoResponse {
