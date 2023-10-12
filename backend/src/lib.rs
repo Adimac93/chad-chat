@@ -1,5 +1,5 @@
-pub mod app_errors;
 pub mod configuration;
+pub mod errors;
 pub mod modules;
 pub mod routes;
 pub mod utils;

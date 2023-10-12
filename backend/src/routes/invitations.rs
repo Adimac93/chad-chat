@@ -1,4 +1,4 @@
-use crate::app_errors::AppError;
+use crate::errors::AppError;
 use crate::utils::auth::models::*;
 use crate::utils::groups::models::GroupInfo;
 use crate::utils::invitations::{

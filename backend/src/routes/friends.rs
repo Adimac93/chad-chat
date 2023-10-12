@@ -12,7 +12,7 @@ use crate::utils::friends::{
     fetch_friends, respond_to_friend_request, send_friend_request_by_user_id,
     send_friend_request_by_username_and_tag, TaggedUsername,
 };
-use crate::{app_errors::AppError, utils::auth::models::Claims};
+use crate::{errors::AppError, utils::auth::models::Claims};
 
 pub fn router() -> Router {
     Router::new()

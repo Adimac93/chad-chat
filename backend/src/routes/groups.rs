@@ -1,4 +1,4 @@
-﻿use crate::app_errors::AppError;
+﻿use crate::errors::AppError;
 use crate::utils::auth::models::Claims;
 use crate::utils::groups::models::NewGroup;
 use crate::utils::groups::*;

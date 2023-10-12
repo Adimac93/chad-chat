@@ -1,7 +1,7 @@
 ﻿use crate::modules::extractors::addr::ClientAddr;
 use crate::modules::smtp::Mailer;
 use crate::utils::auth::models::*;
-use crate::{app_errors::AppError, utils::auth::*, TokenExtractors};
+use crate::{errors::AppError, utils::auth::*, TokenExtractors};
 use axum::extract::{ConnectInfo, Path};
 use axum::{debug_handler, extract, http::StatusCode, Extension, Json};
 use axum::{
@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
-use uuid::Uuid;
+
 pub fn router() -> Router {
     Router::new()
         .route("/register", post(post_register_user))
