@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                select ip as \"ip: IpNetwork\", geolocation_data as \"geolocation_data: GeolocationData\" from networks\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ip: IpNetwork",
+        "type_info": "Inet"
+      },
+      {
+        "ordinal": 1,
+        "name": "geolocation_data: GeolocationData",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1718e8b6d47a23e6702ceada49a036cfa9efc04eac26ca6549facded5453da22"
+}

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            insert into group_invitations\n            (\n            user_id, group_id,\n            id, expiration_date, uses_left\n            )\n            values ($1, $2, $3, $4, $5)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5204b400b2901e87f15367f7f70f14da16a584d878867f915b356a5ce27b2f5e"
+}

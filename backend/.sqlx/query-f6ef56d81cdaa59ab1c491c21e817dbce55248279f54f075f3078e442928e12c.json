@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    delete from group_invitations\n                    where id = $1\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f6ef56d81cdaa59ab1c491c21e817dbce55248279f54f075f3078e442928e12c"
+}

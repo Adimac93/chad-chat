@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            select group_id, expiration_date, id, uses_left from group_invitations\n            where id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "expiration_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "uses_left",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "2667ce86d4d81af052c7aa347571d763e5e2095ffa2f2f15196759070d1adf9e"
+}

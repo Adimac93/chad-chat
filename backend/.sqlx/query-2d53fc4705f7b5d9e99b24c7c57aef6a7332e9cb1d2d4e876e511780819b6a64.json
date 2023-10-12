@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                select n.ip as \"ip: IpNetwork\", n.geolocation_data as \"geo: GeolocationData\", un.is_trusted from user_networks un\n                join networks n on n.ip = un.network_ip\n                where user_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ip: IpNetwork",
+        "type_info": "Inet"
+      },
+      {
+        "ordinal": 1,
+        "name": "geo: GeolocationData",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 2,
+        "name": "is_trusted",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2d53fc4705f7b5d9e99b24c7c57aef6a7332e9cb1d2d4e876e511780819b6a64"
+}

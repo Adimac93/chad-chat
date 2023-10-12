@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            update group_users\n                set role_id = group_roles.role_id\n                from group_roles\n                where group_roles.group_id = $1\n                and group_users.user_id = $2\n                and group_roles.role_type = $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "owner",
+                "admin",
+                "member"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a1cf39fc762f104feb92563e8779e67cf3f132608c9994e8b3d50bdfd310ebc0"
+}

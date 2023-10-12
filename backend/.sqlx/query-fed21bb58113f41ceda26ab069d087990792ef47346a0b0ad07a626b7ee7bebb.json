@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                insert into jwt_blacklist (token_id, expiry)\n                values ($1, $2)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fed21bb58113f41ceda26ab069d087990792ef47346a0b0ad07a626b7ee7bebb"
+}

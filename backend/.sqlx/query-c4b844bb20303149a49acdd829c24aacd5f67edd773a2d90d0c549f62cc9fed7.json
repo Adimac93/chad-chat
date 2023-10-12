@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                insert into networks (ip, geolocation_data)\n                values ($1, $2)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Inet",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c4b844bb20303149a49acdd829c24aacd5f67edd773a2d90d0c549f62cc9fed7"
+}

@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                update roles\n                    set can_send_messages = $1\n                    from group_roles\n                    where group_roles.group_id = $2\n                    and group_roles.role_type = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid",
+        {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "owner",
+                "admin",
+                "member"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "07337afebd3923982a6ffdf99bb157c0530474bed8b7f75e2165e5890ae2f128"
+}

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                select is_trusted from user_networks\n                where user_id = $1 and network_ip = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "is_trusted",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Inet"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f660586f769deb2d364b76a894cfdad669e3d89b6e7dc7ca3b9f6e5aa1f0c5ca"
+}

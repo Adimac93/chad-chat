@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            select\n                group_roles.role_type as \"role: Role\"\n                from group_users join\n                    roles join group_roles on roles.id = group_roles.role_id\n                on group_users.role_id = roles.id\n                where group_users.user_id = $1\n                and group_users.group_id = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role: Role",
+        "type_info": {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "owner",
+                "admin",
+                "member"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ed8e4c1e7f8fd8fce6d3ad265da4689b5412ef7509095c1d15308ba0cd957e97"
+}

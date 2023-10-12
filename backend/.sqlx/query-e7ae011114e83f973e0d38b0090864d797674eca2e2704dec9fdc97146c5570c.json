@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                update user_friends\n                set note = $1\n                where user_id = $2 and friend_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e7ae011114e83f973e0d38b0090864d797674eca2e2704dec9fdc97146c5570c"
+}

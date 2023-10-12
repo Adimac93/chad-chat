@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                insert into user_networks (network_ip, user_id, is_trusted)\n                values ($1, $2, $3)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Inet",
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "804bad4108f796b14a94a4745b17efd0fc1a19384e50c8ce80b222c314419808"
+}

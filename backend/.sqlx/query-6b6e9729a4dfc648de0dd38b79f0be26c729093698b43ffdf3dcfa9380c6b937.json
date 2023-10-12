@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            insert into users (username, tag, activity_status)\n            values ($1, $2, $3)\n            returning (id)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4",
+        {
+          "Custom": {
+            "name": "status",
+            "kind": {
+              "Enum": [
+                "online",
+                "offline",
+                "idle"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6b6e9729a4dfc648de0dd38b79f0be26c729093698b43ffdf3dcfa9380c6b937"
+}

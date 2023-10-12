@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            insert into group_users (user_id, group_id, nickname, role_id)\n            values ($1, $2, $3, (\n                select role_id\n                    from group_roles\n                    where group_roles.group_id = $2\n                    and group_roles.role_type = 'owner'\n            ))\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "318153057dd8f6785fc339ebb649ed69f4858a8b9d8eae12cd05cc7506e8ef5b"
+}

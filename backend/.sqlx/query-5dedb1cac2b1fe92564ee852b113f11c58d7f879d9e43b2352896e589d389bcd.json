@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            select groups.name, groups.id as group_id, count(*) as members_count from group_invitations\n            join groups on groups.id = group_invitations.group_id\n            join group_users on groups.id = group_users.group_id\n            where group_invitations.id = $1\n            group by groups.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "members_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "5dedb1cac2b1fe92564ee852b113f11c58d7f879d9e43b2352896e589d389bcd"
+}

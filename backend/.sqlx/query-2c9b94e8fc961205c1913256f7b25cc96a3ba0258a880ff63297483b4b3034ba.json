@@ -1,0 +1,45 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            select group_roles.role_type as \"role_type: Role\", roles.can_invite, roles.can_send_messages from\n                group_roles join roles on group_roles.role_id = roles.id\n                where group_roles.group_id = $1\n                and group_roles.role_type in ('member', 'admin')\n                order by group_roles.role_type\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role_type: Role",
+        "type_info": {
+          "Custom": {
+            "name": "user_role",
+            "kind": {
+              "Enum": [
+                "owner",
+                "admin",
+                "member"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "can_invite",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "can_send_messages",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2c9b94e8fc961205c1913256f7b25cc96a3ba0258a880ff63297483b4b3034ba"
+}
