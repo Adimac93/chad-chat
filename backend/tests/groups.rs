@@ -1,6 +1,6 @@
-use crate::utils::groups::models::GroupInfo;
-use crate::utils::groups::{check_if_group_exists, get_group_info};
-use crate::utils::groups::{
+use backend::utils::groups::models::GroupInfo;
+use backend::utils::groups::{check_if_group_exists, get_group_info};
+use backend::utils::groups::{
     check_if_group_member, create_group, errors::GroupError, query_user_groups,
     try_add_user_to_group,
 };

@@ -1,4 +1,4 @@
-﻿use crate::{configuration::get_config, routes::app};
+﻿use backend::{configuration::get_config, routes::app};
 use dotenv::dotenv;
 use reqwest::Client;
 use sqlx::PgPool;

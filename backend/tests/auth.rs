@@ -3,7 +3,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 mod tools;
 
-use crate::utils::auth::{errors::AuthError, try_register_user, verify_user_credentials};
+use backend::utils::auth::{errors::AuthError, try_register_user, verify_user_credentials};
 use secrecy::SecretString;
 use sqlx::PgPool;
 

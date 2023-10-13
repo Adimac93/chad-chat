@@ -1,6 +1,6 @@
 mod tools;
 
-use crate::utils::friends::{
+use backend::utils::friends::{
     fetch_friends, remove_friend, respond_to_friend_request, send_friend_request_by_user_id,
     update_friend_note,
 };
