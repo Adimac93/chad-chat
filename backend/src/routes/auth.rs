@@ -1,9 +1,10 @@
-﻿use crate::AppState;
-use crate::errors::AppError;
+﻿use crate::errors::AppError;
 use crate::modules::extractors::addr::ClientAddr;
+use crate::modules::extractors::jwt::TokenExtractors;
 use crate::modules::smtp::Mailer;
+use crate::state::AppState;
 use crate::utils::auth::models::*;
-use crate::{utils::auth::*, TokenExtractors};
+use crate::utils::auth::*;
 use axum::extract::{ConnectInfo, Path, State};
 use axum::response::IntoResponse;
 use axum::{debug_handler, extract, http::StatusCode, Json};

@@ -6,7 +6,10 @@ use axum::{
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use crate::{modules::external_api::{HttpClient, UserAgentParsed}, AppState};
+use crate::{
+    modules::external_api::{HttpClient, UserAgentParsed},
+    state::AppState,
+};
 
 #[derive(sqlx::Type, Serialize, Deserialize, Debug)]
 #[sqlx(type_name = "user_agent_data")]
@@ -41,13 +44,17 @@ impl UserAgentData {
 impl FromRequestParts<AppState> for UserAgentData {
     type Rejection = hyper::StatusCode;
 
-    async fn from_request_parts(req: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        req: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let user_agent_header = req
             .headers
             .get(http::header::USER_AGENT)
             .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        let user_agent = state.client
+        let user_agent = state
+            .client
             .parse_user_agent(user_agent_header.to_str().unwrap())
             .await
             .unwrap();

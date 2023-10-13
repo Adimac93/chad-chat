@@ -1,13 +1,13 @@
-use crate::AppState;
 use crate::errors::AppError;
+use crate::state::AppState;
 use crate::utils::auth::models::*;
 use crate::utils::groups::models::GroupInfo;
 use crate::utils::invitations::{
     fetch_group_info_by_code, try_create_group_invitation_with_code, try_join_group_by_code,
     GroupInvitationCreate,
 };
-use axum::Router;
 use axum::extract::State;
+use axum::Router;
 use axum::{extract::Json, routing::post};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

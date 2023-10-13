@@ -1,5 +1,12 @@
-use backend::modules::extractors::addr::ClientAddr;
-use backend::{app, configuration::get_config};
+pub mod configuration;
+pub mod errors;
+pub mod modules;
+pub mod routes;
+pub mod state;
+pub mod utils;
+
+use crate::modules::extractors::addr::ClientAddr;
+use crate::{configuration::get_config, routes::app};
 use dotenv::dotenv;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 

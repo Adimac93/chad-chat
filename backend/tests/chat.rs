@@ -1,4 +1,4 @@
-﻿use backend::utils::chat::{create_message, errors::ChatError, get_user_email_by_id};
+﻿use crate::utils::chat::{create_message, errors::ChatError, get_user_email_by_id};
 use sqlx::PgPool;
 use uuid::Uuid;
 

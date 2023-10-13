@@ -1,9 +1,9 @@
-use backend::utils::roles::models::{GroupRolePrivileges, Role};
-use backend::utils::roles::models::{
+use crate::utils::roles::models::{GroupRolePrivileges, Role};
+use crate::utils::roles::models::{
     PrivilegeChangeData, PrivilegeInterpretationData, SocketGroupRolePrivileges, UserRoleChangeData,
 };
-use backend::utils::roles::privileges::{CanInvite, CanSendMessages, Privilege, Privileges};
-use backend::utils::roles::{
+use crate::utils::roles::privileges::{CanInvite, CanSendMessages, Privilege, Privileges};
+use crate::utils::roles::{
     get_group_role_privileges, get_user_role, single_set_group_role_privileges,
     single_set_group_user_role,
 };

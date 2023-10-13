@@ -1,8 +1,13 @@
-use crate::{utils::auth::errors::*, JwtAccessSecret, JwtRefreshSecret, TokenExtractors, AppState};
+use crate::{
+    modules::extractors::jwt::{JwtAccessSecret, JwtRefreshSecret, TokenExtractors},
+    state::AppState,
+    utils::auth::errors::*,
+};
 use anyhow::Context;
 use axum::{
     async_trait,
-    extract::{self, FromRequest, FromRequestParts}, http::request::Parts,
+    extract::{self, FromRequest, FromRequestParts},
+    http::request::Parts,
 };
 use axum_extra::extract::{
     cookie::{Cookie, SameSite},
@@ -241,7 +246,10 @@ impl Claims {
 impl FromRequestParts<AppState> for Claims {
     type Rejection = AuthError;
 
-    async fn from_request_parts(req: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        req: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         verify_token::<Self>(req, state).await
     }
 }
@@ -269,7 +277,10 @@ impl RefreshClaims {
 impl FromRequestParts<AppState> for RefreshClaims {
     type Rejection = AuthError;
 
-    async fn from_request_parts(req: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        req: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         verify_token::<Self>(req, state).await
     }
 }

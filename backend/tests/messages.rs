@@ -1,6 +1,6 @@
 use uuid::Uuid;
 mod tools;
-use backend::utils::chat::{messages::fetch_last_messages_in_range, models::GroupUserMessage};
+use crate::utils::chat::{messages::fetch_last_messages_in_range, models::GroupUserMessage};
 use sqlx::PgPool;
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_users", "messages"))]

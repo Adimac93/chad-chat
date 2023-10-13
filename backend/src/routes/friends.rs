@@ -1,13 +1,14 @@
+use axum::{extract::State, Json};
 use axum::{
     routing::{get, post},
     Router,
 };
-use axum::{extract::State, Json};
 use sqlx::PgPool;
 
-use crate::{utils::friends::models::{
+use crate::state::AppState;
+use crate::utils::friends::models::{
     FriendInvitationResponse, FriendList, IdentifiedFriendIvitation,
-}, AppState};
+};
 use crate::utils::friends::{
     fetch_friends, respond_to_friend_request, send_friend_request_by_user_id,
     send_friend_request_by_username_and_tag, TaggedUsername,
@@ -22,10 +23,7 @@ pub fn router() -> Router<AppState> {
         .route("/invitations/respond", post(respond))
 }
 
-async fn friends(
-    claims: Claims,
-    State(pool): State<PgPool>,
-) -> Result<Json<FriendList>, AppError> {
+async fn friends(claims: Claims, State(pool): State<PgPool>) -> Result<Json<FriendList>, AppError> {
     let friends = fetch_friends(&pool, claims.user_id).await?;
     Ok(Json(FriendList { friends }))
 }

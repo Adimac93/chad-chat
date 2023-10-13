@@ -1,4 +1,5 @@
-﻿use crate::utils::auth::models::Claims;
+﻿use crate::state::AppState;
+use crate::utils::auth::models::Claims;
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
 use crate::utils::chat::socket::{ChatState, ClientAction, ServerAction, UserController};
@@ -10,7 +11,6 @@ use crate::utils::roles::{
     get_group_role_privileges, get_user_role, single_set_group_role_privileges,
     single_set_group_user_role,
 };
-use crate::AppState;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::{

@@ -1,7 +1,8 @@
-use crate::{utils::auth::errors::AuthError, AppState};
+use crate::{state::AppState, utils::auth::errors::AuthError};
 use axum::{
     async_trait,
-    extract::{self, FromRequest, FromRequestParts}, http::request::Parts,
+    extract::{self, FromRequest, FromRequestParts},
+    http::request::Parts,
 };
 use secrecy::Secret;
 

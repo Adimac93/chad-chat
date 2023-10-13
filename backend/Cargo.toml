@@ -5,13 +5,6 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[lib]
-path = "src/lib.rs"
-
-[[bin]]
-path = "src/main.rs"
-name = "backend"
-
 [dependencies]
 anyhow = "1.0.66"
 axum = { version = "0.6.20", features = ["macros", "headers", "ws"] }

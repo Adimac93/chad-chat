@@ -1,10 +1,10 @@
-﻿use crate::AppState;
-use crate::errors::AppError;
+﻿use crate::errors::AppError;
+use crate::state::AppState;
 use crate::utils::auth::models::Claims;
 use crate::utils::groups::models::NewGroup;
 use crate::utils::groups::*;
-use axum::Router;
 use axum::extract::State;
+use axum::Router;
 use axum::{extract::Json, routing::get};
 use serde_json::Value;
 use sqlx::PgPool;
