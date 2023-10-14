@@ -1,7 +1,6 @@
 use crate::{
     modules::extractors::jwt::{JwtAccessSecret, JwtRefreshSecret, TokenExtractors},
-    state::AppState,
-    utils::auth::errors::*,
+    state::AppState, errors::AppError,
 };
 use anyhow::Context;
 use axum::{
@@ -13,6 +12,7 @@ use axum_extra::extract::{
     cookie::{Cookie, SameSite},
     CookieJar,
 };
+use hyper::StatusCode;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
@@ -31,14 +31,14 @@ pub trait AuthToken {
         login: &str,
         duration: Duration,
         key: &Secret<String>,
-    ) -> Result<String, AuthError>;
+    ) -> Result<String, AppError>;
     async fn get_jwt_key(ext: &TokenExtractors) -> Secret<String>;
-    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError>;
-    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError>
+    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AppError>;
+    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AppError>
     where
         Self: Sized;
-    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError>;
-    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AuthError>;
+    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AppError>;
+    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -51,11 +51,11 @@ impl AuthToken for Claims {
         jwt_key
     }
 
-    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError> {
-        jar.get("jwt").ok_or(AuthError::InvalidToken).cloned()
+    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AppError> {
+        jar.get("jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token")).cloned()
     }
 
-    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
+    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AppError> {
         // decode token - validation setup
         let mut validation = Validation::default();
         validation.leeway = 5;
@@ -66,12 +66,12 @@ impl AuthToken for Claims {
             &DecodingKey::from_secret(key.expose_secret().as_bytes()),
             &validation,
         )
-        .map_err(|_e| AuthError::InvalidToken)?;
+        .map_err(|_e| AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))?;
 
         Ok(data.claims)
     }
 
-    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError> {
+    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AppError> {
         // verify blacklist
         Ok(query!(
             r#"
@@ -100,7 +100,7 @@ impl AuthToken for Claims {
         login: &str,
         duration: Duration,
         key: &Secret<String>,
-    ) -> Result<String, AuthError> {
+    ) -> Result<String, AppError> {
         let claims = Claims::new(user_id, login, duration);
 
         Ok(encode(
@@ -111,7 +111,7 @@ impl AuthToken for Claims {
         .context("Failed to encrypt token")?)
     }
 
-    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AuthError> {
+    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AppError> {
         let exp = OffsetDateTime::from_unix_timestamp(self.exp as i64)
             .context("Failed to convert timestamp to date and time with the timezone")?;
 
@@ -141,13 +141,13 @@ impl AuthToken for RefreshClaims {
         jwt_key
     }
 
-    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AuthError> {
+    async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AppError> {
         jar.get("refresh-jwt")
-            .ok_or(AuthError::InvalidToken)
+            .ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
             .cloned()
     }
 
-    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AuthError> {
+    async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AppError> {
         // decode token - validation setup
         let mut validation = Validation::default();
         validation.leeway = 5;
@@ -158,12 +158,12 @@ impl AuthToken for RefreshClaims {
             &DecodingKey::from_secret(key.expose_secret().as_bytes()),
             &validation,
         )
-        .map_err(|_e| AuthError::InvalidToken)?;
+        .map_err(|_e| AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))?;
 
         Ok(data.claims)
     }
 
-    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AuthError> {
+    async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AppError> {
         // verify blacklist
         Ok(query!(
             r#"
@@ -192,7 +192,7 @@ impl AuthToken for RefreshClaims {
         login: &str,
         duration: Duration,
         key: &Secret<String>,
-    ) -> Result<String, AuthError> {
+    ) -> Result<String, AppError> {
         let refresh_claims = RefreshClaims::new(user_id, login, duration);
 
         Ok(encode(
@@ -203,7 +203,7 @@ impl AuthToken for RefreshClaims {
         .context("Failed to encrypt token")?)
     }
 
-    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AuthError> {
+    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AppError> {
         let exp = OffsetDateTime::from_unix_timestamp(self.exp as i64)
             .context("Failed to convert timestamp to date and time with the timezone")?;
 
@@ -244,7 +244,7 @@ impl Claims {
 
 #[async_trait]
 impl FromRequestParts<AppState> for Claims {
-    type Rejection = AuthError;
+    type Rejection = AppError;
 
     async fn from_request_parts(
         req: &mut Parts,
@@ -275,7 +275,7 @@ impl RefreshClaims {
 
 #[async_trait]
 impl FromRequestParts<AppState> for RefreshClaims {
-    type Rejection = AuthError;
+    type Rejection = AppError;
 
     async fn from_request_parts(
         req: &mut Parts,
@@ -285,7 +285,7 @@ impl FromRequestParts<AppState> for RefreshClaims {
     }
 }
 
-async fn verify_token<T>(req: &mut Parts, state: &AppState) -> Result<T, AuthError>
+async fn verify_token<T>(req: &mut Parts, state: &AppState) -> Result<T, AppError>
 where
     T: AuthToken,
 {
@@ -306,7 +306,7 @@ where
     let res = claims.check_if_in_blacklist(&pool).await?;
 
     match res {
-        true => Err(AuthError::InvalidToken),
+        true => Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token")),
         false => Ok(claims),
     }
 }

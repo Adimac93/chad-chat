@@ -1,4 +1,4 @@
-use crate::{state::AppState, utils::auth::errors::AuthError};
+use crate::{state::AppState, errors::AppError};
 use axum::{
     async_trait,
     extract::{self, FromRequest, FromRequestParts},

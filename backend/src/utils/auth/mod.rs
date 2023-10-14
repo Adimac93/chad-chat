@@ -1,12 +1,12 @@
 pub mod additions;
-pub mod errors;
 pub mod models;
 pub mod tokens;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
-use errors::*;
+use hyper::StatusCode;
+use crate::errors::AppError;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ pub async fn try_register_user<'c>(
     email: &str,
     password: SecretString,
     username: &str,
-) -> Result<Uuid, AuthError> {
+) -> Result<Uuid, AppError> {
     let mut transaction = pool.begin().await?;
 
     let user = query!(
@@ -47,24 +47,24 @@ pub async fn try_register_user<'c>(
     .await?;
 
     if user.is_some() {
-        return Err(AuthError::UserAlreadyExists);
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "User already exists"));
     }
 
     if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
-        return Err(AuthError::MissingCredential);
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Missing email or password"));
     }
 
     let _ = RegisterCredentials::new(email, password.expose_secret(), &username)
         .validate()
-        .map_err(AuthError::InvalidEmail)?;
+        .map_err(|e| AppError::exp(StatusCode::BAD_REQUEST, &format!("Invalid email: {e}")))?;
 
     if !additions::pass_is_strong(password.expose_secret(), &[&email]) {
-        return Err(AuthError::WeakPassword);
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Password is too weak"));
     }
 
     let hashed_pass = additions::hash_pass(password)
         .context("Failed to hash password with argon2")
-        .map_err(AuthError::Unexpected)?;
+        .map_err(AppError::Unexpected)?;
 
     let mut username = username.trim();
     if username.is_empty() {
@@ -83,7 +83,7 @@ pub async fn try_register_user<'c>(
     .await?;
 
     let tag = random_username_tag(used_tags.into_iter().map(|record| record.tag).collect())
-        .ok_or(AuthError::TagOverflow)?;
+        .ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Maximum number of tags for this username"))?;
 
     let user_id = query!(
         r#"
@@ -120,10 +120,10 @@ pub async fn verify_user_credentials(
     pool: &PgPool,
     email: &str,
     password: SecretString,
-) -> Result<Uuid, AuthError> {
+) -> Result<Uuid, AppError> {
     debug!("Verifying credentials");
     if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
-        return Err(AuthError::MissingCredential)?;
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Missing email or password"))?;
     }
 
     let res = query!(
@@ -135,14 +135,14 @@ pub async fn verify_user_credentials(
     )
     .fetch_optional(pool)
     .await?
-    .ok_or(AuthError::WrongEmailOrPassword)?;
+    .ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "Incorrect email or password"))?;
 
     match verify_encoded(&res.password, password.expose_secret().as_bytes())
         .context("Failed to verify credentials")
-        .map_err(AuthError::Unexpected)?
+        .map_err(AppError::Unexpected)?
     {
         true => Ok(res.id),
-        false => Err(AuthError::WrongEmailOrPassword),
+        false => Err(AppError::exp(StatusCode::UNAUTHORIZED, "Incorrect email or password")),
     }
 }
 
@@ -151,7 +151,7 @@ pub async fn generate_token_cookies(
     login: &str,
     ext: &TokenExtractors,
     jar: CookieJar,
-) -> Result<CookieJar, AuthError> {
+) -> Result<CookieJar, AppError> {
     let access_cookie = generate_jwt_in_cookie::<Claims>(user_id, login, ext).await?;
 
     trace!("Access JWT: {access_cookie:#?}");
@@ -167,7 +167,7 @@ async fn generate_jwt_in_cookie<'a, T>(
     user_id: Uuid,
     login: &str,
     ext: &TokenExtractors,
-) -> Result<Cookie<'a>, AuthError>
+) -> Result<Cookie<'a>, AppError>
 where
     T: AuthToken,
 {
@@ -185,10 +185,10 @@ where
     Ok(access_cookie)
 }
 
-pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<(), AuthError> {
+pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<(), AppError> {
     let exp = OffsetDateTime::from_unix_timestamp(claims.exp as i64)
         .context("Failed to convert timestamp to date and time with the timezone")
-        .map_err(AuthError::Unexpected)?;
+        .map_err(AppError::Unexpected)?;
 
     let _res = query!(
         r#"

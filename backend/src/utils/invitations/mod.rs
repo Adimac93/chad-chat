@@ -1,7 +1,8 @@
-pub mod errors;
 pub mod models;
 
+use crate::errors::AppError;
 use anyhow::Context;
+use hyper::StatusCode;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, query_as, Acquire, PgPool, Postgres};
@@ -9,9 +10,7 @@ use time::{Duration, OffsetDateTime};
 use tracing::debug;
 use uuid::Uuid;
 
-use self::errors::InvitationError;
-
-use super::groups::{errors::GroupError, models::GroupInfo, try_add_user_to_group};
+use super::groups::{models::GroupInfo, try_add_user_to_group};
 
 // Frontend payload
 #[derive(Deserialize, Debug)]
@@ -22,7 +21,7 @@ pub struct GroupInvitationCreate {
 }
 
 impl TryFrom<GroupInvitationCreate> for GroupInvitation {
-    type Error = InvitationError;
+    type Error = AppError;
     fn try_from(value: GroupInvitationCreate) -> Result<Self, Self::Error> {
         let exp = match value.expiration_index {
             Some(i) => Some(Expiration::try_from(i)?),
@@ -62,7 +61,7 @@ pub async fn try_create_group_invitation_with_code(
     pool: &PgPool,
     user_id: &Uuid,
     invitation: GroupInvitationCreate,
-) -> Result<String, InvitationError> {
+) -> Result<String, AppError> {
     debug!("{invitation:#?}");
     let invitation = GroupInvitation::try_from(invitation)?;
     query!(
@@ -89,7 +88,7 @@ pub async fn try_create_group_invitation_with_code(
 pub async fn fetch_group_info_by_code(
     pool: &PgPool,
     code: &str,
-) -> Result<GroupInfo, InvitationError> {
+) -> Result<GroupInfo, AppError> {
     let mut transaction = pool.begin().await?;
     let res = query!(
         r#"
@@ -104,14 +103,14 @@ pub async fn fetch_group_info_by_code(
     .fetch_optional(&mut *transaction)
     .await?;
 
-    let invitation = res.ok_or(InvitationError::InvalidCode)?;
+    let invitation = res.ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Invalid group invitation code"))?;
 
     Ok(GroupInfo {
         name: invitation.name,
         members: invitation
             .members_count
             .context("Members count is None")
-            .map_err(InvitationError::Unexpected)?, // to change
+            .map_err(AppError::Unexpected)?, // to change
     })
 }
 
@@ -119,7 +118,7 @@ pub async fn try_join_group_by_code<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: &Uuid,
     code: &str,
-) -> Result<(), GroupError> {
+) -> Result<(), AppError> {
     let mut transaction = conn.begin().await?;
 
     let Some(invitation) = query_as!(
@@ -133,7 +132,7 @@ pub async fn try_join_group_by_code<'c>(
     .fetch_optional(&mut *transaction)
     .await?
     else {
-        return Err(InvitationError::InvalidCode)?;
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Invalid group invitation code"))?;
     };
 
     match invitation.uses_left {
@@ -150,7 +149,7 @@ pub async fn try_join_group_by_code<'c>(
 
             transaction.commit().await?;
 
-            return Err(InvitationError::InvitationExpired)?;
+            return Err(AppError::exp(StatusCode::BAD_REQUEST, "Invitation is expired"))?;
         }
         _ => (),
     }
@@ -169,7 +168,7 @@ pub async fn try_join_group_by_code<'c>(
 
             transaction.commit().await?;
 
-            return Err(InvitationError::InvitationExpired)?;
+            return Err(AppError::exp(StatusCode::BAD_REQUEST, "Invitation is expired"))?;
         }
         _ => (),
     }
@@ -218,7 +217,7 @@ impl From<Uses> for i32 {
 }
 
 impl TryFrom<i32> for Uses {
-    type Error = InvitationError;
+    type Error = AppError;
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Uses::One),
@@ -227,7 +226,7 @@ impl TryFrom<i32> for Uses {
             3 => Ok(Uses::TwentyFive),
             4 => Ok(Uses::Fifty),
             5 => Ok(Uses::OneHundred),
-            _n => Err(InvitationError::UnsupportedVariant),
+            _n => Err(AppError::exp(StatusCode::BAD_REQUEST, "Unsupported invitation variant")),
         }
     }
 }
@@ -255,7 +254,7 @@ impl From<Expiration> for Duration {
 }
 
 impl TryFrom<i32> for Expiration {
-    type Error = InvitationError;
+    type Error = AppError;
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Expiration::HalfHour),
@@ -264,7 +263,7 @@ impl TryFrom<i32> for Expiration {
             3 => Ok(Expiration::HalfDay),
             4 => Ok(Expiration::Day),
             5 => Ok(Expiration::Week),
-            _n => Err(InvitationError::UnsupportedVariant),
+            _n => Err(AppError::exp(StatusCode::BAD_REQUEST, "Unsupported invitation variant")),
         }
     }
 }

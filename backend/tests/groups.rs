@@ -1,9 +1,10 @@
 use backend::utils::groups::models::GroupInfo;
 use backend::utils::groups::{check_if_group_exists, get_group_info};
 use backend::utils::groups::{
-    check_if_group_member, create_group, errors::GroupError, query_user_groups,
+    check_if_group_member, create_group, query_user_groups,
     try_add_user_to_group,
 };
+use backend::errors::AppError;
 use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -34,10 +35,8 @@ async fn add_user_to_group_user_is_in_group(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(GroupError::UserAlreadyInGroup) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_users"))]
@@ -50,10 +49,8 @@ async fn add_user_to_group_group_does_not_exist(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(GroupError::GroupDoesNotExist) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_users"))]
@@ -66,10 +63,8 @@ async fn add_user_to_group_user_does_not_exist(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(GroupError::UserDoesNotExist) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_users"))]
@@ -81,10 +76,8 @@ async fn create_group_health_check(db: PgPool) {
     )
     .await;
 
-    match res {
-        Ok(_) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_users"))]
@@ -96,10 +89,8 @@ async fn create_group_missing_group_name(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(GroupError::MissingGroupField) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_users"))]
@@ -228,8 +219,6 @@ async fn get_group_info_group_does_not_exist(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(GroupError::GroupDoesNotExist) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }

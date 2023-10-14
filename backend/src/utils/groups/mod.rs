@@ -1,10 +1,10 @@
-pub mod errors;
 pub mod models;
 
+use crate::errors::AppError;
 use self::models::*;
 use anyhow::Context;
 use axum::Json;
-use errors::*;
+use hyper::StatusCode;
 use serde_json::{json, Value};
 use sqlx::{query, query_as, Acquire, Executor, PgPool, Postgres};
 use tracing::debug;
@@ -14,7 +14,7 @@ pub async fn try_add_user_to_group<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     user_id: &Uuid,
     group_id: &Uuid,
-) -> Result<(), GroupError> {
+) -> Result<(), AppError> {
     let mut transaction = conn.begin().await?;
 
     let res = query!(
@@ -30,17 +30,17 @@ pub async fn try_add_user_to_group<'c>(
 
     if res.is_some() {
         transaction.rollback().await?;
-        return Err(GroupError::UserAlreadyInGroup);
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "User already in group"));
     }
 
     if !check_if_group_exists(&mut *transaction, group_id).await? {
         transaction.rollback().await?;
-        return Err(GroupError::GroupDoesNotExist);
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Group does not exist"));
     }
 
     if !check_if_user_exists(&mut *transaction, user_id).await? {
         transaction.rollback().await?;
-        return Err(GroupError::UserDoesNotExist);
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "User does not exist"));
     }
 
     let username = query!(
@@ -77,9 +77,9 @@ pub async fn try_add_user_to_group<'c>(
     Ok(())
 }
 
-pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<(), GroupError> {
+pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<(), AppError> {
     if name.trim().is_empty() {
-        return Err(GroupError::MissingGroupField)?;
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Missing one or more group fields"))?;
     }
 
     let mut transaction = pool.begin().await?;
@@ -133,7 +133,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
     )
     .execute(&mut *transaction)
     .await
-    .map_err(|_| GroupError::UserAlreadyInGroup)?;
+    .map_err(|_| AppError::exp(StatusCode::BAD_REQUEST, "User already in group"))?;
 
     transaction.commit().await?;
 
@@ -144,7 +144,7 @@ pub async fn check_if_group_member(
     pool: &PgPool,
     user_id: &Uuid,
     group_id: &Uuid,
-) -> Result<bool, GroupError> {
+) -> Result<bool, AppError> {
     let res = query!(
         r#"
             select * from group_users
@@ -159,7 +159,7 @@ pub async fn check_if_group_member(
     Ok(res.is_some())
 }
 
-pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> Result<Json<Value>, GroupError> {
+pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> Result<Json<Value>, AppError> {
     let groups = query_as!(
         Group,
         r#"
@@ -178,7 +178,7 @@ pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> Result<Json<Val
 pub async fn check_if_group_exists<'c>(
     exe: impl Executor<'c, Database = Postgres>,
     group_id: &Uuid,
-) -> Result<bool, GroupError> {
+) -> Result<bool, AppError> {
     let res = query!(
         r#"
             select * from groups
@@ -195,7 +195,7 @@ pub async fn check_if_group_exists<'c>(
 pub async fn check_if_user_exists<'c>(
     exe: impl Executor<'c, Database = Postgres>,
     user_id: &Uuid,
-) -> Result<bool, GroupError> {
+) -> Result<bool, AppError> {
     let res = query!(
         r#"
             select id from users
@@ -209,9 +209,9 @@ pub async fn check_if_user_exists<'c>(
     Ok(res.is_some())
 }
 
-pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo, GroupError> {
+pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo, AppError> {
     if !check_if_group_exists(pool, group_id).await? {
-        return Err(GroupError::GroupDoesNotExist)?;
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Group does not exist"))?;
     }
 
     let res = query!(
@@ -236,7 +236,7 @@ pub async fn try_remove_user_from_group(
     pool: &PgPool,
     user_id: Uuid,
     group_id: Uuid,
-) -> Result<(), GroupError> {
+) -> Result<(), AppError> {
     let _ = query!(
         r#"
             delete from group_users

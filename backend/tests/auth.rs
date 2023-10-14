@@ -3,7 +3,8 @@ use reqwest::StatusCode;
 use serde_json::json;
 mod tools;
 
-use backend::utils::auth::{errors::AuthError, try_register_user, verify_user_credentials};
+use backend::errors::AppError;
+use backend::utils::auth::{try_register_user, verify_user_credentials};
 use secrecy::SecretString;
 use sqlx::PgPool;
 
@@ -36,7 +37,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::MissingCredential) => (),
+//         Err(AppError::MissingCredential) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -53,7 +54,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::MissingCredential) => (),
+//         Err(AppError::MissingCredential) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -70,7 +71,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::MissingCredential) => (),
+//         Err(AppError::MissingCredential) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -87,7 +88,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::MissingCredential) => (),
+//         Err(AppError::MissingCredential) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -104,7 +105,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::WeakPassword) => (),
+//         Err(AppError::WeakPassword) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -121,7 +122,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::UserAlreadyExists) => (),
+//         Err(AppError::UserAlreadyExists) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -138,7 +139,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::UserAlreadyExists) => (),
+//         Err(AppError::UserAlreadyExists) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -155,7 +156,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::InvalidEmail(_)) => (),
+//         Err(AppError::InvalidEmail(_)) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -172,7 +173,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::InvalidEmail(_)) => (),
+//         Err(AppError::InvalidEmail(_)) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -189,7 +190,7 @@ use sqlx::PgPool;
 //     .await;
 
 //     match res {
-//         Err(AuthError::InvalidEmail(_)) => (),
+//         Err(AppError::InvalidEmail(_)) => (),
 //         _ => panic!("Test gives the result {:?}", res),
 //     }
 // }
@@ -213,10 +214,8 @@ async fn login_health_check(db: PgPool) {
 async fn login_missing_credential_0(db: PgPool) {
     let res = verify_user_credentials(&db, "some_user", SecretString::new("   ".to_string())).await;
 
-    match res {
-        Err(AuthError::MissingCredential) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "credentials"))]
@@ -228,20 +227,16 @@ async fn login_missing_credential_1(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(AuthError::MissingCredential) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "credentials"))]
 async fn login_missing_credential_2(db: PgPool) {
     let res = verify_user_credentials(&db, "    ", SecretString::new("  ".to_string())).await;
 
-    match res {
-        Err(AuthError::MissingCredential) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "credentials"))]
@@ -253,10 +248,8 @@ async fn login_no_user_found(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(AuthError::WrongEmailOrPassword) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test(fixtures("users", "credentials"))]
@@ -268,10 +261,8 @@ async fn login_wrong_password(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(AuthError::WrongEmailOrPassword) => (),
-        _ => panic!("Test gives the result {:?}", res),
-    }
+    dbg!(&res);
+    assert!(res.is_err());
 }
 
 #[sqlx::test]

@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::utils::roles::errors::RoleError;
 
 #[derive(Error, Debug)]
-pub enum InvitationError {
+pub enum NotAppError {
     #[error("Invitation is expired")]
     InvitationExpired,
     #[error("Unsupported invitation variant")]
@@ -18,29 +18,23 @@ pub enum InvitationError {
     Unexpected(#[from] anyhow::Error),
 }
 
-impl IntoResponse for InvitationError {
+impl IntoResponse for NotAppError {
     fn into_response(self) -> axum::response::Response {
         let status_code = match &self {
-            InvitationError::InvitationExpired => StatusCode::BAD_REQUEST,
-            InvitationError::UnsupportedVariant => StatusCode::BAD_REQUEST,
-            InvitationError::InvalidCode => StatusCode::BAD_REQUEST,
-            InvitationError::Unexpected(e) => {
+            AppError::InvitationExpired => StatusCode::BAD_REQUEST,
+            AppError::UnsupportedVariant => StatusCode::BAD_REQUEST,
+            AppError::InvalidCode => StatusCode::BAD_REQUEST,
+            AppError::Unexpected(e) => {
                 tracing::error!("Internal server error: {e:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
             }
         };
 
         let info = match self {
-            InvitationError::Unexpected(_) => "Unexpected server error".into(),
+            AppError::Unexpected(_) => "Unexpected server error".into(),
             _ => self.to_string(),
         };
 
         (status_code, Json(json!({ "error_info": info }))).into_response()
-    }
-}
-
-impl From<sqlx::Error> for InvitationError {
-    fn from(e: sqlx::Error) -> Self {
-        Self::Unexpected(anyhow::Error::from(e))
     }
 }
