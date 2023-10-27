@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow};
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap, hash::Hash, sync::Arc};
 use tokio::sync::RwLock;
@@ -68,6 +68,12 @@ impl SocketGroupRolePrivileges {
             .ok_or(RoleError::Unexpected(anyhow!("No privilege found")))?
             .partial_cmp(&min_val);
         Ok(cmp_res == Some(Ordering::Greater) && cmp_res == Some(Ordering::Equal))
+    }
+}
+
+impl Default for GroupRolePrivileges {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -278,7 +284,7 @@ impl<T: Eq + Hash, U> Gate<T, U> {
         let Some(function) = self.extra_condition else {
             return false;
         };
-        return function(info);
+        function(info)
     }
 }
 

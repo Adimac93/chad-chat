@@ -29,8 +29,8 @@ pub enum ActivityStatus {
 // todo: make as transaction with Acquire
 pub async fn try_register_user<'c>(
     pool: &PgPool,
-    ip: IpNetwork,
-    mailer: Option<Mailer>,
+    _ip: IpNetwork,
+    _mailer: Option<Mailer>,
     email: &str,
     password: SecretString,
     username: &str,
@@ -60,7 +60,7 @@ pub async fn try_register_user<'c>(
         ));
     }
 
-    let _ = RegisterCredentials::new(email, password.expose_secret(), &username)
+    RegisterCredentials::new(email, password.expose_secret(), username)
         .validate()
         .map_err(|e| AppError::exp(StatusCode::BAD_REQUEST, &format!("Invalid email: {e}")))?;
 

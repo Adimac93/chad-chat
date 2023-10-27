@@ -1,13 +1,13 @@
 use axum::{
     async_trait,
-    extract::{FromRequest, FromRequestParts},
+    extract::{FromRequestParts},
     http::{self, request::Parts},
 };
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    modules::external_api::{HttpClient, UserAgentParsed},
+    modules::external_api::{UserAgentParsed},
     state::AppState,
 };
 

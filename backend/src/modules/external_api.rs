@@ -1,20 +1,26 @@
-use anyhow::Error;
+
 use anyhow::Result;
 use reqwest::Client;
 use serde::Serialize;
 use serde::{de, Deserialize};
 use serde_json::json;
 use serde_json::Value;
-use sqlx::query;
-use sqlx::query_as;
-use sqlx::types::ipnetwork::IpNetwork;
-use sqlx::PgPool;
+
+
+
+
 use tracing::debug;
-use tracing_subscriber::field::debug;
+
 use tracing_test::traced_test;
 
 #[derive(Clone)]
 pub struct HttpClient(Client);
+
+impl Default for HttpClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl HttpClient {
     pub fn new() -> Self {
@@ -183,10 +189,10 @@ pub struct UserAgentParsed {
 use std::net::IpAddr;
 use std::str::FromStr;
 
-use crate::configuration::get_config;
-use crate::modules::database::get_postgres_pool;
 
-use super::extractors::user_agent::UserAgentData;
+
+
+
 fn bool_from_string<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: de::Deserializer<'de>,

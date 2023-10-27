@@ -2,7 +2,7 @@ use crate::modules::external_api::GeolocationData;
 use crate::modules::extractors::geolocation::NetworkData;
 use sqlx::types::ipnetwork::IpNetwork;
 use sqlx::types::Json;
-use sqlx::{query, query_as, Acquire, PgConnection, Postgres};
+use sqlx::{query, query_as, PgConnection};
 use uuid::Uuid;
 
 #[derive(Debug)]

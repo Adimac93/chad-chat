@@ -53,7 +53,7 @@ impl ApplicationSettings {
     pub fn get_addr(&self) -> SocketAddr {
         let addr = format!("{}:{}", self.host, self.port);
         addr.parse::<SocketAddr>()
-            .expect(&format!("Failed to parse address: {addr} "))
+            .unwrap_or_else(|_| panic!("Failed to parse address: {addr} "))
     }
 
     pub fn from_env() -> Self {
@@ -101,15 +101,13 @@ pub trait ConnectionPrep {
         if let Some(url) = self.compose_database_url() {
             info!("Using composed {info}");
             url
+        } else if let Some(url) = self.get_database_url() {
+            info!("Using field {info}");
+            url
         } else {
-            if let Some(url) = self.get_database_url() {
-                info!("Using field {info}");
-                url
-            } else {
-                let url = Self::env_database_url().expect("No connection info provided");
-                info!("Using env {info}");
-                url
-            }
+            let url = Self::env_database_url().expect("No connection info provided");
+            info!("Using env {info}");
+            url
         }
     }
 }
@@ -189,7 +187,7 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                         .prefix_separator("_")
                         .separator("__"),
                 );
-            return settings.build()?.try_deserialize();
+            settings.build()?.try_deserialize()
         }
 
         Environment::Production => {
@@ -198,7 +196,7 @@ pub fn get_config() -> Result<Settings, ConfigError> {
                 postgres: PostgresSettings::from_env(),
                 smtp: SmtpSettings::from_env(),
             };
-            return Ok(settings);
+            Ok(settings)
         }
     }
 }
@@ -212,7 +210,7 @@ fn try_get_secret_env(name: &str) -> Option<Secret<String>> {
 }
 
 fn get_env(name: &str) -> String {
-    std::env::var(name).expect(format!("Missing {name}").as_str())
+    std::env::var(name).unwrap_or_else(|_| panic!("Missing {name}"))
 }
 
 fn get_secret_env(name: &str) -> Secret<String> {

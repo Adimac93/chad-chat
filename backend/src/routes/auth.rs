@@ -5,11 +5,11 @@ use crate::modules::smtp::Mailer;
 use crate::state::AppState;
 use crate::utils::auth::models::*;
 use crate::utils::auth::*;
-use axum::extract::{ConnectInfo, Path, State};
-use axum::response::IntoResponse;
+use axum::extract::{ConnectInfo, State};
+
 use axum::{debug_handler, extract, http::StatusCode, Json};
 use axum::{
-    routing::{get, post},
+    routing::{post},
     Router,
 };
 use axum_extra::extract::cookie::Cookie;
@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
 use tracing::debug;
-use uuid::Uuid;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/register", post(post_register_user))
@@ -65,7 +65,7 @@ async fn post_register_user(
 async fn post_login_user(
     State(pool): State<PgPool>,
     State(token_ext): State<TokenExtractors>,
-    ConnectInfo(addr): ConnectInfo<ClientAddr>,
+    ConnectInfo(_addr): ConnectInfo<ClientAddr>,
     jar: CookieJar,
     Json(login_credentials): extract::Json<LoginCredentials>,
 ) -> Result<CookieJar, AppError> {

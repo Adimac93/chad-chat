@@ -1,17 +1,17 @@
 use axum::{
     async_trait,
-    extract::{ConnectInfo, FromRequest, FromRequestParts},
+    extract::{ConnectInfo, FromRequestParts},
     http::request::Parts,
     response::IntoResponse,
     RequestPartsExt,
 };
 use hyper::StatusCode;
-use serde::{Deserialize, Serialize};
+
 use sqlx::types::ipnetwork::IpNetwork;
 use tracing::error;
 
 use crate::{
-    modules::external_api::{GeolocationData, HttpClient},
+    modules::external_api::{GeolocationData},
     state::AppState,
 };
 

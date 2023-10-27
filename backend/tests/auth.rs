@@ -3,8 +3,8 @@ use reqwest::StatusCode;
 use serde_json::json;
 mod tools;
 
-use backend::errors::AppError;
-use backend::utils::auth::{try_register_user, verify_user_credentials};
+
+use backend::utils::auth::{verify_user_credentials};
 use secrecy::SecretString;
 use sqlx::PgPool;
 

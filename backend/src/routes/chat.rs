@@ -6,7 +6,7 @@ use crate::utils::chat::socket::{ChatState, ClientAction, ServerAction, UserCont
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::roles::models::{Gate, Role, SocketGroupRolePrivileges};
-use crate::utils::roles::privileges::{CanInvite, CanSendMessages, Privilege};
+use crate::utils::roles::privileges::{CanInvite, Privilege};
 use crate::utils::roles::{
     get_group_role_privileges, get_user_role, single_set_group_role_privileges,
     single_set_group_user_role,

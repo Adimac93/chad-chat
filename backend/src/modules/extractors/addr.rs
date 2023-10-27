@@ -1,4 +1,4 @@
-use axum::extract::{connect_info::Connected, ConnectInfo};
+use axum::extract::{connect_info::Connected};
 use hyper::server::conn::AddrStream;
 use sqlx::types::ipnetwork::IpNetwork;
 

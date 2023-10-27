@@ -11,7 +11,7 @@ async fn get_user_email_by_id_health_check(db: PgPool) {
     .await;
 
     match res {
-        Ok(email) if email == "Hubert@gmail.com".to_string() => (),
+        Ok(email) if email == *"Hubert@gmail.com" => (),
         _ => panic!("Test result is {:?}", res),
     }
 }

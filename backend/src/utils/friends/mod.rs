@@ -225,7 +225,7 @@ impl<'c> Friend<'c> {
         }
     }
     async fn add(&mut self) -> Result<(), AppError> {
-        let res = query!(
+        let _res = query!(
             r#"
                 INSERT INTO user_friends (user_id, friend_id, note)
                 VALUES ($1, $2, '')
@@ -236,7 +236,7 @@ impl<'c> Friend<'c> {
         .execute(&mut *self.conn)
         .await?;
 
-        let res = query!(
+        let _res = query!(
             r#"
                 INSERT INTO user_friends (user_id, friend_id, note)
                 VALUES ($1, $2, '')

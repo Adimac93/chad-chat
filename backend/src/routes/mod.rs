@@ -1,10 +1,10 @@
-use std::io;
+
 
 use axum::{
     debug_handler, extract::State, http::HeaderValue, response::IntoResponse, routing::get, Json,
     Router,
 };
-use hyper::{header::CONTENT_TYPE, Method, StatusCode, Uri};
+use hyper::{header::CONTENT_TYPE, StatusCode};
 use serde_json::json;
 use sqlx::PgPool;
 use tower_http::{

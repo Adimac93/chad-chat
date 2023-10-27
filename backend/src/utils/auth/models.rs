@@ -6,7 +6,7 @@ use crate::{
 use anyhow::Context;
 use axum::{
     async_trait,
-    extract::{self, FromRequest, FromRequestParts},
+    extract::{FromRequestParts},
     http::request::Parts,
 };
 use axum_extra::extract::{
@@ -240,7 +240,7 @@ impl Claims {
             jti: Uuid::new_v4(),
             user_id,
             login: login.to_string(),
-            exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
+            exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().unsigned_abs(),
         }
     }
 }
@@ -271,7 +271,7 @@ impl RefreshClaims {
             jti: Uuid::new_v4(),
             user_id,
             login: login.to_string(),
-            exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().abs() as u64,
+            exp: jsonwebtoken::get_current_timestamp() + duration.whole_seconds().unsigned_abs(),
         }
     }
 }

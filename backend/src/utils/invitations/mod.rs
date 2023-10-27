@@ -49,9 +49,8 @@ impl GroupInvitation {
     fn new(group_id: Uuid, expiration_time: Option<Expiration>, uses_left: Option<Uses>) -> Self {
         GroupInvitation {
             group_id,
-            expiration_date: expiration_time
-                .and_then(|time| Some(OffsetDateTime::now_utc() + Duration::from(time))),
-            uses_left: uses_left.and_then(|uses| Some(i32::from(uses))),
+            expiration_date: expiration_time.map(|time| OffsetDateTime::now_utc() + Duration::from(time)),
+            uses_left: uses_left.map(i32::from),
             id: nanoid!(10),
         }
     }
@@ -199,7 +198,7 @@ pub async fn try_join_group_by_code<'c>(
     }
 
     transaction.commit().await?;
-    return Ok(());
+    Ok(())
 }
 
 #[derive(Debug)]

@@ -4,7 +4,7 @@ use backend::utils::groups::{
     check_if_group_member, create_group, query_user_groups,
     try_add_user_to_group,
 };
-use backend::errors::AppError;
+
 use serde_json::Value;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -204,7 +204,7 @@ async fn get_group_info_health_check(db: PgPool) {
                     name: "Chadders".to_string(),
                 } =>
         {
-            ()
+            
         }
         _ => panic!("Test result is {:?}", res),
     }

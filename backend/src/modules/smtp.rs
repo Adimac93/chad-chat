@@ -1,12 +1,7 @@
-use std::fs;
-
-use crate::configuration::get_config;
 use crate::configuration::SmtpSettings;
 use anyhow::Context;
-use lettre::message::Attachment;
 use lettre::message::Mailbox;
 use lettre::message::MultiPart;
-use lettre::message::SinglePart;
 use lettre::transport::smtp::response::Response;
 use lettre::transport::smtp::AsyncSmtpTransport;
 use lettre::transport::smtp::Error;
@@ -106,7 +101,7 @@ impl Mailer {
 
 #[tokio::test]
 async fn send_html_mail() {
-    let config = get_config().unwrap();
+    let config = crate::configuration::get_config().unwrap();
     let mailer = Mailer::new(config.smtp, config.app.origin);
 
     let body = html! {
@@ -114,17 +109,17 @@ async fn send_html_mail() {
     }
     .into_string();
 
-    let image = fs::read("./assets/chad.jpg").unwrap();
+    let image = std::fs::read("./assets/chad.jpg").unwrap();
 
-    let res = mailer
+    let _res = mailer
         .send_mail(
             Mailbox::new(None, Address::new("adimac93", "gmail.com").unwrap()),
             "Test",
             MultiPart::mixed().multipart(
                 MultiPart::related()
-                    .singlepart(SinglePart::html(body))
+                    .singlepart(lettre::message::SinglePart::html(body))
                     .singlepart(
-                        Attachment::new_inline(String::from("123"))
+                        lettre::message::Attachment::new_inline(String::from("123"))
                             .body(image, "image/png".parse().unwrap()),
                     ),
             ),

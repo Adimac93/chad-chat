@@ -12,6 +12,12 @@ use super::{errors::RoleError, models::PrivilegeChangeData};
 #[serde(rename_all = "snake_case")]
 pub struct Privileges(pub HashSet<Privilege>);
 
+impl Default for Privileges {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Privileges {
     pub fn new() -> Self {
         Self(HashSet::new())

@@ -1,9 +1,7 @@
 ﻿use argon2::hash_encoded;
-use rand::seq::{IteratorRandom, SliceRandom};
-use rand::{
-    distributions::{Alphanumeric, Uniform},
-    thread_rng, Rng,
-};
+use rand::distributions::Alphanumeric;
+use rand::seq::IteratorRandom;
+use rand::{thread_rng, Rng};
 use secrecy::{ExposeSecret, SecretString};
 use std::collections::HashSet;
 

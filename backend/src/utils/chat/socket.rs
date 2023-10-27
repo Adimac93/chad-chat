@@ -27,6 +27,12 @@ pub struct ChatState {
     pub groups: Groups,
 }
 
+impl Default for ChatState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChatState {
     pub fn new() -> Self {
         Self {
@@ -64,7 +70,7 @@ impl GroupController {
         Self {
             channel: GroupChannel::new(capacity),
             users: Users::new(),
-            privileges: privileges,
+            privileges,
         }
     }
 }
@@ -99,7 +105,7 @@ impl UserConnections {
     async fn send_across_all(&self, msg: &ServerAction) {
         let guard = self.0.read().await;
         for (_, connection) in guard.iter() {
-            connection.sender.send(msg).await;
+            connection.sender.send(msg).await.unwrap();
         }
     }
 }
@@ -275,10 +281,10 @@ impl UserController {
                 data.value
             )))?;
 
-        Ok(user
-            .connections
+        user.connections
             .send_across_all(&ServerAction::SetPrivileges(privileges))
-            .await)
+            .await;
+        Ok(())
     }
 
     pub async fn get_role(&self, user_id: Uuid) -> Option<Role> {
@@ -292,7 +298,7 @@ impl UserController {
             .read()
             .await
             .get(&user_id)
-            .and_then(|x| Some(x.role))
+            .map(|x| x.role)
     }
 
     pub fn get_group_privileges(&self) -> Option<&SocketGroupRolePrivileges> {
@@ -350,7 +356,7 @@ impl UserChannelListener {
 
     pub async fn disconnect_with_action(self, action: &ServerAction) {
         self.task.abort();
-        self.sender.send(action).await;
+        self.sender.send(action).await.unwrap();
     }
 }
 
@@ -432,7 +438,7 @@ impl UserSender {
                 _ = main_loop => {}
                 _ = task_notifier.notified() => {}
             };
-            return task_sender;
+            task_sender
         })
     }
 }
@@ -582,12 +588,12 @@ impl GroupReceiver {
     }
 
     async fn next_action(&mut self) -> Result<ServerAction, RecvError> {
-        return match self.0.recv().await {
+        match self.0.recv().await {
             Ok(msg) => Ok(msg),
             Err(e) => {
                 debug!("Recv error: {e}");
                 Err(e)
             }
-        };
+        }
     }
 }
