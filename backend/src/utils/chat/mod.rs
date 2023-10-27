@@ -3,6 +3,8 @@ pub mod models;
 pub mod socket;
 
 use anyhow::Context;
+use crate::errors::DbErrMessage;
+use futures::TryFutureExt;
 use hyper::StatusCode;
 use sqlx::{query, PgPool};
 use uuid::Uuid;
@@ -53,6 +55,19 @@ pub async fn create_message(
         return Err(AppError::exp(StatusCode::BAD_REQUEST, "Empty message"));
     }
 
+    insert_message(pool, user_id, group_id, content).map_err(|e| DbErrMessage::new(e)
+        .fk(StatusCode::BAD_REQUEST, "Group or user does not exist")
+    ).await?;
+
+    Ok(())
+}
+
+async fn insert_message(
+    pool: &PgPool,
+    user_id: &Uuid,
+    group_id: &Uuid,
+    content: &str,
+) -> sqlx::Result<()> {
     query!(
         r#"
             INSERT INTO messages (content, user_id, group_id)
@@ -63,8 +78,8 @@ pub async fn create_message(
         group_id
     )
     .execute(pool)
-    .await
-    .context("Failed to add message")?;
+    .await?;
+
     Ok(())
 }
 

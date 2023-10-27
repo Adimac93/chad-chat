@@ -1,7 +1,7 @@
 pub mod models;
 
 use self::models::*;
-use crate::errors::AppError;
+use crate::errors::{AppError, DbErrMessage};
 use anyhow::Context;
 use axum::Json;
 use hyper::StatusCode;
@@ -17,41 +17,6 @@ pub async fn try_add_user_to_group<'c>(
 ) -> Result<(), AppError> {
     let mut transaction = conn.begin().await?;
 
-    let res = query!(
-        r#"
-            SELECT * FROM group_users 
-            WHERE user_id = $1 AND group_id = $2
-        "#,
-        user_id,
-        group_id
-    )
-    .fetch_optional(&mut *transaction)
-    .await?;
-
-    if res.is_some() {
-        transaction.rollback().await?;
-        return Err(AppError::exp(
-            StatusCode::BAD_REQUEST,
-            "User already in group",
-        ));
-    }
-
-    if !check_if_group_exists(&mut *transaction, group_id).await? {
-        transaction.rollback().await?;
-        return Err(AppError::exp(
-            StatusCode::BAD_REQUEST,
-            "Group does not exist",
-        ));
-    }
-
-    if !check_if_user_exists(&mut *transaction, user_id).await? {
-        transaction.rollback().await?;
-        return Err(AppError::exp(
-            StatusCode::BAD_REQUEST,
-            "User does not exist",
-        ));
-    }
-
     let username = query!(
         r#"
             SELECT (username) FROM users
@@ -64,6 +29,24 @@ pub async fn try_add_user_to_group<'c>(
     .username;
 
     debug!("Adding user '{username}' to group ");
+    insert_group_user(&mut *transaction, user_id, &username, group_id).await.map_err(|e| DbErrMessage::new(e)
+        .unique(StatusCode::BAD_REQUEST, "User already in group")
+        .fk(StatusCode::BAD_REQUEST, "User or group does not exist")
+    )?;
+
+    transaction.commit().await?;
+
+    Ok(())
+}
+
+async fn insert_group_user<'c>(
+    conn: impl Acquire<'c, Database = Postgres>,
+    user_id: &Uuid,
+    username: &str,
+    group_id: &Uuid,
+) -> sqlx::Result<()> {
+    let mut tr = conn.begin().await?;
+
     query!(
         r#"
             INSERT INTO group_users (user_id, group_id, nickname, role_id)
@@ -78,10 +61,8 @@ pub async fn try_add_user_to_group<'c>(
         group_id,
         username
     )
-    .execute(&mut *transaction)
+    .execute(&mut *tr)
     .await?;
-
-    transaction.commit().await?;
 
     Ok(())
 }

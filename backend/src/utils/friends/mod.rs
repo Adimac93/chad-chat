@@ -119,7 +119,7 @@ pub struct TaggedUsername {
 }
 
 impl TaggedUsername {
-    pub async fn id(&self, conn: &mut PgConnection) -> Result<Option<Uuid>, AppError> {
+    pub async fn id(&self, conn: &mut PgConnection) -> sqlx::Result<Option<Uuid>> {
         let user_id = query!(
             r#"
                 SELECT id FROM users
@@ -151,7 +151,7 @@ impl<'c> Invitation<'c> {
         }
     }
 
-    pub async fn send(&mut self) -> Result<(), AppError> {
+    pub async fn send(&mut self) -> sqlx::Result<()> {
         query!(
             r#"
                 INSERT INTO friend_requests (sender_id, receiver_id)
@@ -193,7 +193,8 @@ impl<'c> Invitation<'c> {
 
         Ok(())
     }
-    pub async fn is_pending(&mut self) -> Result<bool, AppError> {
+
+    pub async fn is_pending(&mut self) -> sqlx::Result<bool> {
         let is_pending = query!(
             r#"
                 SELECT * FROM friend_requests
@@ -224,7 +225,10 @@ impl<'c> Friend<'c> {
             conn,
         }
     }
-    async fn add(&mut self) -> Result<(), AppError> {
+
+    async fn add(&mut self) -> sqlx::Result<()> {
+        let mut tr = self.conn.begin().await?;
+
         let _res = query!(
             r#"
                 INSERT INTO user_friends (user_id, friend_id, note)
@@ -233,7 +237,7 @@ impl<'c> Friend<'c> {
             self.user_id,
             self.friend_id
         )
-        .execute(&mut *self.conn)
+        .execute(&mut *tr)
         .await?;
 
         let _res = query!(
@@ -244,13 +248,15 @@ impl<'c> Friend<'c> {
             self.friend_id,
             self.user_id,
         )
-        .execute(&mut *self.conn)
+        .execute(&mut *tr)
         .await?;
+
+        tr.commit().await;
 
         Ok(())
     }
 
-    async fn remove(&mut self) -> Result<(), AppError> {
+    async fn remove(&mut self) -> sqlx::Result<()> {
         query!(
             r#"
                 DELETE FROM user_friends
@@ -268,7 +274,7 @@ impl<'c> Friend<'c> {
         Ok(())
     }
 
-    pub async fn change_note(&mut self, note: String) -> Result<(), AppError> {
+    pub async fn change_note(&mut self, note: String) -> sqlx::Result<()> {
         query!(
             r#"
                 UPDATE user_friends
@@ -284,7 +290,8 @@ impl<'c> Friend<'c> {
 
         Ok(())
     }
-    pub async fn is_friend(&mut self) -> Result<bool, AppError> {
+    
+    pub async fn is_friend(&mut self) -> sqlx::Result<bool> {
         let is_friend = query!(
             r#"
                 SELECT * FROM user_friends
@@ -311,7 +318,7 @@ impl<'c> User<'c> {
         Self { user_id, conn }
     }
 
-    pub async fn friends(&mut self) -> Result<Vec<FriendModel>, AppError> {
+    pub async fn friends(&mut self) -> sqlx::Result<Vec<FriendModel>> {
         let friends = query_as!(
         FriendModel,
         r#"
