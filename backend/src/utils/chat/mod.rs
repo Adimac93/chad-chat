@@ -15,8 +15,8 @@ pub async fn get_group_nickname(
 ) -> Result<String, ChatError> {
     let res = query!(
         r#"
-            select nickname from group_users
-            where user_id = $1 and group_id = $2
+            SELECT nickname FROM group_users
+            WHERE user_id = $1 AND group_id = $2
         "#,
         user_id,
         group_id
@@ -54,8 +54,8 @@ pub async fn create_message(
 
     query!(
         r#"
-            insert into messages (content, user_id, group_id)
-            values ($1, $2, $3)
+            INSERT INTO messages (content, user_id, group_id)
+            VALUES ($1, $2, $3)
         "#,
         content,
         user_id,
@@ -75,9 +75,9 @@ mod test {
         let name = String::from("abc");
         let _res = query!(
             r#"
-                insert into groups (name)
-                values ($1)
-                returning id
+                INSERT INTO groups (name)
+                VALUES ($1)
+                RETURNING id
             "#,
             name
         )

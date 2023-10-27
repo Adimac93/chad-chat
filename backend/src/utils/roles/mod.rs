@@ -32,11 +32,11 @@ pub async fn get_group_role_privileges(
 ) -> Result<GroupRolePrivileges, RoleError> {
     let query_res = query!(
         r#"
-            select group_roles.role_type as "role_type: Role", roles.can_invite, roles.can_send_messages from
-                group_roles join roles on group_roles.role_id = roles.id
-                where group_roles.group_id = $1
-                and group_roles.role_type in ('member', 'admin')
-                order by group_roles.role_type
+            SELECT group_roles.role_type as "role_type: Role", roles.can_invite, roles.can_send_messages from
+                group_roles JOIN roles ON group_roles.role_id = roles.id
+                WHERE group_roles.group_id = $1
+                AND group_roles.role_type IN ('member', 'admin')
+                ORDER BY group_roles.role_type
         "#,
         group_id
     )
@@ -65,12 +65,12 @@ pub async fn single_set_group_user_role<'c>(
 
     let _res = query!(
         r#"
-            update group_users
-                set role_id = group_roles.role_id
-                from group_roles
-                where group_roles.group_id = $1
-                and group_users.user_id = $2
-                and group_roles.role_type = $3
+            UPDATE group_users
+            SET role_id = group_roles.role_id
+            FROM group_roles
+            WHERE group_roles.group_id = $1
+            AND group_users.user_id = $2
+            AND group_roles.role_type = $3
         "#,
         data.group_id,
         data.user_id,
@@ -91,13 +91,13 @@ pub async fn get_user_role(
 ) -> Result<Role, RoleError> {
     let res = query!(
         r#"
-            select
-                group_roles.role_type as "role: Role"
-                from group_users join
-                    roles join group_roles on roles.id = group_roles.role_id
-                on group_users.role_id = roles.id
-                where group_users.user_id = $1
-                and group_users.group_id = $2
+            SELECT group_roles.role_type AS "role: Role"
+            FROM group_users 
+            JOIN roles 
+            JOIN group_roles ON roles.id = group_roles.role_id
+            ON group_users.role_id = roles.id
+            WHERE group_users.user_id = $1
+            AND group_users.group_id = $2
         "#,
         user_id,
         group_id,

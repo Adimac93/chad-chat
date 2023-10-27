@@ -25,8 +25,8 @@ impl<'c> NetworkQuery<'c> {
     pub async fn add_network(&mut self, geo: GeolocationData) -> anyhow::Result<()> {
         query!(
             r#"
-                insert into networks (ip, geolocation_data)
-                values ($1, $2)
+                INSERT INTO networks (ip, geolocation_data)
+                VALUES ($1, $2)
             "#,
             self.ip,
             Json(geo) as _
@@ -40,8 +40,8 @@ impl<'c> NetworkQuery<'c> {
     pub async fn assign(&mut self, user_id: &Uuid, is_trusted: bool) -> anyhow::Result<()> {
         query!(
             r#"
-                insert into user_networks (network_ip, user_id, is_trusted)
-                values ($1, $2, $3)
+                INSERT INTO user_networks (network_ip, user_id, is_trusted)
+                VALUES ($1, $2, $3)
             "#,
             self.ip,
             user_id,
@@ -57,7 +57,7 @@ impl<'c> NetworkQuery<'c> {
         let res = query_as!(
             NetworkData,
             r#"
-                select ip as "ip: IpNetwork", geolocation_data as "geolocation_data: GeolocationData" from networks
+                SELECT ip as "ip: IpNetwork", geolocation_data as "geolocation_data: GeolocationData" FROM networks
             "#
         ).fetch_all(&mut *self.conn).await?;
         Ok(res)
@@ -67,9 +67,9 @@ impl<'c> NetworkQuery<'c> {
         let res = query_as!(
             UserNetworkData,
             r#"
-                select n.ip as "ip: IpNetwork", n.geolocation_data as "geo: GeolocationData", un.is_trusted from user_networks un
-                join networks n on n.ip = un.network_ip
-                where user_id = $1
+                SELECT n.ip as "ip: IpNetwork", n.geolocation_data as "geo: GeolocationData", un.is_trusted FROM user_networks un
+                JOIN networks n ON n.ip = un.network_ip
+                WHERE user_id = $1
             "#,
             user_id
         ).fetch_all(&mut *self.conn).await?;
@@ -79,8 +79,8 @@ impl<'c> NetworkQuery<'c> {
     pub async fn is_new(&mut self) -> anyhow::Result<bool> {
         let res = query!(
             r#"
-                select * from networks
-                where ip = $1
+                SELECT * FROM networks
+                WHERE ip = $1
             "#,
             self.ip
         )
@@ -94,8 +94,8 @@ impl<'c> NetworkQuery<'c> {
     pub async fn is_trusted(&mut self, user_id: &Uuid) -> anyhow::Result<bool> {
         let res = query!(
             r#"
-                select is_trusted from user_networks
-                where user_id = $1 and network_ip = $2
+                SELECT is_trusted FROM user_networks
+                WHERE user_id = $1 AND network_ip = $2
             "#,
             user_id,
             &self.ip

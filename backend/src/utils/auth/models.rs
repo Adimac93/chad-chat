@@ -1,6 +1,7 @@
 use crate::{
+    errors::AppError,
     modules::extractors::jwt::{JwtAccessSecret, JwtRefreshSecret, TokenExtractors},
-    state::AppState, errors::AppError,
+    state::AppState,
 };
 use anyhow::Context;
 use axum::{
@@ -52,7 +53,9 @@ impl AuthToken for Claims {
     }
 
     async fn get_jwt_cookie(jar: CookieJar) -> Result<Cookie<'static>, AppError> {
-        jar.get("jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token")).cloned()
+        jar.get("jwt")
+            .ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
+            .cloned()
     }
 
     async fn decode_jwt(token: &str, key: Secret<String>) -> Result<Self, AppError> {
@@ -75,8 +78,8 @@ impl AuthToken for Claims {
         // verify blacklist
         Ok(query!(
             r#"
-                select * from jwt_blacklist
-                where token_id = $1;
+                SELECT * FROM jwt_blacklist
+                WHERE token_id = $1;
             "#,
             self.jti
         )
@@ -117,8 +120,8 @@ impl AuthToken for Claims {
 
         let _res = query!(
             r#"
-                insert into jwt_blacklist (token_id, expiry)
-                values ($1, $2)
+                INSERT INTO jwt_blacklist (token_id, expiry)
+                VALUES ($1, $2)
             "#,
             self.jti,
             exp,
@@ -167,8 +170,8 @@ impl AuthToken for RefreshClaims {
         // verify blacklist
         Ok(query!(
             r#"
-                select * from jwt_blacklist
-                where token_id = $1;
+                SELECT * FROM jwt_blacklist
+                WHERE token_id = $1;
             "#,
             self.jti
         )
@@ -209,8 +212,8 @@ impl AuthToken for RefreshClaims {
 
         let _res = query!(
             r#"
-                insert into jwt_blacklist (token_id, expiry)
-                values ($1, $2)
+                INSERT INTO jwt_blacklist (token_id, expiry)
+                VALUES ($1, $2)
             "#,
             self.jti,
             exp,

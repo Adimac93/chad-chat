@@ -62,7 +62,7 @@ pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
 
 #[debug_handler]
 async fn health_check(State(pool): State<PgPool>) -> impl IntoResponse {
-    let is_database_connected = sqlx::query("select 1").fetch_one(&pool).await.is_ok();
+    let is_database_connected = sqlx::query("SELECT 1").fetch_one(&pool).await.is_ok();
     if is_database_connected {
         return (
             StatusCode::OK,

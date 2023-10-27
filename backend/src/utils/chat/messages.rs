@@ -15,11 +15,11 @@ pub async fn fetch_last_messages_in_range(
     let messages = query_as!(
         GroupUserMessageModel,
         r#"
-            select gu.nickname, m.content, m.sent_at from messages as m
-            join group_users gu on m.group_id = gu.group_id
-            where m.group_id = $1
-            order by id desc
-            limit $2 offset $3
+            SELECT gu.nickname, m.content, m.sent_at from messages as m
+            JOIN group_users gu ON m.group_id = gu.group_id
+            WHERE m.group_id = $1
+            ORDER BY id DESC
+            LIMIT $2 OFFSET $3
         "#,
         group_id,
         limit,

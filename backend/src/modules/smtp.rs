@@ -64,8 +64,6 @@ impl Mailer {
     ) -> Result<(), anyhow::Error> {
         let email = email.parse::<Address>().context("Failed to parse email")?;
 
-        let url = "https://chad-chat.up.railway.app";
-
         let body = html! {
             h1 {"Dear chadder!"}
             p {"We are kindly grateful that you have decided to join us!"}

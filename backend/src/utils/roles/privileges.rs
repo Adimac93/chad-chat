@@ -113,11 +113,11 @@ impl<'c> QueryPrivilege<'c> for CanInvite {
 
         let _res = query!(
             r#"
-                update roles
-                    set can_invite = $1
+                UPDATE roles
+                    SET can_invite = $1
                     from group_roles
-                    where group_roles.group_id = $2
-                    and group_roles.role_type = $3
+                    WHERE group_roles.group_id = $2
+                    AND group_roles.role_type = $3
             "#,
             val,
             data.group_id,
@@ -157,11 +157,11 @@ impl<'c> QueryPrivilege<'c> for CanSendMessages {
 
         let _res = query!(
             r#"
-                update roles
-                    set can_send_messages = $1
+                UPDATE roles
+                    SET can_send_messages = $1
                     from group_roles
-                    where group_roles.group_id = $2
-                    and group_roles.role_type = $3
+                    WHERE group_roles.group_id = $2
+                    AND group_roles.role_type = $3
             "#,
             val,
             data.group_id,

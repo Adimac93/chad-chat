@@ -66,12 +66,12 @@ pub async fn try_create_group_invitation_with_code(
     let invitation = GroupInvitation::try_from(invitation)?;
     query!(
         r#"
-            insert into group_invitations
+            INSERT INTO group_invitations
             (
             user_id, group_id,
             id, expiration_date, uses_left
             )
-            values ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, $5)
         "#,
         &user_id,
         invitation.group_id,
@@ -85,25 +85,25 @@ pub async fn try_create_group_invitation_with_code(
     Ok(invitation.id)
 }
 
-pub async fn fetch_group_info_by_code(
-    pool: &PgPool,
-    code: &str,
-) -> Result<GroupInfo, AppError> {
+pub async fn fetch_group_info_by_code(pool: &PgPool, code: &str) -> Result<GroupInfo, AppError> {
     let mut transaction = pool.begin().await?;
     let res = query!(
         r#"
-            select groups.name, groups.id as group_id, count(*) as members_count from group_invitations
-            join groups on groups.id = group_invitations.group_id
-            join group_users on groups.id = group_users.group_id
-            where group_invitations.id = $1
-            group by groups.id
+            SELECT groups.name, groups.id as group_id, count(*) as members_count FROM group_invitations
+            JOIN groups ON groups.id = group_invitations.group_id
+            JOIN group_users ON groups.id = group_users.group_id
+            WHERE group_invitations.id = $1
+            GROUP BY groups.id
         "#,
         code,
     )
     .fetch_optional(&mut *transaction)
     .await?;
 
-    let invitation = res.ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Invalid group invitation code"))?;
+    let invitation = res.ok_or(AppError::exp(
+        StatusCode::BAD_REQUEST,
+        "Invalid group invitation code",
+    ))?;
 
     Ok(GroupInfo {
         name: invitation.name,
@@ -124,23 +124,26 @@ pub async fn try_join_group_by_code<'c>(
     let Some(invitation) = query_as!(
         GroupInvitation,
         r#"
-            select group_id, expiration_date, id, uses_left from group_invitations
-            where id = $1
+            SELECT group_id, expiration_date, id, uses_left from group_invitations
+            WHERE id = $1
         "#,
         code
     )
     .fetch_optional(&mut *transaction)
     .await?
     else {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Invalid group invitation code"))?;
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Invalid group invitation code",
+        ))?;
     };
 
     match invitation.uses_left {
         Some(use_number) if use_number <= 0 => {
             let _res = query!(
                 r"
-                    delete from group_invitations
-                    where id = $1
+                    DELETE FROM group_invitations
+                    WHERE id = $1
                 ",
                 invitation.id
             )
@@ -149,7 +152,10 @@ pub async fn try_join_group_by_code<'c>(
 
             transaction.commit().await?;
 
-            return Err(AppError::exp(StatusCode::BAD_REQUEST, "Invitation is expired"))?;
+            return Err(AppError::exp(
+                StatusCode::BAD_REQUEST,
+                "Invitation is expired",
+            ))?;
         }
         _ => (),
     }
@@ -158,8 +164,8 @@ pub async fn try_join_group_by_code<'c>(
         Some(expiry) if expiry < OffsetDateTime::now_utc() => {
             let _res = query!(
                 r"
-                    delete from group_invitations
-                    where id = $1
+                    DELETE FROM group_invitations
+                    WHERE id = $1
                 ",
                 invitation.id
             )
@@ -168,7 +174,10 @@ pub async fn try_join_group_by_code<'c>(
 
             transaction.commit().await?;
 
-            return Err(AppError::exp(StatusCode::BAD_REQUEST, "Invitation is expired"))?;
+            return Err(AppError::exp(
+                StatusCode::BAD_REQUEST,
+                "Invitation is expired",
+            ))?;
         }
         _ => (),
     }
@@ -178,9 +187,9 @@ pub async fn try_join_group_by_code<'c>(
     if let Some(use_number) = invitation.uses_left {
         let _res = query!(
             r"
-                update group_invitations
-                set uses_left = $1
-                where id = $2
+                UPDATE group_invitations
+                SET uses_left = $1
+                WHERE id = $2
             ",
             use_number - 1,
             invitation.id,
@@ -226,7 +235,10 @@ impl TryFrom<i32> for Uses {
             3 => Ok(Uses::TwentyFive),
             4 => Ok(Uses::Fifty),
             5 => Ok(Uses::OneHundred),
-            _n => Err(AppError::exp(StatusCode::BAD_REQUEST, "Unsupported invitation variant")),
+            _n => Err(AppError::exp(
+                StatusCode::BAD_REQUEST,
+                "Unsupported invitation variant",
+            )),
         }
     }
 }
@@ -263,7 +275,10 @@ impl TryFrom<i32> for Expiration {
             3 => Ok(Expiration::HalfDay),
             4 => Ok(Expiration::Day),
             5 => Ok(Expiration::Week),
-            _n => Err(AppError::exp(StatusCode::BAD_REQUEST, "Unsupported invitation variant")),
+            _n => Err(AppError::exp(
+                StatusCode::BAD_REQUEST,
+                "Unsupported invitation variant",
+            )),
         }
     }
 }

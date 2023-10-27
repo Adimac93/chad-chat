@@ -1,10 +1,10 @@
 use self::models::FriendModel;
 use super::auth::ActivityStatus;
+use crate::errors::AppError;
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, query_as, Acquire, PgConnection, Postgres};
 use uuid::Uuid;
-use crate::errors::AppError;
 
 pub mod models;
 
@@ -22,7 +22,10 @@ pub async fn send_friend_request_by_user_id<'c>(
 
     let mut inv = Invitation::new(user_id, request_user_id, &mut transaction);
     if inv.is_pending().await? {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Friend request already sent"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Friend request already sent",
+        ));
     }
 
     inv.send().await?;
@@ -48,7 +51,10 @@ pub async fn send_friend_request_by_username_and_tag<'c>(
 
     let mut inv = Invitation::new(user_id, receiver_id, &mut transaction);
     if inv.is_pending().await? {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Friend request already sent"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Friend request already sent",
+        ));
     }
 
     inv.send().await?;
@@ -116,8 +122,8 @@ impl TaggedUsername {
     pub async fn id(&self, conn: &mut PgConnection) -> Result<Option<Uuid>, AppError> {
         let user_id = query!(
             r#"
-                select id from users
-                where username = $1 and tag = $2
+                SELECT id FROM users
+                WHERE username = $1 AND tag = $2
             "#,
             self.username,
             self.tag as i32
@@ -148,8 +154,8 @@ impl<'c> Invitation<'c> {
     pub async fn send(&mut self) -> Result<(), AppError> {
         query!(
             r#"
-                insert into friend_requests (sender_id, receiver_id)
-                values ($1, $2)
+                INSERT INTO friend_requests (sender_id, receiver_id)
+                VALUES ($1, $2)
             "#,
             self.sender_id,
             self.receiver_id
@@ -163,16 +169,19 @@ impl<'c> Invitation<'c> {
     pub async fn respond(&mut self, is_accepted: bool) -> Result<(), AppError> {
         query!(
             r#"
-                delete from friend_requests
-                where sender_id = $1 and receiver_id = $2
-                returning *
+                DELETE FROM friend_requests
+                WHERE sender_id = $1 AND receiver_id = $2
+                RETURNING *
             "#,
             self.sender_id,
             self.receiver_id,
         )
         .fetch_optional(&mut *self.conn)
         .await?
-        .ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Friend request is missing"))?;
+        .ok_or(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Friend request is missing",
+        ))?;
 
         if !is_accepted {
             return Ok(());
@@ -187,8 +196,8 @@ impl<'c> Invitation<'c> {
     pub async fn is_pending(&mut self) -> Result<bool, AppError> {
         let is_pending = query!(
             r#"
-                select * from friend_requests
-                where sender_id = $1 and receiver_id = $2
+                SELECT * FROM friend_requests
+                WHERE sender_id = $1 AND receiver_id = $2
             "#,
             self.sender_id,
             self.receiver_id
@@ -218,8 +227,8 @@ impl<'c> Friend<'c> {
     async fn add(&mut self) -> Result<(), AppError> {
         let res = query!(
             r#"
-                insert into user_friends (user_id, friend_id, note)
-                values ($1, $2, '')
+                INSERT INTO user_friends (user_id, friend_id, note)
+                VALUES ($1, $2, '')
             "#,
             self.user_id,
             self.friend_id
@@ -229,8 +238,8 @@ impl<'c> Friend<'c> {
 
         let res = query!(
             r#"
-                insert into user_friends (user_id, friend_id, note)
-                values ($1, $2, '')
+                INSERT INTO user_friends (user_id, friend_id, note)
+                VALUES ($1, $2, '')
             "#,
             self.friend_id,
             self.user_id,
@@ -244,11 +253,11 @@ impl<'c> Friend<'c> {
     async fn remove(&mut self) -> Result<(), AppError> {
         query!(
             r#"
-                delete from user_friends
-                where 
-                (user_id = $1 and friend_id = $2)
+                DELETE FROM user_friends
+                WHERE 
+                (user_id = $1 AND friend_id = $2)
                 or 
-                (user_id = $2 and friend_id = $1)
+                (user_id = $2 AND friend_id = $1)
             "#,
             self.user_id,
             self.friend_id
@@ -262,9 +271,9 @@ impl<'c> Friend<'c> {
     pub async fn change_note(&mut self, note: String) -> Result<(), AppError> {
         query!(
             r#"
-                update user_friends
-                set note = $1
-                where user_id = $2 and friend_id = $3
+                UPDATE user_friends
+                SET note = $1
+                WHERE user_id = $2 AND friend_id = $3
             "#,
             note,
             self.user_id,
@@ -278,8 +287,8 @@ impl<'c> Friend<'c> {
     pub async fn is_friend(&mut self) -> Result<bool, AppError> {
         let is_friend = query!(
             r#"
-                select * from user_friends
-                where user_id = $1 and friend_id = $2
+                SELECT * FROM user_friends
+                WHERE user_id = $1 AND friend_id = $2
             "#,
             self.user_id,
             self.friend_id
@@ -306,9 +315,9 @@ impl<'c> User<'c> {
         let friends = query_as!(
         FriendModel,
         r#"
-            select users.activity_status as "status: ActivityStatus", users.profile_picture_url, user_friends.note from user_friends
-            join users on users.id = user_friends.friend_id
-            where user_id = $1
+            SELECT users.activity_status as "status: ActivityStatus", users.profile_picture_url, user_friends.note FROM user_friends
+            JOIN users ON users.id = user_friends.friend_id
+            WHERE user_id = $1
         "#,
         self.user_id
         )

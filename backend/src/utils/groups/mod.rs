@@ -1,7 +1,7 @@
 pub mod models;
 
-use crate::errors::AppError;
 use self::models::*;
+use crate::errors::AppError;
 use anyhow::Context;
 use axum::Json;
 use hyper::StatusCode;
@@ -19,8 +19,8 @@ pub async fn try_add_user_to_group<'c>(
 
     let res = query!(
         r#"
-            select * from group_users 
-            where user_id = $1 and group_id = $2
+            SELECT * FROM group_users 
+            WHERE user_id = $1 AND group_id = $2
         "#,
         user_id,
         group_id
@@ -30,23 +30,32 @@ pub async fn try_add_user_to_group<'c>(
 
     if res.is_some() {
         transaction.rollback().await?;
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "User already in group"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "User already in group",
+        ));
     }
 
     if !check_if_group_exists(&mut *transaction, group_id).await? {
         transaction.rollback().await?;
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Group does not exist"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Group does not exist",
+        ));
     }
 
     if !check_if_user_exists(&mut *transaction, user_id).await? {
         transaction.rollback().await?;
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "User does not exist"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "User does not exist",
+        ));
     }
 
     let username = query!(
         r#"
-            select (username) from users
-            where id = $1
+            SELECT (username) FROM users
+            WHERE id = $1
         "#,
         user_id
     )
@@ -57,12 +66,12 @@ pub async fn try_add_user_to_group<'c>(
     debug!("Adding user '{username}' to group ");
     query!(
         r#"
-            insert into group_users (user_id, group_id, nickname, role_id)
-            values ($1, $2, $3, (
-                select role_id
-                    from group_roles
-                    where group_roles.group_id = $2
-                    and group_roles.role_type = 'member'
+            INSERT INTO group_users (user_id, group_id, nickname, role_id)
+            VALUES ($1, $2, $3, (
+                SELECT role_id
+                FROM group_roles
+                WHERE group_roles.group_id = $2
+                AND group_roles.role_type = 'member'
             ))
         "#,
         user_id,
@@ -79,7 +88,10 @@ pub async fn try_add_user_to_group<'c>(
 
 pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<(), AppError> {
     if name.trim().is_empty() {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Missing one or more group fields"))?;
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Missing one or more group fields",
+        ))?;
     }
 
     let mut transaction = pool.begin().await?;
@@ -87,9 +99,9 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
     let group = query_as!(
         Group,
         r#"
-            insert into groups (name)
-            values ($1)
-            returning *
+            INSERT INTO groups (name)
+            VALUES ($1)
+            RETURNING *
         "#,
         name
     )
@@ -98,8 +110,8 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
 
     let username = query!(
         r#"
-            select (username) from users
-            where id = $1
+            SELECT (username) FROM users
+            WHERE id = $1
         "#,
         user_id,
     )
@@ -109,7 +121,7 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
 
     query!(
         r#"
-            select add_group_roles($1)
+            SELECT add_group_roles($1)
         "#,
         group.id,
     )
@@ -119,12 +131,12 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
 
     query!(
         r#"
-            insert into group_users (user_id, group_id, nickname, role_id)
-            values ($1, $2, $3, (
-                select role_id
-                    from group_roles
-                    where group_roles.group_id = $2
-                    and group_roles.role_type = 'owner'
+            INSERT INTO group_users (user_id, group_id, nickname, role_id)
+            VALUES ($1, $2, $3, (
+                SELECT role_id
+                FROM group_roles
+                WHERE group_roles.group_id = $2
+                AND group_roles.role_type = 'owner'
             ))
         "#,
         user_id,
@@ -147,8 +159,8 @@ pub async fn check_if_group_member(
 ) -> Result<bool, AppError> {
     let res = query!(
         r#"
-            select * from group_users
-            where user_id = $1 and group_id = $2
+            SELECT * FROM group_users
+            WHERE user_id = $1 AND group_id = $2
         "#,
         user_id,
         group_id
@@ -163,9 +175,9 @@ pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> Result<Json<Val
     let groups = query_as!(
         Group,
         r#"
-            select groups.id, groups.name from group_users
-            join groups on groups.id = group_users.group_id
-            where user_id = $1
+            SELECT groups.id, groups.name FROM group_users
+            JOIN groups ON groups.id = group_users.group_id
+            WHERE user_id = $1
         "#,
         user_id
     )
@@ -181,8 +193,8 @@ pub async fn check_if_group_exists<'c>(
 ) -> Result<bool, AppError> {
     let res = query!(
         r#"
-            select * from groups
-            where id = $1
+            SELECT * FROM groups
+            WHERE id = $1
         "#,
         group_id
     )
@@ -198,8 +210,8 @@ pub async fn check_if_user_exists<'c>(
 ) -> Result<bool, AppError> {
     let res = query!(
         r#"
-            select id from users
-            where id = $1
+            SELECT id FROM users
+            WHERE id = $1
         "#,
         user_id
     )
@@ -211,15 +223,18 @@ pub async fn check_if_user_exists<'c>(
 
 pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo, AppError> {
     if !check_if_group_exists(pool, group_id).await? {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Group does not exist"))?;
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Group does not exist",
+        ))?;
     }
 
     let res = query!(
         r#"
-            select g.name,count(user_id) from group_users
-            join groups g on group_users.group_id = g.id
-            where group_id = $1
-            group by g.name
+            SELECT g.name,count(user_id) FROM group_users
+            JOIN groups g ON group_users.group_id = g.id
+            WHERE group_id = $1
+            GROUP BY g.name
         "#,
         group_id
     )
@@ -239,8 +254,8 @@ pub async fn try_remove_user_from_group(
 ) -> Result<(), AppError> {
     let _ = query!(
         r#"
-            delete from group_users
-            where user_id = $1 and group_id = $2
+            DELETE FROM group_users
+            WHERE user_id = $1 AND group_id = $2
         "#,
         user_id,
         group_id

@@ -276,10 +276,10 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
 
     let query_res = query!(
         r#"
-            select roles.can_invite, roles.can_send_messages
-                from group_roles join roles on group_roles.role_id = roles.id
-                where group_roles.group_id = $1
-                and group_roles.role_type = $2
+            SELECT roles.can_invite, roles.can_send_messages
+                FROM group_roles JOIN roles ON group_roles.role_id = roles.id
+                WHERE group_roles.group_id = $1
+                AND group_roles.role_type = $2
         "#,
         data.group_id,
         data.role as Role,
@@ -333,10 +333,10 @@ async fn single_set_group_role_privileges_health_check(db: PgPool) {
 
 //     let query_res = query!(
 //         r#"
-//             select roles.privileges
-//                 from group_roles join roles on group_roles.role_id = roles.id
-//                 where group_roles.group_id = $1
-//                 and group_roles.role_type = $2
+//             SELECT roles.privileges
+//                 FROM group_roles JOIN roles ON group_roles.role_id = roles.id
+//                 WHERE group_roles.group_id = $1
+//                 AND group_roles.role_type = $2
 //         "#,
 //         data.group_id,
 //         data.role as Role,
@@ -369,10 +369,10 @@ async fn single_set_group_user_role_health_check(db: PgPool) {
 
     let query_res = query!(
         r#"
-            select group_users.user_id, group_roles.role_type as "role: Role" from
-            group_users join group_roles on group_users.role_id = group_roles.role_id
-            where group_users.group_id = $1
-            and group_users.user_id = $2
+            SELECT group_users.user_id, group_roles.role_type as "role: Role" from
+            group_users JOIN group_roles ON group_users.role_id = group_roles.role_id
+            WHERE group_users.group_id = $1
+            AND group_users.user_id = $2
         "#,
         data.group_id,
         data.user_id,

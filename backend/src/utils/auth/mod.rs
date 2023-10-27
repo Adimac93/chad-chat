@@ -1,12 +1,12 @@
 pub mod additions;
 pub mod models;
 pub mod tokens;
+use crate::errors::AppError;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::{cookie::Cookie, CookieJar};
 use hyper::StatusCode;
-use crate::errors::AppError;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,7 @@ pub async fn try_register_user<'c>(
 
     let user = query!(
         r#"
-            select id from credentials where email = $1
+            SELECT id FROM credentials WHERE email = $1
         "#,
         email
     )
@@ -47,11 +47,17 @@ pub async fn try_register_user<'c>(
     .await?;
 
     if user.is_some() {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "User already exists"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "User already exists",
+        ));
     }
 
     if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Missing email or password"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Missing email or password",
+        ));
     }
 
     let _ = RegisterCredentials::new(email, password.expose_secret(), &username)
@@ -59,7 +65,10 @@ pub async fn try_register_user<'c>(
         .map_err(|e| AppError::exp(StatusCode::BAD_REQUEST, &format!("Invalid email: {e}")))?;
 
     if !additions::pass_is_strong(password.expose_secret(), &[&email]) {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Password is too weak"));
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Password is too weak",
+        ));
     }
 
     let hashed_pass = additions::hash_pass(password)
@@ -74,22 +83,26 @@ pub async fn try_register_user<'c>(
 
     let used_tags = query!(
         r#"
-            select tag from users
-            where username = $1
+            SELECT tag FROM users
+            WHERE username = $1
         "#,
         username
     )
     .fetch_all(&mut *transaction)
     .await?;
 
-    let tag = random_username_tag(used_tags.into_iter().map(|record| record.tag).collect())
-        .ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Maximum number of tags for this username"))?;
+    let tag = random_username_tag(used_tags.into_iter().map(|record| record.tag).collect()).ok_or(
+        AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Maximum number of tags for this username",
+        ),
+    )?;
 
     let user_id = query!(
         r#"
-            insert into users (username, tag, activity_status)
-            values ($1, $2, $3)
-            returning (id)
+            INSERT INTO users (username, tag, activity_status)
+            VALUES ($1, $2, $3)
+            RETURNING (id)
         "#,
         username,
         tag,
@@ -101,8 +114,8 @@ pub async fn try_register_user<'c>(
 
     query!(
         r#"
-            insert into credentials (id, email, password)
-            values ($1, $2, $3)
+            INSERT INTO credentials (id, email, password)
+            VALUES ($1, $2, $3)
         "#,
         user_id,
         email,
@@ -123,26 +136,35 @@ pub async fn verify_user_credentials(
 ) -> Result<Uuid, AppError> {
     debug!("Verifying credentials");
     if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
-        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Missing email or password"))?;
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Missing email or password",
+        ))?;
     }
 
     let res = query!(
         r#"
-            select id, password from credentials
-            where email = $1
+            SELECT id, password FROM credentials
+            WHERE email = $1
         "#,
         email
     )
     .fetch_optional(pool)
     .await?
-    .ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "Incorrect email or password"))?;
+    .ok_or(AppError::exp(
+        StatusCode::UNAUTHORIZED,
+        "Incorrect email or password",
+    ))?;
 
     match verify_encoded(&res.password, password.expose_secret().as_bytes())
         .context("Failed to verify credentials")
         .map_err(AppError::Unexpected)?
     {
         true => Ok(res.id),
-        false => Err(AppError::exp(StatusCode::UNAUTHORIZED, "Incorrect email or password")),
+        false => Err(AppError::exp(
+            StatusCode::UNAUTHORIZED,
+            "Incorrect email or password",
+        )),
     }
 }
 
@@ -192,8 +214,8 @@ pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<()
 
     let _res = query!(
         r#"
-            insert into jwt_blacklist (token_id, expiry)
-            values ($1, $2)
+            INSERT INTO jwt_blacklist (token_id, expiry)
+            VALUES ($1, $2)
         "#,
         claims.jti,
         exp,

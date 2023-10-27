@@ -224,8 +224,8 @@ async fn fetch_ip_info_test() {
 //     let geo = HttpClient::new().fetch_geolocation(ip).await.unwrap();
 //     query!(
 //         r#"
-//             insert into user_networks (ip, is_trusted, geolocation_data)
-//             values ($1, true, $2)
+//             INSERT INTO user_networks (ip, is_trusted, geolocation_data)
+//             VALUES ($1, true, $2)
 //         "#,
 //         IpNetwork::from(ip),
 //         sqlx::types::Json(&geo) as _
@@ -243,7 +243,7 @@ async fn fetch_ip_info_test() {
 
 //     let geo = query!(
 //         r#"
-//             select * from user_networks
+//             SELECT * from user_networks
 //             join
 //         "#
 //     )
