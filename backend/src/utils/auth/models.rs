@@ -4,11 +4,7 @@ use crate::{
     state::AppState,
 };
 use anyhow::Context;
-use axum::{
-    async_trait,
-    extract::{FromRequestParts},
-    http::request::Parts,
-};
+use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 use axum_extra::extract::{
     cookie::{Cookie, SameSite},
     CookieJar,
@@ -19,6 +15,7 @@ use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use sqlx::{query, PgPool};
 use time::{Duration, OffsetDateTime};
+use typeshare::typeshare;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -314,6 +311,7 @@ where
     }
 }
 
+#[typeshare]
 #[derive(Serialize, Deserialize, Validate)]
 pub struct LoginCredentials {
     #[validate(email)]
@@ -330,6 +328,7 @@ impl LoginCredentials {
     }
 }
 
+#[typeshare]
 #[derive(Serialize, Deserialize, Validate)]
 pub struct RegisterCredentials {
     #[validate(email)]

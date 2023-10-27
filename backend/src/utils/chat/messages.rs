@@ -35,7 +35,7 @@ pub async fn fetch_last_messages_in_range(
         .map(|msg| GroupUserMessage {
             content: msg.content,
             nickname: msg.nickname,
-            sat: msg.sent_at.unix_timestamp(),
+            sat: msg.sent_at.unix_timestamp() as i32,
         })
         .rev()
         .collect();

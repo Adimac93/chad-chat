@@ -3,11 +3,13 @@ use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap, hash::Hash, sync::Arc};
 use tokio::sync::RwLock;
+use typeshare::typeshare;
 use uuid::Uuid;
 
-use crate::errors::AppError;
 use super::privileges::{CanInvite, CanSendMessages, Privilege, Privileges};
+use crate::errors::AppError;
 
+#[typeshare]
 #[derive(
     sqlx::Type, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy,
 )]
@@ -161,7 +163,10 @@ impl PrivilegeChangeData {
             return Ok(());
         };
 
-        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Role not found in the group"))?;
+        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Role not found in the group",
+        ))?;
         let other_privileges = other_privileges_ref.read().await;
         let privilege = other_privileges
             .0
@@ -187,7 +192,10 @@ impl PrivilegeChangeData {
             return Ok(());
         }
 
-        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Role not found in the group"))?;
+        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Role not found in the group",
+        ))?;
         let other_privileges = other_privileges_ref.read().await;
         let privilege = other_privileges
             .0
@@ -203,6 +211,7 @@ impl PrivilegeChangeData {
     }
 }
 
+#[typeshare]
 #[derive(Serialize, Deserialize)]
 pub struct UserRoleChangeData {
     pub group_id: Uuid,

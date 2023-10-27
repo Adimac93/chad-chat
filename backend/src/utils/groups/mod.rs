@@ -29,10 +29,13 @@ pub async fn try_add_user_to_group<'c>(
     .username;
 
     debug!("Adding user '{username}' to group ");
-    insert_group_user(&mut *transaction, user_id, &username, group_id).await.map_err(|e| DbErrMessage::new(e)
-        .unique(StatusCode::BAD_REQUEST, "User already in group")
-        .fk(StatusCode::BAD_REQUEST, "User or group does not exist")
-    )?;
+    insert_group_user(&mut *transaction, user_id, &username, group_id)
+        .await
+        .map_err(|e| {
+            DbErrMessage::new(e)
+                .unique(StatusCode::BAD_REQUEST, "User already in group")
+                .fk(StatusCode::BAD_REQUEST, "User or group does not exist")
+        })?;
 
     transaction.commit().await?;
 
@@ -224,7 +227,7 @@ pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo,
 
     Ok(GroupInfo {
         name: res.name,
-        members: res.count.unwrap_or(0),
+        members: res.count.unwrap_or(0) as i32,
     })
 }
 

@@ -49,7 +49,8 @@ impl GroupInvitation {
     fn new(group_id: Uuid, expiration_time: Option<Expiration>, uses_left: Option<Uses>) -> Self {
         GroupInvitation {
             group_id,
-            expiration_date: expiration_time.map(|time| OffsetDateTime::now_utc() + Duration::from(time)),
+            expiration_date: expiration_time
+                .map(|time| OffsetDateTime::now_utc() + Duration::from(time)),
             uses_left: uses_left.map(i32::from),
             id: nanoid!(10),
         }
@@ -109,7 +110,7 @@ pub async fn fetch_group_info_by_code(pool: &PgPool, code: &str) -> Result<Group
         members: invitation
             .members_count
             .context("Members count is None")
-            .map_err(AppError::Unexpected)?, // to change
+            .map_err(AppError::Unexpected)? as i32, // to change
     })
 }
 

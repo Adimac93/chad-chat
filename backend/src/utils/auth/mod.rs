@@ -13,11 +13,13 @@ use serde::{Deserialize, Serialize};
 use sqlx::{query, types::ipnetwork::IpNetwork, PgPool};
 use time::OffsetDateTime;
 use tracing::{debug, trace};
+use typeshare::typeshare;
 use uuid::Uuid;
 use validator::Validate;
 
 use self::additions::random_username_tag;
 
+#[typeshare]
 #[derive(sqlx::Type, Debug, Serialize, Deserialize)]
 #[sqlx(type_name = "status", rename_all = "snake_case")]
 pub enum ActivityStatus {
