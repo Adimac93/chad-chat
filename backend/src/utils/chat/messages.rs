@@ -4,14 +4,14 @@ use uuid::Uuid;
 
 use super::models::{GroupUserMessage, GroupUserMessageModel};
 
-use super::errors::ChatError;
+use crate::errors::AppError;
 
 pub async fn fetch_last_messages_in_range(
     pool: &PgPool,
     group_id: &Uuid,
     limit: i64,
     offset: i64,
-) -> Result<Vec<GroupUserMessage>, ChatError> {
+) -> Result<Vec<GroupUserMessage>, AppError> {
     let messages = query_as!(
         GroupUserMessageModel,
         r#"

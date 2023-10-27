@@ -1,12 +1,15 @@
 ﻿use std::{cmp::Ordering, collections::HashSet, hash::Hash, mem::discriminant};
 
+use anyhow::anyhow;
 use axum::async_trait;
+use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, Acquire, Postgres};
 
 use crate::utils::roles::models::Role;
 
-use super::{errors::RoleError, models::PrivilegeChangeData};
+use crate::errors::AppError;
+use super::models::PrivilegeChangeData;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -100,7 +103,7 @@ pub trait QueryPrivilege<'c> {
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
         data: &PrivilegeChangeData,
-    ) -> Result<(), RoleError>;
+    ) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -109,7 +112,7 @@ impl<'c> QueryPrivilege<'c> for CanInvite {
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
         data: &PrivilegeChangeData,
-    ) -> Result<(), RoleError> {
+    ) -> Result<(), AppError> {
         let mut transaction = conn.begin().await?;
 
         let val = match self {
@@ -153,7 +156,7 @@ impl<'c> QueryPrivilege<'c> for CanSendMessages {
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
         data: &PrivilegeChangeData,
-    ) -> Result<(), RoleError> {
+    ) -> Result<(), AppError> {
         let mut transaction = conn.begin().await?;
 
         let val = match self {
@@ -183,11 +186,11 @@ impl<'c> QueryPrivilege<'c> for CanSendMessages {
 }
 
 impl TryFrom<i32> for CanSendMessages {
-    type Error = RoleError;
+    type Error = AppError;
 
     fn try_from(val: i32) -> Result<Self, Self::Error> {
         match val {
-            ..=-2 => Err(RoleError::PrivilegeInterpretationFailed),
+            ..=-2 => Err(AppError::Unexpected(anyhow!("Failed to interpret privileges"))),
             -1 => Ok(CanSendMessages::No),
             // an extra assertion is used to ensure that it won't panic (not necessary)
             0..=i32::MAX => Ok(CanSendMessages::Yes(val as usize)),

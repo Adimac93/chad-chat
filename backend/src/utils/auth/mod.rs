@@ -1,7 +1,7 @@
 pub mod additions;
 pub mod models;
 pub mod tokens;
-use crate::errors::AppError;
+use crate::errors::{AppError, DbErrMessage};
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use anyhow::Context;
 use argon2::verify_encoded;
@@ -37,6 +37,7 @@ pub async fn try_register_user<'c>(
 ) -> Result<Uuid, AppError> {
     let mut transaction = pool.begin().await?;
 
+    // delete asap
     let user = query!(
         r#"
             SELECT id FROM credentials WHERE email = $1
@@ -52,6 +53,7 @@ pub async fn try_register_user<'c>(
             "User already exists",
         ));
     }
+    // stop deleting
 
     if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
         return Err(AppError::exp(

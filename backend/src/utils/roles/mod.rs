@@ -1,12 +1,11 @@
-﻿pub mod errors;
-pub mod models;
+﻿pub mod models;
 pub mod privileges;
 
 use sqlx::{query, Acquire, PgPool, Postgres};
 use uuid::Uuid;
 
+use crate::errors::AppError;
 use self::{
-    errors::RoleError,
     models::{
         GroupRolePrivileges, PrivilegeChangeData, PrivilegeInterpretationData, Role,
         UserRoleChangeData,
@@ -17,7 +16,7 @@ use self::{
 pub async fn single_set_group_role_privileges<'c>(
     conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
     data: &PrivilegeChangeData,
-) -> Result<(), RoleError> {
+) -> Result<(), AppError> {
     match data.value {
         Privilege::CanInvite(x) => x.set_privilege(conn, data).await?,
         Privilege::CanSendMessages(x) => x.set_privilege(conn, data).await?,
@@ -29,7 +28,7 @@ pub async fn single_set_group_role_privileges<'c>(
 pub async fn get_group_role_privileges(
     pool: &PgPool,
     group_id: Uuid,
-) -> Result<GroupRolePrivileges, RoleError> {
+) -> Result<GroupRolePrivileges, AppError> {
     let query_res = query!(
         r#"
             SELECT group_roles.role_type as "role_type: Role", roles.can_invite, roles.can_send_messages from
@@ -60,7 +59,7 @@ pub async fn get_group_role_privileges(
 pub async fn single_set_group_user_role<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     data: &UserRoleChangeData,
-) -> Result<(), RoleError> {
+) -> Result<(), AppError> {
     let mut transaction = conn.begin().await?;
 
     let _res = query!(
@@ -88,7 +87,7 @@ pub async fn get_user_role(
     pool: &PgPool,
     user_id: &Uuid,
     group_id: &Uuid,
-) -> Result<Role, RoleError> {
+) -> Result<Role, AppError> {
     let res = query!(
         r#"
             SELECT group_roles.role_type AS "role: Role"

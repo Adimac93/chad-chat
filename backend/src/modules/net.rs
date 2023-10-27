@@ -22,7 +22,7 @@ impl<'c> NetworkQuery<'c> {
         Self { conn, ip }
     }
 
-    pub async fn add_network(&mut self, geo: GeolocationData) -> anyhow::Result<()> {
+    pub async fn add_network(&mut self, geo: GeolocationData) -> sqlx::Result<()> {
         query!(
             r#"
                 INSERT INTO networks (ip, geolocation_data)
@@ -37,7 +37,7 @@ impl<'c> NetworkQuery<'c> {
         Ok(())
     }
 
-    pub async fn assign(&mut self, user_id: &Uuid, is_trusted: bool) -> anyhow::Result<()> {
+    pub async fn assign(&mut self, user_id: &Uuid, is_trusted: bool) -> sqlx::Result<()> {
         query!(
             r#"
                 INSERT INTO user_networks (network_ip, user_id, is_trusted)
@@ -53,7 +53,7 @@ impl<'c> NetworkQuery<'c> {
         Ok(())
     }
 
-    pub async fn get_all(&mut self) -> anyhow::Result<Vec<NetworkData>> {
+    pub async fn get_all(&mut self) -> sqlx::Result<Vec<NetworkData>> {
         let res = query_as!(
             NetworkData,
             r#"
@@ -63,7 +63,7 @@ impl<'c> NetworkQuery<'c> {
         Ok(res)
     }
 
-    pub async fn get_all_user(&mut self, user_id: &Uuid) -> anyhow::Result<Vec<UserNetworkData>> {
+    pub async fn get_all_user(&mut self, user_id: &Uuid) -> sqlx::Result<Vec<UserNetworkData>> {
         let res = query_as!(
             UserNetworkData,
             r#"
@@ -76,7 +76,7 @@ impl<'c> NetworkQuery<'c> {
         Ok(res)
     }
 
-    pub async fn is_new(&mut self) -> anyhow::Result<bool> {
+    pub async fn is_new(&mut self) -> sqlx::Result<bool> {
         let res = query!(
             r#"
                 SELECT * FROM networks
@@ -91,7 +91,7 @@ impl<'c> NetworkQuery<'c> {
         Ok(res)
     }
 
-    pub async fn is_trusted(&mut self, user_id: &Uuid) -> anyhow::Result<bool> {
+    pub async fn is_trusted(&mut self, user_id: &Uuid) -> sqlx::Result<bool> {
         let res = query!(
             r#"
                 SELECT is_trusted FROM user_networks

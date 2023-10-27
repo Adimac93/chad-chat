@@ -1,18 +1,19 @@
-pub mod errors;
 pub mod messages;
 pub mod models;
 pub mod socket;
 
 use anyhow::Context;
-use errors::*;
+use hyper::StatusCode;
 use sqlx::{query, PgPool};
 use uuid::Uuid;
+
+use crate::errors::AppError;
 
 pub async fn get_group_nickname(
     pool: &PgPool,
     user_id: &Uuid,
     group_id: &Uuid,
-) -> Result<String, ChatError> {
+) -> Result<String, AppError> {
     let res = query!(
         r#"
             SELECT nickname FROM group_users
@@ -28,7 +29,7 @@ pub async fn get_group_nickname(
     Ok(res.nickname)
 }
 
-pub async fn get_user_email_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, ChatError> {
+pub async fn get_user_email_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, AppError> {
     let res = query!(
         r#"
             select email from credentials where id = $1
@@ -47,9 +48,9 @@ pub async fn create_message(
     user_id: &Uuid,
     group_id: &Uuid,
     content: &str,
-) -> Result<(), ChatError> {
+) -> Result<(), AppError> {
     if content.trim().is_empty() {
-        return Err(ChatError::EmptyMessage);
+        return Err(AppError::exp(StatusCode::BAD_REQUEST, "Empty message"));
     }
 
     query!(

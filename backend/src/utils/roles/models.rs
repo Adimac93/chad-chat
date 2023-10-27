@@ -1,13 +1,12 @@
-use anyhow::{anyhow};
+use anyhow::anyhow;
+use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::{cmp::Ordering, collections::HashMap, hash::Hash, sync::Arc};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use super::{
-    errors::RoleError,
-    privileges::{CanInvite, CanSendMessages, Privilege, Privileges},
-};
+use crate::errors::AppError;
+use super::privileges::{CanInvite, CanSendMessages, Privilege, Privileges};
 
 #[derive(
     sqlx::Type, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy,
@@ -61,11 +60,11 @@ impl SocketGroupRolePrivileges {
         &self,
         role: Role,
         min_val: Privilege,
-    ) -> Result<bool, RoleError> {
+    ) -> Result<bool, AppError> {
         let cmp_res = self
             .get_privilege(role, min_val)
             .await
-            .ok_or(RoleError::Unexpected(anyhow!("No privilege found")))?
+            .ok_or(AppError::Unexpected(anyhow!("No privilege found")))?
             .partial_cmp(&min_val);
         Ok(cmp_res == Some(Ordering::Greater) && cmp_res == Some(Ordering::Equal))
     }
@@ -148,7 +147,7 @@ impl PrivilegeChangeData {
     pub async fn maintain_hierarchy(
         &mut self,
         other: &SocketGroupRolePrivileges,
-    ) -> Result<(), RoleError> {
+    ) -> Result<(), AppError> {
         self.maintain_hierarchy_l(other).await?;
         self.maintain_hierarchy_h(other).await?;
         Ok(())
@@ -157,22 +156,22 @@ impl PrivilegeChangeData {
     pub async fn maintain_hierarchy_l(
         &mut self,
         other: &SocketGroupRolePrivileges,
-    ) -> Result<(), RoleError> {
+    ) -> Result<(), AppError> {
         let Some(other_role) = self.role.decrement() else {
             return Ok(());
         };
 
-        let other_privileges_ref = other.0.get(&other_role).ok_or(RoleError::RoleNotFound)?;
+        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Role not found in the group"))?;
         let other_privileges = other_privileges_ref.read().await;
         let privilege = other_privileges
             .0
             .get(&self.value)
-            .ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
+            .ok_or(AppError::Unexpected(anyhow!("Privilege not found")))?;
 
         self.value = self
             .value
             .partial_cmp_max(*privilege)
-            .ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
+            .ok_or(AppError::Unexpected(anyhow!("Mismatched privileges")))?;
 
         Ok(())
     }
@@ -180,7 +179,7 @@ impl PrivilegeChangeData {
     pub async fn maintain_hierarchy_h(
         &mut self,
         other: &SocketGroupRolePrivileges,
-    ) -> Result<(), RoleError> {
+    ) -> Result<(), AppError> {
         let Some(other_role) = self.role.increment() else {
             return Ok(());
         };
@@ -188,17 +187,17 @@ impl PrivilegeChangeData {
             return Ok(());
         }
 
-        let other_privileges_ref = other.0.get(&other_role).ok_or(RoleError::RoleNotFound)?;
+        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(StatusCode::BAD_REQUEST, "Role not found in the group"))?;
         let other_privileges = other_privileges_ref.read().await;
         let privilege = other_privileges
             .0
             .get(&self.value)
-            .ok_or(RoleError::Unexpected(anyhow!("Privilege not found")))?;
+            .ok_or(AppError::Unexpected(anyhow!("Privilege not found")))?;
 
         self.value = self
             .value
             .partial_cmp_min(*privilege)
-            .ok_or(RoleError::Unexpected(anyhow!("Mismatched privileges")))?;
+            .ok_or(AppError::Unexpected(anyhow!("Mismatched privileges")))?;
 
         Ok(())
     }
@@ -237,7 +236,7 @@ impl PrivilegeInterpretationData {
 }
 
 impl TryFrom<PrivilegeInterpretationData> for Privileges {
-    type Error = RoleError;
+    type Error = AppError;
 
     fn try_from(val: PrivilegeInterpretationData) -> Result<Self, Self::Error> {
         let mut res = Privileges::new();

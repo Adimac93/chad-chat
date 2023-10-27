@@ -1,4 +1,4 @@
-﻿use backend::utils::chat::{create_message, errors::ChatError, get_user_email_by_id};
+﻿use backend::utils::chat::{create_message, get_user_email_by_id};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -24,10 +24,7 @@ async fn get_user_email_by_id_user_does_not_exist(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(ChatError::Unexpected(_)) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    assert!(res.is_err())
 }
 
 #[sqlx::test(fixtures("users", "credentials", "groups", "roles", "group_users"))]
@@ -56,8 +53,5 @@ async fn create_message_content_is_empty(db: PgPool) {
     )
     .await;
 
-    match res {
-        Err(ChatError::EmptyMessage) => (),
-        _ => panic!("Test result is {:?}", res),
-    }
+    assert!(res.is_err())
 }

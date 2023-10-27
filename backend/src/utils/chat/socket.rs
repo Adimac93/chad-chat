@@ -1,4 +1,4 @@
-use crate::utils::roles::errors::RoleError;
+use crate::errors::AppError;
 use crate::utils::roles::models::{
     PrivilegeChangeData, Role, SocketGroupRolePrivileges, UserRoleChangeData,
 };
@@ -11,6 +11,7 @@ use axum::extract::FromRef;
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
+use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -220,11 +221,11 @@ impl UserController {
         }
     }
 
-    pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), RoleError> {
+    pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), AppError> {
         let conn = self
             .group_conn
             .as_ref()
-            .ok_or(RoleError::Unexpected(anyhow!(
+            .ok_or(AppError::Unexpected(anyhow!(
                 "No group connection found in the user controller"
             )))?;
 
@@ -233,7 +234,7 @@ impl UserController {
                 .privileges
                 .0
                 .get(&data.role)
-                .ok_or(RoleError::Unexpected(anyhow!(
+                .ok_or(AppError::Unexpected(anyhow!(
                     "No role {:?} found in a group",
                     &data.role
                 )))?;
@@ -256,18 +257,18 @@ impl UserController {
         Ok(())
     }
 
-    pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), RoleError> {
+    pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), AppError> {
         let conn = self
             .group_conn
             .as_ref()
-            .ok_or(RoleError::Unexpected(anyhow!(
+            .ok_or(AppError::Unexpected(anyhow!(
                 "No group connection found in the user controller"
             )))?;
 
         let mut users_guard = conn.controller.users.0.write().await;
         let user = users_guard
             .get_mut(&data.user_id)
-            .ok_or(RoleError::UserNotFound)?;
+            .ok_or(AppError::exp(StatusCode::BAD_REQUEST, "User not found in the group"))?;
 
         user.role = data.value;
 
@@ -276,7 +277,7 @@ impl UserController {
             .privileges
             .get_privileges(data.value)
             .await
-            .ok_or(RoleError::Unexpected(anyhow!(
+            .ok_or(AppError::Unexpected(anyhow!(
                 "No role {:?} found in the group",
                 data.value
             )))?;
@@ -315,14 +316,14 @@ impl UserController {
         &self,
         user_id: Uuid,
         min_val: Privilege,
-    ) -> Result<bool, RoleError> {
+    ) -> Result<bool, AppError> {
         let role = self
             .get_role(user_id)
             .await
-            .ok_or(RoleError::Unexpected(anyhow!("No role found for user_id")))?;
+            .ok_or(AppError::Unexpected(anyhow!("No role found for user_id")))?;
         let privileges = self
             .get_group_privileges()
-            .ok_or(RoleError::Unexpected(anyhow!("No socket privileges found")))?;
+            .ok_or(AppError::Unexpected(anyhow!("No socket privileges found")))?;
         privileges.verify_with_privilege(role, min_val).await
     }
 }
