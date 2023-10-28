@@ -119,7 +119,7 @@ pub async fn fetch_group_info_by_code(pool: &PgPool, code: &str) -> Result<Group
 
     Ok(GroupInfo {
         name: invitation.name,
-        members: invitation.members_count
+        members: invitation.members_count as i32
     })
 }
 
