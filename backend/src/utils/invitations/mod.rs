@@ -1,6 +1,6 @@
 pub mod models;
 
-use crate::errors::AppError;
+use crate::errors::{AppError, DbErrMessage};
 use anyhow::Context;
 use hyper::StatusCode;
 use nanoid::nanoid;
@@ -64,6 +64,18 @@ pub async fn try_create_group_invitation_with_code(
 ) -> Result<String, AppError> {
     debug!("{invitation:#?}");
     let invitation = GroupInvitation::try_from(invitation)?;
+    create_group_invitation_raw(pool, user_id, &invitation).await.map_err(|e|
+        DbErrMessage::new(e).fk(StatusCode::BAD_REQUEST, "Group or user does not exist")
+    )?;
+
+    Ok(invitation.id)
+}
+
+async fn create_group_invitation_raw(
+    pool: &PgPool,
+    user_id: &Uuid,
+    invitation: &GroupInvitation,
+) -> sqlx::Result<()> {
     query!(
         r#"
             INSERT INTO group_invitations
@@ -82,14 +94,14 @@ pub async fn try_create_group_invitation_with_code(
     .execute(pool)
     .await?;
 
-    Ok(invitation.id)
+    Ok(())
 }
 
 pub async fn fetch_group_info_by_code(pool: &PgPool, code: &str) -> Result<GroupInfo, AppError> {
     let mut transaction = pool.begin().await?;
     let res = query!(
         r#"
-            SELECT groups.name, groups.id as group_id, count(*) as members_count FROM group_invitations
+            SELECT groups.name, groups.id as group_id, count(*) as "members_count!" FROM group_invitations
             JOIN groups ON groups.id = group_invitations.group_id
             JOIN group_users ON groups.id = group_users.group_id
             WHERE group_invitations.id = $1
@@ -107,10 +119,7 @@ pub async fn fetch_group_info_by_code(pool: &PgPool, code: &str) -> Result<Group
 
     Ok(GroupInfo {
         name: invitation.name,
-        members: invitation
-            .members_count
-            .context("Members count is None")
-            .map_err(AppError::Unexpected)? as i32, // to change
+        members: invitation.members_count
     })
 }
 
@@ -121,7 +130,7 @@ pub async fn try_join_group_by_code<'c>(
 ) -> Result<(), AppError> {
     let mut transaction = conn.begin().await?;
 
-    let Some(invitation) = query_as!(
+    let invitation = query_as!(
         GroupInvitation,
         r#"
             SELECT group_id, expiration_date, id, uses_left from group_invitations
@@ -130,56 +139,47 @@ pub async fn try_join_group_by_code<'c>(
         code
     )
     .fetch_optional(&mut *transaction)
-    .await?
-    else {
+    .await?.ok_or(AppError::exp(
+        StatusCode::BAD_REQUEST,
+        "Invalid group invitation code",
+    ))?;
+
+    if invitation.uses_left.is_some_and(|x| x <= 0) {
+        let _res = query!(
+            r"
+                DELETE FROM group_invitations
+                WHERE id = $1
+            ",
+            invitation.id
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+
         return Err(AppError::exp(
             StatusCode::BAD_REQUEST,
-            "Invalid group invitation code",
+            "Invitation is expired",
         ))?;
-    };
-
-    match invitation.uses_left {
-        Some(use_number) if use_number <= 0 => {
-            let _res = query!(
-                r"
-                    DELETE FROM group_invitations
-                    WHERE id = $1
-                ",
-                invitation.id
-            )
-            .execute(&mut *transaction)
-            .await?;
-
-            transaction.commit().await?;
-
-            return Err(AppError::exp(
-                StatusCode::BAD_REQUEST,
-                "Invitation is expired",
-            ))?;
-        }
-        _ => (),
     }
 
-    match invitation.expiration_date {
-        Some(expiry) if expiry < OffsetDateTime::now_utc() => {
-            let _res = query!(
-                r"
-                    DELETE FROM group_invitations
-                    WHERE id = $1
-                ",
-                invitation.id
-            )
-            .execute(&mut *transaction)
-            .await?;
+    if invitation.expiration_date.is_some_and(|x| x < OffsetDateTime::now_utc()) {
+        let _res = query!(
+            r"
+                DELETE FROM group_invitations
+                WHERE id = $1
+            ",
+            invitation.id
+        )
+        .execute(&mut *transaction)
+        .await?;
 
-            transaction.commit().await?;
+        transaction.commit().await?;
 
-            return Err(AppError::exp(
-                StatusCode::BAD_REQUEST,
-                "Invitation is expired",
-            ))?;
-        }
-        _ => (),
+        return Err(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "Invitation is expired",
+        ))?;
     }
 
     try_add_user_to_group(&mut transaction, user_id, &invitation.group_id).await?; // ? better error conversion possible

@@ -1,7 +1,7 @@
 pub mod additions;
 pub mod models;
 pub mod tokens;
-use crate::errors::{AppError, DbErrMessage};
+use crate::errors::AppError;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use anyhow::Context;
 use argon2::verify_encoded;

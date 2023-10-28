@@ -7,7 +7,7 @@ use backend::utils::groups::{
 
 use serde_json::Value;
 use sqlx::PgPool;
-use uuid::Uuid;
+use uuid::{uuid, Uuid};
 
 #[sqlx::test(fixtures("users", "groups", "roles", "group_users", "group_roles"))]
 async fn add_user_to_group_health_check(db: PgPool) {
@@ -135,21 +135,13 @@ async fn query_user_groups_health_check(db: PgPool) {
     .await;
 
     match res {
-        Ok(json) => {
-            let objects = json["groups"].as_array().unwrap();
-            let mut result_vec: Vec<String> = Vec::new();
-            for elem in objects {
-                let Value::String(string_enum_val) = elem.get("id").unwrap() else {
-                    panic!()
-                };
-                result_vec.push(string_enum_val.to_string());
-            }
-            result_vec.sort();
+        Ok(result_vec) => {
+            let res: Vec<Uuid> = result_vec.into_iter().map(|x| x.id).collect();
             assert_eq!(
-                result_vec,
+                res,
                 vec![
-                    "a1fd5c51-326f-476e-a4f7-2e61a692bb56",
-                    "b8c9a317-a456-458f-af88-01d99633f8e2"
+                    uuid!("a1fd5c51-326f-476e-a4f7-2e61a692bb56"),
+                    uuid!("b8c9a317-a456-458f-af88-01d99633f8e2")
                 ]
             );
         }

@@ -2,7 +2,6 @@
 
 use anyhow::anyhow;
 use axum::async_trait;
-use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, Acquire, Postgres};
 
@@ -103,7 +102,7 @@ pub trait QueryPrivilege<'c> {
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
         data: &PrivilegeChangeData,
-    ) -> Result<(), AppError>;
+    ) -> sqlx::Result<()>;
 }
 
 #[async_trait]
@@ -112,7 +111,7 @@ impl<'c> QueryPrivilege<'c> for CanInvite {
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
         data: &PrivilegeChangeData,
-    ) -> Result<(), AppError> {
+    ) -> sqlx::Result<()> {
         let mut transaction = conn.begin().await?;
 
         let val = match self {
@@ -156,7 +155,7 @@ impl<'c> QueryPrivilege<'c> for CanSendMessages {
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
         data: &PrivilegeChangeData,
-    ) -> Result<(), AppError> {
+    ) -> sqlx::Result<()> {
         let mut transaction = conn.begin().await?;
 
         let val = match self {

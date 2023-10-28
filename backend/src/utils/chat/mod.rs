@@ -31,7 +31,7 @@ pub async fn get_group_nickname(
     Ok(res.nickname)
 }
 
-pub async fn get_user_email_by_id(pool: &PgPool, user_id: &Uuid) -> Result<String, AppError> {
+pub async fn get_user_email_by_id(pool: &PgPool, user_id: &Uuid) -> sqlx::Result<String> {
     let res = query!(
         r#"
             select email from credentials where id = $1
@@ -39,8 +39,7 @@ pub async fn get_user_email_by_id(pool: &PgPool, user_id: &Uuid) -> Result<Strin
         user_id
     )
     .fetch_one(pool)
-    .await
-    .context("Cannot fetch user email from database")?;
+    .await?;
 
     Ok(res.email)
 }

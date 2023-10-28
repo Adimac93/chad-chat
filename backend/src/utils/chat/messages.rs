@@ -1,17 +1,14 @@
-use anyhow::Context;
 use sqlx::{query_as, PgPool};
 use uuid::Uuid;
 
 use super::models::{GroupUserMessage, GroupUserMessageModel};
-
-use crate::errors::AppError;
 
 pub async fn fetch_last_messages_in_range(
     pool: &PgPool,
     group_id: &Uuid,
     limit: i64,
     offset: i64,
-) -> Result<Vec<GroupUserMessage>, AppError> {
+) -> sqlx::Result<Vec<GroupUserMessage>> {
     let messages = query_as!(
         GroupUserMessageModel,
         r#"
@@ -26,8 +23,7 @@ pub async fn fetch_last_messages_in_range(
         offset
     )
     .fetch_all(pool)
-    .await
-    .context("Failed to fetch last messages")?;
+    .await?;
 
     let messages = messages
         .into_iter()

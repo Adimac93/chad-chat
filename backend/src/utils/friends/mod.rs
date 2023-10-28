@@ -251,7 +251,7 @@ impl<'c> Friend<'c> {
         .execute(&mut *tr)
         .await?;
 
-        tr.commit().await;
+        tr.commit().await?;
 
         Ok(())
     }

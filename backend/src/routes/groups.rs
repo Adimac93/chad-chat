@@ -6,7 +6,7 @@ use crate::utils::groups::*;
 use axum::extract::State;
 use axum::Router;
 use axum::{extract::Json, routing::get};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use tracing::debug;
 
@@ -26,7 +26,7 @@ async fn get_user_groups(
         &claims.user_id, &claims.login
     );
 
-    Ok(res)
+    Ok(Json(json!({ "groups": res })))
 }
 
 async fn post_create_group(
