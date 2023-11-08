@@ -9,6 +9,7 @@ use crate::modules::extractors::addr::ClientAddr;
 use crate::{configuration::get_config, routes::app};
 use dotenv::dotenv;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, Layer};
 
 #[macro_use]
 pub extern crate tracing;
@@ -19,10 +20,14 @@ async fn main() {
     let config = get_config().expect("Failed to read configuration");
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "backend=debug".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .without_time()
+                .pretty()
+                .with_line_number(true)
+                .with_filter(EnvFilter::builder().parse("backend=trace").unwrap()),
+        )
+        .with(console_subscriber::spawn())
         .init();
 
     let addr = config.app.get_addr();
