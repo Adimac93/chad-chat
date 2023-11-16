@@ -210,23 +210,3 @@ where
 
     Ok(access_cookie)
 }
-
-pub async fn add_token_to_blacklist(pool: &PgPool, claims: &Claims) -> Result<(), AppError> {
-    let exp = OffsetDateTime::from_unix_timestamp(claims.exp as i64)
-        .context("Failed to convert timestamp to date and time with the timezone")
-        .map_err(AppError::Unexpected)?;
-
-    let _res = query!(
-        r#"
-            INSERT INTO jwt_blacklist (token_id, expiry)
-            VALUES ($1, $2)
-        "#,
-        claims.jti,
-        exp,
-    )
-    .execute(pool)
-    .await?;
-
-    trace!("Adding token to blacklist");
-    Ok(())
-}

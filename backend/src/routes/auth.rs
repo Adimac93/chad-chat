@@ -99,6 +99,8 @@ async fn post_user_logout(
     let mut validation = Validation::default();
     validation.leeway = 5;
 
+    let mut pg_tr = pool.begin().await?;
+
     if let Some(access_token_cookie) = jar.get("jwt") {
         let data = decode::<Claims>(
             access_token_cookie.value(),
@@ -107,7 +109,7 @@ async fn post_user_logout(
         );
 
         if let Ok(token_data) = data {
-            let _ = &token_data.claims.add_token_to_blacklist(&pool).await?;
+            let _ = &token_data.claims.add_token_to_blacklist(&mut *pg_tr).await?;
         }
     };
 
@@ -119,9 +121,11 @@ async fn post_user_logout(
         );
 
         if let Ok(token_data) = data {
-            let _ = &token_data.claims.add_token_to_blacklist(&pool).await?;
+            let _ = &token_data.claims.add_token_to_blacklist(&mut *pg_tr).await?;
         }
     };
+
+    pg_tr.commit().await?;
 
     debug!("User logged out successfully");
 

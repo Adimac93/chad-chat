@@ -13,7 +13,7 @@ use hyper::StatusCode;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
-use sqlx::{query, PgPool};
+use sqlx::{query, PgPool, Acquire, Postgres};
 use time::{Duration, OffsetDateTime};
 use typeshare::typeshare;
 use uuid::Uuid;
@@ -36,7 +36,7 @@ pub trait AuthToken {
     where
         Self: Sized;
     async fn check_if_in_blacklist(&self, pool: &PgPool) -> Result<bool, AppError>;
-    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AppError>;
+    async fn add_token_to_blacklist<'c>(&self, acq: impl Acquire<'c, Database = Postgres> + Send) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -111,7 +111,9 @@ impl AuthToken for Claims {
         .context("Failed to encrypt token")?)
     }
 
-    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AppError> {
+    async fn add_token_to_blacklist<'c>(&self, acq: impl Acquire<'c, Database = Postgres> + Send) -> Result<(), AppError> {
+        let mut pg_tr = acq.begin().await?;
+        
         let exp = OffsetDateTime::from_unix_timestamp(self.exp as i64)
             .context("Failed to convert timestamp to date and time with the timezone")?;
 
@@ -123,7 +125,7 @@ impl AuthToken for Claims {
             self.jti,
             exp,
         )
-        .execute(pool)
+        .execute(&mut *pg_tr)
         .await
         .context("Failed to add token to the blacklist")?;
 
@@ -203,7 +205,9 @@ impl AuthToken for RefreshClaims {
         .context("Failed to encrypt token")?)
     }
 
-    async fn add_token_to_blacklist(&self, pool: &PgPool) -> Result<(), AppError> {
+    async fn add_token_to_blacklist<'c>(&self, acq: impl Acquire<'c, Database = Postgres> + Send) -> Result<(), AppError> {
+        let mut pg_tr = acq.begin().await?;
+
         let exp = OffsetDateTime::from_unix_timestamp(self.exp as i64)
             .context("Failed to convert timestamp to date and time with the timezone")?;
 
@@ -215,7 +219,7 @@ impl AuthToken for RefreshClaims {
             self.jti,
             exp,
         )
-        .execute(pool)
+        .execute(&mut *pg_tr)
         .await
         .context("Failed to add token to the blacklist")?;
 
