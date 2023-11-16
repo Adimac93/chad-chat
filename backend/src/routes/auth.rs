@@ -5,17 +5,18 @@ use crate::modules::smtp::Mailer;
 use crate::state::AppState;
 use crate::utils::auth::models::*;
 use crate::utils::auth::*;
+use crate::utils::chat::get_user_email_by_id;
 use axum::extract::{ConnectInfo, State};
 
 use axum::{debug_handler, extract, http::StatusCode, Json};
 use axum::{
-    routing::{post},
+    routing::post,
     Router,
 };
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
-use jsonwebtoken::{decode, DecodingKey, Validation};
-use secrecy::{ExposeSecret, SecretString};
+use jsonwebtoken::Validation;
+use secrecy::SecretString;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use time::Duration;
@@ -54,8 +55,8 @@ async fn post_register_user(
     let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
 
     debug!(
-        "User {} ({}) registered successfully",
-        user_id, &register_credentials.email
+        "User {} registered successfully",
+        user_id
     );
 
     Ok(jar)
@@ -80,8 +81,8 @@ async fn post_login_user(
     let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
 
     debug!(
-        "User {} ({}) logged in successfully",
-        user_id, &login_credentials.email
+        "User {} logged in successfully",
+        user_id
     );
 
     Ok(jar)
@@ -102,26 +103,18 @@ async fn post_user_logout(
     let mut pg_tr = pool.begin().await?;
 
     if let Some(access_token_cookie) = jar.get("jwt") {
-        let data = decode::<Claims>(
-            access_token_cookie.value(),
-            &DecodingKey::from_secret(token_extensions.access.0.expose_secret().as_bytes()),
-            &validation,
-        );
+        let verify_res = validate_access_token(access_token_cookie, &token_extensions.access.0);
 
-        if let Ok(token_data) = data {
-            let _ = &token_data.claims.add_token_to_blacklist(&mut *pg_tr).await?;
+        if let Ok(claims) = verify_res {
+            add_access_token_to_blacklist(&mut *pg_tr, claims).await?;
         }
     };
 
     if let Some(refresh_token_cookie) = jar.get("refresh-jwt") {
-        let data = decode::<RefreshClaims>(
-            refresh_token_cookie.value(),
-            &DecodingKey::from_secret(token_extensions.access.0.expose_secret().as_bytes()),
-            &validation,
-        );
+        let verify_res = validate_refresh_token(refresh_token_cookie, &token_extensions.refresh.0);
 
-        if let Ok(token_data) = data {
-            let _ = &token_data.claims.add_token_to_blacklist(&mut *pg_tr).await?;
+        if let Ok(claims) = verify_res {
+            add_refresh_token_to_blacklist(&mut *pg_tr, claims).await?;
         }
     };
 
@@ -148,15 +141,16 @@ async fn post_refresh_user_token(
     State(ext): State<TokenExtractors>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
-    let jar =
-        generate_token_cookies(refresh_claims.user_id, &refresh_claims.login, &ext, jar).await?;
+    let user_id = refresh_claims.user_id;
 
-    refresh_claims.add_token_to_blacklist(&pool).await?;
+    let email = get_user_email_by_id(&pool, &user_id).await?;
+    let access_token_cookie = create_access_token(user_id, email, &ext.access).await?;
+    add_refresh_token_to_blacklist(&pool, refresh_claims).await?;
 
     debug!(
-        "User {} ({})'s access token refreshed successfully",
-        &refresh_claims.user_id, &refresh_claims.login
+        "User {} access token refreshed successfully",
+        user_id
     );
 
-    Ok(jar)
+    Ok(jar.add(access_token_cookie))
 }

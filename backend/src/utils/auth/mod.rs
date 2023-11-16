@@ -5,13 +5,12 @@ use crate::errors::AppError;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use anyhow::Context;
 use argon2::verify_encoded;
-use axum_extra::extract::{cookie::Cookie, CookieJar};
+use axum_extra::extract::CookieJar;
 use hyper::StatusCode;
 use models::*;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sqlx::{query, types::ipnetwork::IpNetwork, PgPool};
-use time::OffsetDateTime;
 use tracing::{debug, trace};
 use typeshare::typeshare;
 use uuid::Uuid;
@@ -39,7 +38,6 @@ pub async fn try_register_user<'c>(
 ) -> Result<Uuid, AppError> {
     let mut transaction = pool.begin().await?;
 
-    // delete asap
     let user = query!(
         r#"
             SELECT id FROM credentials WHERE email = $1
@@ -55,7 +53,6 @@ pub async fn try_register_user<'c>(
             "User already exists",
         ));
     }
-    // stop deleting
 
     if email.trim().is_empty() || password.expose_secret().trim().is_empty() {
         return Err(AppError::exp(
@@ -178,35 +175,13 @@ pub async fn generate_token_cookies(
     ext: &TokenExtractors,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
-    let access_cookie = generate_jwt_in_cookie::<Claims>(user_id, login, ext).await?;
+    let access_cookie = create_access_token(user_id, login.to_string(), &ext.access).await?;
 
     trace!("Access JWT: {access_cookie:#?}");
 
-    let refresh_cookie = generate_jwt_in_cookie::<RefreshClaims>(user_id, login, ext).await?;
+    let refresh_cookie = create_refresh_token(user_id, &ext.refresh).await?;
 
     trace!("Refresh JWT: {refresh_cookie:#?}");
 
     Ok(jar.add(access_cookie).add(refresh_cookie))
-}
-
-async fn generate_jwt_in_cookie<'a, T>(
-    user_id: Uuid,
-    login: &str,
-    ext: &TokenExtractors,
-) -> Result<Cookie<'a>, AppError>
-where
-    T: AuthToken,
-{
-    let access_token = T::generate_jwt(
-        user_id,
-        login,
-        T::JWT_EXPIRATION,
-        &T::get_jwt_key(ext).await,
-    )
-    .await?;
-
-    let access_cookie = T::generate_cookie(access_token).await;
-    trace!("Access JWT: {access_cookie:#?}");
-
-    Ok(access_cookie)
 }
