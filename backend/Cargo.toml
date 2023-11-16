@@ -27,7 +27,7 @@ rust-argon2 = "1.0.0"
 secrecy = { version = "0.8.0", features = ["serde"] }
 serde = { version = "1.0.147", features = ["derive"] }
 serde_json = "1.0.87"
-sqlx = { version = "0.6.0", features = ["runtime-tokio-rustls", "postgres", "time", "uuid", "offline"] }
+sqlx = { version = "0.6.0", features = ["runtime-tokio-native-tls", "postgres", "time", "uuid", "offline"] }
 thiserror = "1.0.37"
 time = { version = "0.3.16", features = ["serde"]}
 tokio = { version = "1.14.0", features = ["full"] }
