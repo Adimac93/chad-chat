@@ -22,8 +22,8 @@ async fn get_user_groups(
     let res = query_user_groups(&pool, &claims.user_id).await?;
 
     debug!(
-        "Queried user {} ({}) groups successfully",
-        &claims.user_id, &claims.login
+        "Queried user {} groups successfully",
+        &claims.user_id
     );
 
     Ok(Json(json!({ "groups": res })))

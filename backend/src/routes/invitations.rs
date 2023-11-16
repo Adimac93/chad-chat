@@ -30,8 +30,8 @@ async fn post_generate_group_invitation_code(
         try_create_group_invitation_with_code(&pool, &claims.user_id, invitation).await?;
 
     debug!(
-        "User {} ({}) created a group invitation successfully",
-        &claims.user_id, &claims.login
+        "User {} created a group invitation successfully",
+        &claims.user_id
     );
     Ok(Json(json!({ "code": &invitation })))
 }
@@ -60,8 +60,8 @@ async fn post_join_group_by_code(
     try_join_group_by_code(&pool, &claims.user_id, &payload.code).await?;
 
     debug!(
-        "User {} ({}) joined a group successfully",
-        &claims.user_id, &claims.login
+        "User {} joined a group successfully",
+        &claims.user_id
     );
     Ok(())
 }

@@ -106,8 +106,8 @@ pub async fn chat_socket(
             ClientAction::SendMessage { content } => {
                 let Some(conn) = controller.get_group_conn().await else {
                     debug!(
-                        "Cannot send message from user {} ({}) - group not selected",
-                        &claims.user_id, &claims.login
+                        "Cannot send message from user {} - group not selected",
+                        &claims.user_id, 
                     );
                     continue;
                 };
@@ -131,8 +131,8 @@ pub async fn chat_socket(
                 let Ok(_) = create_message(&pool, &claims.user_id, &conn.group_id, &content).await
                 else {
                     error!(
-                        "Failed to save the message from the user {} ({}) in the database",
-                        &claims.user_id, &claims.login
+                        "Failed to save the message from the user {} in the database",
+                        &claims.user_id, 
                     );
                     continue;
                 };
@@ -154,8 +154,8 @@ pub async fn chat_socket(
                     fetch_last_messages_in_range(&pool, &conn.group_id, 10, loaded).await
                 else {
                     error!(
-                        "ws closed: Cannot fetch group messages for user {} ({})",
-                        &claims.user_id, &claims.login
+                        "ws closed: Cannot fetch group messages for user {}",
+                        &claims.user_id, 
                     );
                     continue;
                 };
@@ -164,8 +164,8 @@ pub async fn chat_socket(
                 let payload = ServerAction::LoadRequested(messages);
                 if controller.user_channel.sender.send(&payload).await.is_err() {
                     error!(
-                        "Failed to load messages for user {} ({})",
-                        &claims.user_id, &claims.login
+                        "Failed to load messages for user {}",
+                        &claims.user_id, 
                     );
                     continue;
                 }
@@ -189,7 +189,7 @@ pub async fn chat_socket(
 
                 let Ok(_is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await
                 else {
-                    error!("Failed to check whether a user {} ({}) is a group {} member (during sending a group invite)", &claims.user_id, &claims.login, &group_id);
+                    error!("Failed to check whether a user {} is a group {} member (during sending a group invite)", &claims.user_id, &group_id);
                     continue;
                 };
             }
@@ -299,15 +299,15 @@ async fn connection_requirements(pool: &PgPool, group_id: &Uuid, claims: &Claims
     }
     let Ok(is_group_member) = check_if_group_member(pool, &claims.user_id, group_id).await else {
         error!(
-            "ws closed: Cannot check if user {} ({}) is a group {} member",
-            &claims.user_id, &claims.login, group_id
+            "ws closed: Cannot check if user {} is a group {} member",
+            &claims.user_id, group_id
         );
         return false;
     };
     if !is_group_member {
         info!(
-            "ws closed: User {} ({}) isn't a group member",
-            &claims.user_id, &claims.login
+            "ws closed: User {} isn't a group member",
+            &claims.user_id, 
         );
         return false;
     }
