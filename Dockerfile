@@ -11,7 +11,7 @@ RUN npm run build
 # Backend
 FROM lukemathwalker/cargo-chef:latest-rust-slim-bullseye as chef
 WORKDIR /app
-RUN apt update && apt install lld clang pkg-config openssl -y
+RUN apt update && apt install lld clang pkg-config openssl libssl-dev -y
 
 FROM chef as planner
 COPY backend .
