@@ -3,8 +3,8 @@ pub mod models;
 pub mod tokens;
 use crate::errors::AppError;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
+use crate::utils::auth::additions::verify_password;
 use anyhow::Context;
-use argon2::verify_encoded;
 use axum_extra::extract::CookieJar;
 use hyper::StatusCode;
 use models::*;
@@ -16,7 +16,7 @@ use typeshare::typeshare;
 use uuid::Uuid;
 use validator::Validate;
 
-use self::additions::random_username_tag;
+use self::additions::{is_strong_password, random_username_tag};
 
 #[typeshare]
 #[derive(sqlx::Type, Debug, Serialize, Deserialize)]
@@ -65,14 +65,14 @@ pub async fn try_register_user<'c>(
         .validate()
         .map_err(|e| AppError::exp(StatusCode::BAD_REQUEST, &format!("Invalid email: {e}")))?;
 
-    if !additions::pass_is_strong(password.expose_secret(), &[&email]) {
+    if !is_strong_password(password.expose_secret(), &[&email]) {
         return Err(AppError::exp(
             StatusCode::BAD_REQUEST,
             "Password is too weak",
         ));
     }
 
-    let hashed_pass = additions::hash_pass(password)
+    let hashed_pass = additions::hash_password(password.expose_secret())
         .context("Failed to hash password with argon2")
         .map_err(AppError::Unexpected)?;
 
@@ -157,7 +157,7 @@ pub async fn verify_user_credentials(
         "Incorrect email or password",
     ))?;
 
-    match verify_encoded(&res.password, password.expose_secret().as_bytes())
+    match verify_password(&res.password, password.expose_secret())
         .context("Failed to verify credentials")
         .map_err(AppError::Unexpected)?
     {

@@ -1,24 +1,29 @@
-﻿use argon2::hash_encoded;
-use rand::distributions::Alphanumeric;
+﻿use anyhow::anyhow;
+use argon2::password_hash::SaltString;
+use argon2::{password_hash, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use rand::seq::IteratorRandom;
-use rand::{thread_rng, Rng};
-use secrecy::{ExposeSecret, SecretString};
+use rand::thread_rng;
 use std::collections::HashSet;
 
-pub fn hash_pass(pass: SecretString) -> Result<String, argon2::Error> {
-    hash_encoded(
-        pass.expose_secret().as_bytes(),
-        random_salt().as_bytes(),
-        &argon2::Config::default(),
-    )
+pub fn hash_password(password: &str) -> anyhow::Result<String> {
+    let salt = SaltString::generate(rand::thread_rng());
+    Ok(Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|e| anyhow!(e).context("failed to hash password"))?
+        .to_string())
 }
 
-pub fn random_salt() -> String {
-    let mut rng = thread_rng();
-    (0..8).map(|_| rng.sample(Alphanumeric) as char).collect()
+pub fn verify_password(password: &str, hash: &str) -> anyhow::Result<bool> {
+    let hash = PasswordHash::new(hash).map_err(|e| anyhow!(e).context("password hash invalid"))?;
+    let res = Argon2::default().verify_password(password.as_bytes(), &hash);
+    match res {
+        Ok(()) => Ok(true),
+        Err(password_hash::Error::Password) => Ok(false),
+        Err(e) => Err(anyhow!(e).context("failed to verify password")),
+    }
 }
 
-pub fn pass_is_strong(user_password: &str, user_inputs: &[&str]) -> bool {
+pub fn is_strong_password(user_password: &str, user_inputs: &[&str]) -> bool {
     let score = zxcvbn::zxcvbn(user_password, user_inputs);
     score.map_or(false, |entropy| entropy.score() >= 3)
 }
