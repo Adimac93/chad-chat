@@ -2,7 +2,7 @@
 use crate::modules::extractors::addr::ClientAddr;
 use crate::modules::extractors::jwt::TokenExtractors;
 use crate::modules::smtp::Mailer;
-use crate::state::AppState;
+use crate::state::{AppState, RdPool};
 use crate::utils::auth::models::*;
 use crate::utils::auth::*;
 use crate::utils::chat::get_user_email_by_id;
@@ -93,20 +93,20 @@ async fn protected_zone(claims: Claims) -> Result<Json<Value>, StatusCode> {
 }
 
 async fn post_user_logout(
-    State(pool): State<PgPool>,
+    State(mut pool): State<RdPool>,
     State(token_extensions): State<TokenExtractors>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
     let mut validation = Validation::default();
     validation.leeway = 5;
 
-    let mut pg_tr = pool.begin().await?;
+    // let mut pg_tr = pool.begin().await?;
 
     if let Some(access_token_cookie) = jar.get("jwt") {
         let verify_res = validate_access_token(access_token_cookie, &token_extensions.access.0);
 
         if let Ok(claims) = verify_res {
-            add_access_token_to_blacklist(&mut *pg_tr, claims).await?;
+            add_access_token_to_blacklist(&mut pool, claims).await?;
         }
     };
 
@@ -114,11 +114,11 @@ async fn post_user_logout(
         let verify_res = validate_refresh_token(refresh_token_cookie, &token_extensions.refresh.0);
 
         if let Ok(claims) = verify_res {
-            add_refresh_token_to_blacklist(&mut *pg_tr, claims).await?;
+            add_refresh_token_to_blacklist(&mut pool, claims).await?;
         }
     };
 
-    pg_tr.commit().await?;
+    // pg_tr.commit().await?;
 
     debug!("User logged out successfully");
 
@@ -138,6 +138,7 @@ fn remove_cookie(name: &str) -> Cookie {
 async fn post_refresh_user_token(
     refresh_claims: RefreshClaims,
     State(pool): State<PgPool>,
+    State(mut rdpool): State<RdPool>,
     State(ext): State<TokenExtractors>,
     jar: CookieJar,
 ) -> Result<CookieJar, AppError> {
@@ -145,7 +146,7 @@ async fn post_refresh_user_token(
 
     let email = get_user_email_by_id(&pool, &user_id).await?;
     let access_token_cookie = create_access_token(user_id, email, &ext.access).await?;
-    add_refresh_token_to_blacklist(&pool, refresh_claims).await?;
+    add_refresh_token_to_blacklist(&mut rdpool, refresh_claims).await?;
 
     debug!(
         "User {} access token refreshed successfully",

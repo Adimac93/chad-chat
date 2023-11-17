@@ -1,7 +1,7 @@
 use crate::{
     errors::AppError,
     modules::extractors::jwt::{JwtAccessSecret, JwtRefreshSecret},
-    state::AppState,
+    state::{AppState, RdPool},
 };
 use anyhow::Context;
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
@@ -11,6 +11,7 @@ use axum_extra::extract::{
 };
 use hyper::StatusCode;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use redis::{Cmd, Value};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use sqlx::{query, Acquire, Postgres};
@@ -63,20 +64,12 @@ pub async fn verify_access_token(req: &mut Parts, state: &AppState) -> Result<Cl
     let cookie = jar.get("jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "No access token found"))?;
     let claims = validate_access_token(cookie, jwt_key)?;
 
-    let token_in_blacklist = query!(
-        r#"
-            SELECT EXISTS (
-                SELECT 1 FROM jwt_blacklist
-                WHERE token_id = $1
-            ) AS "exists!"
-        "#,
-        claims.jti,
-    ).fetch_one(&state.postgres).await?.exists;
+    let token_in_blacklist = state.redis.clone().send_packed_command(&Cmd::get(claims.jti.as_bytes())).await.context("Failed to select the access token from blacklist")?;
 
-    if token_in_blacklist {
-        Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
-    } else {
+    if token_in_blacklist == Value::Nil {
         Ok(claims)
+    } else {
+        Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
     }
 }
 
@@ -95,21 +88,12 @@ pub fn validate_access_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) -
     Ok(claims)
 }
 
-pub async fn add_access_token_to_blacklist<'c>(acq: impl Acquire<'c, Database = Postgres> + Send, claims: Claims) -> Result<(), AppError> {
+pub async fn add_access_token_to_blacklist<'c>(pool: &mut RdPool, claims: Claims) -> Result<(), AppError> {
     // this is converted into the transaction
     // performs an insert to add an access token to the blacklist
 
-    let mut pg_tr = acq.begin().await?;
-    let expiry = OffsetDateTime::from_unix_timestamp(claims.exp as i64).context("Timestamp out of range")?;
-    let _res = query!(
-        r#"
-            INSERT INTO jwt_blacklist (token_id, expiry)
-            VALUES ($1, $2)
-        "#,
-        claims.jti,
-        expiry,
-    ).execute(&mut *pg_tr).await?;
-
+    let _res = pool.send_packed_command(&Cmd::set(claims.jti.as_bytes(), claims.exp)).await.context("Failed to add the access token to blacklist")?;
+    
     Ok(())
 }
 
@@ -183,20 +167,12 @@ pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<R
         &validation,
     ).context("Invalid or expired token")?.claims;
 
-    let token_in_blacklist = query!(
-        r#"
-            SELECT EXISTS (
-                SELECT 1 FROM jwt_blacklist
-                WHERE token_id = $1
-            ) AS "exists!"
-        "#,
-        claims.jti,
-    ).fetch_one(&state.postgres).await?.exists;
+    let token_in_blacklist = state.redis.clone().send_packed_command(&Cmd::get(claims.jti.as_bytes())).await.context("Failed to select the refresh token from blacklist")?;
 
-    if token_in_blacklist {
-        Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
-    } else {
+    if token_in_blacklist == Value::Nil {
         Ok(claims)
+    } else {
+        Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
     }
 }
 
@@ -215,17 +191,8 @@ pub fn validate_refresh_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) 
     Ok(claims)
 }
 
-pub async fn add_refresh_token_to_blacklist<'c>(acq: impl Acquire<'c, Database = Postgres> + Send, claims: RefreshClaims) -> Result<(), AppError> {
-    let mut pg_tr = acq.begin().await?;
-    let expiry = OffsetDateTime::from_unix_timestamp(claims.exp as i64).context("Timestamp out of range")?;
-    let _res = query!(
-        r#"
-            INSERT INTO jwt_blacklist (token_id, expiry)
-            VALUES ($1, $2)
-        "#,
-        claims.jti,
-        expiry,
-    ).execute(&mut *pg_tr).await?;
+pub async fn add_refresh_token_to_blacklist<'c>(pool: &mut RdPool, claims: RefreshClaims) -> Result<(), AppError> {
+    let _res = pool.send_packed_command(&Cmd::set(claims.jti.as_bytes(), claims.exp)).await.context("Failed to add the refresh token to blacklist")?;
 
     Ok(())
 }
