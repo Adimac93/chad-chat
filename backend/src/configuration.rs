@@ -9,6 +9,7 @@ use tracing::info;
 pub struct Settings {
     pub app: ApplicationSettings,
     pub postgres: PostgresSettings,
+    pub redis: RedisSettings,
     pub smtp: SmtpSettings,
 }
 
@@ -150,6 +151,39 @@ impl ConnectionPrep for PostgresSettings {
     }
 }
 
+#[derive(Deserialize, Clone)]
+pub struct RedisSettings {
+    database_url: Option<String>,
+    fields: Option<DatabaseFields>,
+}
+
+impl RedisSettings {
+    fn from_env() -> Self {
+        Self {
+            database_url: Self::env_database_url(),
+            fields: None,
+        }
+    }
+}
+
+impl ToString for RedisSettings {
+    fn to_string(&self) -> String {
+        String::from("redis")
+    }
+}
+
+impl ConnectionPrep for RedisSettings {
+    fn compose_database_url(&self) -> Option<String> {
+        Some(self.fields.clone()?.compose(self.to_string()))
+    }
+    fn get_database_url(&self) -> Option<String> {
+        self.database_url.clone()
+    }
+    fn env_database_url() -> Option<String> {
+        try_get_env("REDIS_URL")
+    }
+}
+
 enum Environment {
     Local,
     Production,
@@ -194,6 +228,7 @@ pub fn get_config() -> Result<Settings, ConfigError> {
             let settings = Settings {
                 app: ApplicationSettings::from_env(),
                 postgres: PostgresSettings::from_env(),
+                redis: RedisSettings::from_env(),
                 smtp: SmtpSettings::from_env(),
             };
             Ok(settings)

@@ -1,6 +1,8 @@
-﻿use crate::configuration::{ConnectionPrep, PostgresSettings};
+﻿use crate::configuration::{ConnectionPrep, PostgresSettings, RedisSettings};
+use crate::state::RdPool;
 use axum::response::IntoResponse;
 use axum::{http::StatusCode, Json};
+use redis::Client;
 use serde_json::json;
 use sqlx::migrate;
 pub use sqlx::PgPool;
@@ -18,6 +20,15 @@ pub async fn get_postgres_pool(config: PostgresSettings) -> PgPool {
             .expect("Auto migration failed");
     }
     pool
+}
+
+pub async fn get_redis_pool(config: RedisSettings) -> RdPool {
+    let client =
+        Client::open(config.get_connection_string()).expect("Cannot establish redis connection");
+    client
+        .get_tokio_connection_manager()
+        .await
+        .expect("Failed to get redis connection manager")
 }
 
 #[derive(Error, Debug)]

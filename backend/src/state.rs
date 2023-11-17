@@ -1,7 +1,7 @@
 use crate::{
     configuration::Settings,
     modules::{
-        database::get_postgres_pool,
+        database::{get_postgres_pool, get_redis_pool},
         external_api::HttpClient,
         extractors::jwt::{JwtAccessSecret, JwtRefreshSecret, TokenExtractors},
         smtp::Mailer,
@@ -12,12 +12,16 @@ use crate::{
     },
 };
 use axum::extract::FromRef;
+use redis::aio::ConnectionManager;
 use sqlx::PgPool;
 use uuid::Uuid;
+
+pub type RdPool = ConnectionManager;
 
 #[derive(FromRef, Clone)]
 pub struct AppState {
     pub postgres: PgPool,
+    pub redis: RdPool,
     pub client: HttpClient,
     pub smtp: Mailer,
     pub kick_gate: Gate<Role, (Uuid, Uuid)>,
@@ -46,6 +50,7 @@ impl AppState {
 
         AppState {
             postgres: test_pool.unwrap_or(get_postgres_pool(config.postgres).await),
+            redis: get_redis_pool(config.redis).await,
             client: HttpClient::new(),
             smtp: Mailer::new(config.smtp, config.app.origin),
             kick_gate,
