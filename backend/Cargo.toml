@@ -40,3 +40,4 @@ zxcvbn = "2.2.2"
 reqwest = { version = "0.11.22", features = ["json", "cookies"] }
 typeshare = "1.0.1"
 console-subscriber = "0.2.0"
+redis = { version = "0.23.3", features = ["tokio-comp", "tokio-rustls-comp", "aio", "connection-manager"] }
