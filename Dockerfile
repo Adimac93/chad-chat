@@ -11,7 +11,7 @@ RUN npm run build
 # Backend
 FROM lukemathwalker/cargo-chef:latest-rust-slim-bullseye as chef
 WORKDIR /app
-RUN apt update && apt install lld clang pkg-config openssl libssl-dev -y
+RUN apt update && apt install lld clang pkg-config libssl-dev -y
 
 FROM chef as planner
 COPY backend .
@@ -30,7 +30,7 @@ RUN cargo build --release --bin backend
 FROM debian:bullseye-slim AS runtime
 WORKDIR /app/
 RUN apt-get update -y \
-    && apt-get install -y --no-install-recommends openssl ca-certificates pkg-config \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
     # Clean up
     && apt-get autoremove -y \
     && apt-get clean -y \
