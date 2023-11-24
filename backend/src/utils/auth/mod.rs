@@ -157,10 +157,7 @@ pub async fn verify_user_credentials(
         "Incorrect email or password",
     ))?;
 
-    match verify_password(&res.password, password.expose_secret())
-        .context("Failed to verify credentials")
-        .map_err(AppError::Unexpected)?
-    {
+    match verify_password(password.expose_secret(), &res.password)? {
         true => Ok(res.id),
         false => Err(AppError::exp(
             StatusCode::UNAUTHORIZED,

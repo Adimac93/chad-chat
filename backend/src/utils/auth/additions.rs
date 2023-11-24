@@ -19,7 +19,7 @@ pub fn verify_password(password: &str, hash: &str) -> anyhow::Result<bool> {
     match res {
         Ok(()) => Ok(true),
         Err(password_hash::Error::Password) => Ok(false),
-        Err(e) => Err(anyhow!(e).context("failed to verify password")),
+        Err(e) => Err(anyhow!(e)),
     }
 }
 
