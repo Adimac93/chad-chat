@@ -2,7 +2,7 @@
     import { isAuthorized } from "../stores";
     import TextButton from "../components/TextButton.svelte";
 
-    let login = "";
+    let email = "";
     let password = "";
 
     let buttonText = "Forgor your password, worry not, just click this button";
@@ -13,7 +13,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                login,
+                email,
                 password,
             }),
         });
@@ -29,10 +29,10 @@
 </script>
 
 <form>
-    <input bind:value={login} placeholder="login" type="text" />
+    <input bind:value={email} placeholder="email" type="email" />
     <input bind:value={password} placeholder="password" type="password" />
     <div>{message}</div>
-    <button on:click|preventDefault={login_user} disabled={!login || !password}>Login</button>
+    <button on:click|preventDefault={login_user} disabled={!email || !password}>Login</button>
 </form>
 <TextButton on:click={() => (buttonText = "Just kidding")}>{buttonText}</TextButton>
 
