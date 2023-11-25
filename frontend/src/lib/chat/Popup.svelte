@@ -1,8 +1,8 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
 
-    export let isActive;
-    const dispatch = createEventDispatcher<{ close }>();
+    export let isActive: boolean;
+    const dispatch = createEventDispatcher<{ close: null }>();
     const closePopup = () => {
         isActive = false;
         dispatch("close");

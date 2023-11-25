@@ -13,19 +13,6 @@
     }
     onMount(async () => {
         await fetchGroups();
-
-        // Group loading is unstable
-
-        // if (groups.length > 0) {
-        //   let savedGroupID = localStorage.getItem("group");
-        //   if (savedGroupID) {
-        //     let group = groups.find(({ id }) => id == savedGroupID);
-        //     selected = group ? group : groups[0];
-        //     groupSelect();
-        //   }
-
-        //   localStorage.setItem("group", selected.id);
-        // }
     });
 
     function groupSelect() {

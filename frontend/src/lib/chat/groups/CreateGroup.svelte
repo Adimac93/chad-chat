@@ -2,8 +2,8 @@
     import { createEventDispatcher } from "svelte";
     import { createNewGroup } from "../../api/groups";
 
-    const dispatch = createEventDispatcher<{ groupCreate }>();
-    let isOk;
+    const dispatch = createEventDispatcher<{ groupCreate: null }>();
+    let isOk: boolean;
     let groupName = "";
     let prompt = "";
 

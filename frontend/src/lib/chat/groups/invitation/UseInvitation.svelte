@@ -2,15 +2,15 @@
     import { afterUpdate, createEventDispatcher } from "svelte";
     import { request } from "../../../api/fetch";
 
-    let name;
-    let members;
+    let name: string;
+    let membersCount: number;
 
     let code = "";
     let error = "";
 
     let isCorrect = false;
 
-    const dispatch = createEventDispatcher<{ join }>();
+    const dispatch = createEventDispatcher<{ join: null }>();
 
     async function getGroupInfo() {
         const res = await request("/api/groups/invitations/info", {
@@ -20,7 +20,7 @@
         if (res.ok) {
             isCorrect = true;
             name = res.data.name as string;
-            members = res.data.members as number;
+            membersCount = res.data.members as number;
         } else {
             error = res.data.error_info;
             setTimeout(() => {
@@ -59,7 +59,7 @@
 <div class="card">
     {#if isCorrect}
         <strong>Group: {name}</strong>
-        <div>Members: {members}</div>
+        <div>Members: {membersCount}</div>
         <button on:click={joinGroup}>Join</button>
     {/if}
     <div>Enter group join code:</div>

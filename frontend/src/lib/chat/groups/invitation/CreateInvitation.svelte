@@ -13,8 +13,8 @@
         "No limit",
     ];
 
-    let expiration_index;
-    let usage_index;
+    let expiration_index: number;
+    let usage_index: number;
     let code = "";
     let error = "";
 

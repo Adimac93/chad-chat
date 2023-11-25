@@ -2,13 +2,13 @@
     import Popup from "../../Popup.svelte";
     import CreateInvitation from "./CreateInvitation.svelte";
     import UseInvitation from "./UseInvitation.svelte";
-    let mode: "create" | "join";
+    let mode: "create" | "join" | null;
     let isActive = false;
 
     export let group_id: string;
 </script>
 
-<Popup on:close={() => (mode = undefined)} bind:isActive>
+<Popup on:close={() => (mode = null)} bind:isActive>
     {#if mode == "create"}
         <CreateInvitation bind:group_id />
     {:else if mode == "join"}
