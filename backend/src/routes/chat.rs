@@ -11,10 +11,8 @@ use crate::utils::roles::{
     get_group_role_privileges, get_user_role, single_set_group_role_privileges,
     single_set_group_user_role,
 };
+use anyhow::Context;
 use axum::extract::State;
-use axum::headers::SecWebsocketKey;
-use axum::http::HeaderMap;
-use axum::TypedHeader;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
     response::Response,
@@ -31,6 +29,18 @@ pub fn router() -> Router<AppState> {
     Router::new().route("/websocket", get(chat_handler))
 }
 
+macro_rules! skip_error {
+    ($result:expr) => {{
+        match $result {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::error!("{error}");
+                continue;
+            }
+        }
+    }};
+}
+
 async fn chat_handler(
     ws: WebSocketUpgrade,
     claims: Claims,
@@ -40,7 +50,6 @@ async fn chat_handler(
 ) -> Response {
     ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, gate))
 }
-
 
 pub async fn chat_socket(
     stream: WebSocket,
@@ -62,44 +71,43 @@ pub async fn chat_socket(
                 }
 
                 // Fetch role and privileges in order to connect to group
-                let Ok(privileges) = get_group_role_privileges(&pool, group_id).await else {
-                    error!("Cannot fetch group role privileges");
-                    continue;
-                };
+                let privileges = skip_error!(get_group_role_privileges(&pool, group_id)
+                    .await
+                    .context("Failed to get group role privileges"));
+
                 let group_controller = state
                     .groups
                     .get(&group_id, SocketGroupRolePrivileges::from(privileges));
 
-                let Ok(role) = get_user_role(&pool, &claims.user_id, &group_id).await else {
-                    error!("Cannot fetch group user role data");
-                    continue;
-                };
+                let role = skip_error!(get_user_role(&pool, &claims.user_id, &group_id)
+                    .await
+                    .context("Cannot fetch group user role data"));
 
                 // Connect user controller to group
                 controller.connect(group_id, group_controller, role).await;
 
                 // Load last group messages
-                let Ok(messages) = fetch_last_messages_in_range(&pool, &group_id, 10, 0).await
-                else {
-                    error!("ws closed: Cannot fetch group {} messages", &group_id);
-                    continue;
-                };
+                let messages = skip_error!(fetch_last_messages_in_range(&pool, &group_id, 10, 0)
+                    .await
+                    .context(format!(
+                        "ws closed: Cannot fetch group {} messages",
+                        &group_id
+                    )));
 
                 // Send messages JSON object to user
                 let payload = ServerAction::LoadMessages(messages);
-                if controller.user_channel.sender.send(&payload).await.is_err() {
-                    error!("ws closed: Failed to load fetched messages");
-                    continue;
-                }
+                skip_error!(controller
+                    .user_channel
+                    .sender
+                    .send(&payload)
+                    .await
+                    .context("ws closed: Failed to load fetched messages"));
             }
             ClientAction::SendMessage { content } => {
-                let Some(conn) = controller.get_group_conn().await else {
-                    debug!(
-                        "Cannot send message from user {} - group not selected",
-                        &claims.user_id,
-                    );
-                    continue;
-                };
+                let conn = skip_error!(controller.get_group_conn().await.context(format!(
+                    "Cannot send message from user {} - group not selected",
+                    &claims.user_id,
+                )));
 
                 // Forbid too long messages
                 if content.len() > MAX_MESSAGE_LENGTH {
@@ -111,50 +119,48 @@ pub async fn chat_socket(
                     continue;
                 }
 
-                // todo: make transaction
-                // Save message in database
                 let nickname = get_group_nickname(&pool, &claims.user_id, &conn.group_id)
                     .await
                     .unwrap_or("unknown_user".into());
 
-                let Ok(_) = create_message(&pool, &claims.user_id, &conn.group_id, &content).await
-                else {
-                    error!(
-                        "Failed to save the message from the user {} in the database",
-                        &claims.user_id,
-                    );
-                    continue;
-                };
+                create_message(&pool, &claims.user_id, &conn.group_id, &content)
+                    .await
+                    .expect("Failed to create a message");
 
                 // Send message to the connected group members
                 let action = ServerAction::Message(GroupUserMessage::new(nickname, content));
-                debug!("Sent: {action:#?}");
                 conn.controller.channel.sender.send(action);
             }
             ClientAction::RequestMessages { loaded } => {
-                let Some(conn) = controller.get_group_conn().await else {
-                    debug!("Cannot fetch requested messages - group not selected");
-                    continue;
-                };
+                let conn = skip_error!(controller
+                    .get_group_conn()
+                    .await
+                    .context("Cannot fetch requested messages - group not selected"));
+
                 info!("Requested messages");
 
                 // Load older messages
-                let Ok(messages) =
-                    fetch_last_messages_in_range(&pool, &conn.group_id, 10, loaded).await
-                else {
-                    error!(
-                        "ws closed: Cannot fetch group messages for user {}",
-                        &claims.user_id,
+                let messages =
+                    skip_error!(
+                        fetch_last_messages_in_range(&pool, &conn.group_id, 10, loaded)
+                            .await
+                            .context(format!(
+                                "cannot fetch group messages for user {}",
+                                &claims.user_id
+                            ))
                     );
-                    continue;
-                };
 
                 // Send messages json object
                 let payload = ServerAction::LoadRequested(messages);
-                if controller.user_channel.sender.send(&payload).await.is_err() {
-                    error!("Failed to load messages for user {}", &claims.user_id,);
-                    continue;
-                }
+                skip_error!(controller
+                    .user_channel
+                    .sender
+                    .send(&payload)
+                    .await
+                    .context(format!(
+                        "Failed to load messages for user {}",
+                        &claims.user_id
+                    )));
             }
             // todo: send group invites in chat
             ClientAction::GroupInvite { group_id } => {
@@ -173,11 +179,7 @@ pub async fn chat_socket(
                     _ => (),
                 }
 
-                let Ok(_is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await
-                else {
-                    error!("Failed to check whether a user {} is a group {} member (during sending a group invite)", &claims.user_id, &group_id);
-                    continue;
-                };
+                let _is_member = skip_error!(check_if_group_member(&pool, &claims.user_id, &group_id).await.context(format!("Failed to check whether a user {} is a group {} member (during sending a group invite)", &claims.user_id, &group_id)));
             }
             ClientAction::RemoveUser { user_id, group_id } => {
                 match check_if_group_member(&pool, &user_id, &group_id).await {
@@ -195,15 +197,15 @@ pub async fn chat_socket(
                     _ => (),
                 };
 
-                let Some(user_role) = controller.get_role(claims.user_id).await else {
-                    error!("Failed to get the controller's role");
-                    continue;
-                };
+                let user_role = skip_error!(controller
+                    .get_role(claims.user_id)
+                    .await
+                    .context("Failed to get the controller's role"));
 
-                let Some(target_user_role) = controller.get_role(user_id).await else {
-                    error!("Failed to get the target user's role");
-                    continue;
-                };
+                let target_user_role = skip_error!(controller
+                    .get_role(user_id)
+                    .await
+                    .context("Failed to get the target user's role"));
 
                 if !gate.verify(user_role, target_user_role, (claims.user_id, user_id)) {
                     info!("User does not have privileges to kick another user");
@@ -211,13 +213,12 @@ pub async fn chat_socket(
                 }
 
                 // Remove user from group
-                let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
-                    error!(
+                skip_error!(try_remove_user_from_group(&pool, user_id, group_id)
+                    .await
+                    .context(format!(
                         "Failed to remove user {} from a group {}",
                         &user_id, &group_id
-                    );
-                    continue;
-                };
+                    )));
 
                 // Stop listening for new group messages on all kicked user connections
                 controller.kick(user_id).await;
@@ -225,38 +226,30 @@ pub async fn chat_socket(
                 // todo: disconnect group controllers
             }
             ClientAction::SingleChangePrivileges { mut data } => {
-                let Some(socket_privileges) = controller.get_group_privileges() else {
-                    debug!("User trying to change privileges not in group");
-                    continue;
-                };
+                let socket_privileges = skip_error!(controller
+                    .get_group_privileges()
+                    .context("User trying to change privileges not in group"));
 
                 // there is a concurrency-related edge case which bypasses corrections
-                if data.maintain_hierarchy(socket_privileges).await.is_err() {
-                    error!("Error when maintaining role hierarchy");
-                    continue;
-                };
-
-                if controller.set_privilege(&data).await.is_err() {
-                    error!("Error when changing privilege");
-                    continue;
-                };
-
-                if single_set_group_role_privileges(&pool, &data)
+                skip_error!(data
+                    .maintain_hierarchy(socket_privileges)
                     .await
-                    .is_err()
-                {
-                    error!("Error when setting group role privileges");
-                };
+                    .context("Error when maintaining role hierarchy"));
+
+                skip_error!(controller
+                    .set_privilege(&data)
+                    .await
+                    .context("Error when changing privilege"));
+
+                skip_error!(single_set_group_role_privileges(&pool, &data)
+                    .await
+                    .context("Error when setting group role privileges"));
             }
             ClientAction::SingleChangeUserRole { data } => {
-                if controller.single_set_role(&data).await.is_err() {
-                    continue;
-                };
-
-                let res = single_set_group_user_role(&pool, &data).await;
-                if res.is_err() {
-                    debug!("Failed to change user role: {:#?}", res);
-                };
+                skip_error!(controller.single_set_role(&data).await);
+                skip_error!(single_set_group_user_role(&pool, &data)
+                    .await
+                    .context("Failed to change user role"));
             }
             ClientAction::Close => {
                 info!("WebSocket closed explicitly");
