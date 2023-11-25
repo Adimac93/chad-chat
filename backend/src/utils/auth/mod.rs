@@ -1,6 +1,7 @@
 pub mod additions;
 pub mod models;
 pub mod tokens;
+use self::additions::{is_strong_password, random_username_tag};
 use crate::errors::AppError;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use crate::utils::auth::additions::verify_password;
@@ -16,7 +17,8 @@ use typeshare::typeshare;
 use uuid::Uuid;
 use validator::Validate;
 
-use self::additions::{is_strong_password, random_username_tag};
+pub const ACCESS_TOKEN_NAME: &str = "jwt";
+pub const REFRESH_TOKEN_NAME: &str = "jwt-refresh";
 
 #[typeshare]
 #[derive(sqlx::Type, Debug, Serialize, Deserialize)]

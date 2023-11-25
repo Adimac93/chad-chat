@@ -9,11 +9,8 @@ use crate::utils::chat::get_user_email_by_id;
 use axum::extract::{ConnectInfo, State};
 
 use axum::{debug_handler, extract, http::StatusCode, Json};
-use axum::{
-    routing::post,
-    Router,
-};
-use axum_extra::extract::cookie::Cookie;
+use axum::{routing::post, Router};
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::Validation;
 use secrecy::SecretString;
@@ -54,10 +51,7 @@ async fn post_register_user(
         LoginCredentials::new(&register_credentials.email, &register_credentials.password);
     let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
 
-    debug!(
-        "User {} registered successfully",
-        user_id
-    );
+    debug!("User {} registered successfully", user_id);
 
     Ok(jar)
 }
@@ -80,10 +74,7 @@ async fn post_login_user(
 
     let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
 
-    debug!(
-        "User {} logged in successfully",
-        user_id
-    );
+    debug!("User {} logged in successfully", user_id);
 
     Ok(jar)
 }
@@ -102,7 +93,7 @@ async fn post_user_logout(
 
     let mut pg_tr = pool.begin().await?;
 
-    if let Some(access_token_cookie) = jar.get("jwt") {
+    if let Some(access_token_cookie) = jar.get(ACCESS_TOKEN_NAME) {
         let verify_res = validate_access_token(access_token_cookie, &token_extensions.access.0);
 
         if let Ok(claims) = verify_res {
@@ -110,7 +101,7 @@ async fn post_user_logout(
         }
     };
 
-    if let Some(refresh_token_cookie) = jar.get("refresh-jwt") {
+    if let Some(refresh_token_cookie) = jar.get(REFRESH_TOKEN_NAME) {
         let verify_res = validate_refresh_token(refresh_token_cookie, &token_extensions.refresh.0);
 
         if let Ok(claims) = verify_res {
@@ -122,16 +113,20 @@ async fn post_user_logout(
 
     debug!("User logged out successfully");
 
-    Ok(jar
-        .remove(remove_cookie("jwt"))
-        .remove(remove_cookie("refresh-jwt")))
+    Ok(remove_auth_cookies(jar))
 }
 
 fn remove_cookie(name: &str) -> Cookie {
     Cookie::build(name, "")
         .path("/")
+        .same_site(SameSite::Strict)
         .max_age(Duration::seconds(0))
         .finish()
+}
+
+fn remove_auth_cookies(jar: CookieJar) -> CookieJar {
+    jar.remove(remove_cookie(ACCESS_TOKEN_NAME))
+        .remove(remove_cookie(REFRESH_TOKEN_NAME))
 }
 
 // #[debug_handler]
@@ -147,10 +142,7 @@ async fn post_refresh_user_token(
     let access_token_cookie = create_access_token(user_id, email, &ext.access).await?;
     add_refresh_token_to_blacklist(&pool, refresh_claims).await?;
 
-    debug!(
-        "User {} access token refreshed successfully",
-        user_id
-    );
+    debug!("User {} access token refreshed successfully", user_id);
 
     Ok(jar.add(access_token_cookie))
 }

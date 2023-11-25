@@ -19,6 +19,8 @@ use typeshare::typeshare;
 use uuid::Uuid;
 use validator::Validate;
 
+use super::{ACCESS_TOKEN_NAME, REFRESH_TOKEN_NAME};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Claims {
     pub jti: Uuid,
@@ -60,7 +62,10 @@ pub async fn verify_access_token(req: &mut Parts, state: &AppState) -> Result<Cl
         .await
         .context("Failed to fetch cookie jar")?;
 
-    let cookie = jar.get("jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "No access token found"))?;
+    let cookie = jar.get(ACCESS_TOKEN_NAME).ok_or(AppError::exp(
+        StatusCode::UNAUTHORIZED,
+        "No access token found",
+    ))?;
     let claims = validate_access_token(cookie, jwt_key)?;
 
     let token_in_blacklist = query!(
@@ -71,7 +76,10 @@ pub async fn verify_access_token(req: &mut Parts, state: &AppState) -> Result<Cl
             ) AS "exists!"
         "#,
         claims.jti,
-    ).fetch_one(&state.postgres).await?.exists;
+    )
+    .fetch_one(&state.postgres)
+    .await?
+    .exists;
 
     if token_in_blacklist {
         Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
@@ -80,27 +88,32 @@ pub async fn verify_access_token(req: &mut Parts, state: &AppState) -> Result<Cl
     }
 }
 
-pub fn validate_access_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) -> Result<Claims, AppError> {
+pub fn validate_access_token<'a>(
+    cookie: &Cookie<'a>,
+    secret: &Secret<String>,
+) -> Result<Claims, AppError> {
     let mut validation = Validation::default();
     validation.leeway = 5;
 
     let decoding_key = DecodingKey::from_secret(secret.expose_secret().as_bytes());
 
-    let claims: Claims = decode(
-        cookie.value(),
-        &decoding_key,
-        &validation,
-    ).context("Invalid or expired token")?.claims;
+    let claims: Claims = decode(cookie.value(), &decoding_key, &validation)
+        .context("Invalid or expired token")?
+        .claims;
 
     Ok(claims)
 }
 
-pub async fn add_access_token_to_blacklist<'c>(acq: impl Acquire<'c, Database = Postgres> + Send, claims: Claims) -> Result<(), AppError> {
+pub async fn add_access_token_to_blacklist<'c>(
+    acq: impl Acquire<'c, Database = Postgres> + Send,
+    claims: Claims,
+) -> Result<(), AppError> {
     // this is converted into the transaction
     // performs an insert to add an access token to the blacklist
 
     let mut pg_tr = acq.begin().await?;
-    let expiry = OffsetDateTime::from_unix_timestamp(claims.exp as i64).context("Timestamp out of range")?;
+    let expiry =
+        OffsetDateTime::from_unix_timestamp(claims.exp as i64).context("Timestamp out of range")?;
     let _res = query!(
         r#"
             INSERT INTO jwt_blacklist (token_id, expiry)
@@ -108,12 +121,18 @@ pub async fn add_access_token_to_blacklist<'c>(acq: impl Acquire<'c, Database = 
         "#,
         claims.jti,
         expiry,
-    ).execute(&mut *pg_tr).await?;
+    )
+    .execute(&mut *pg_tr)
+    .await?;
 
     Ok(())
 }
 
-pub async fn create_access_token<'a>(user_id: Uuid, email: String, ext: &JwtAccessSecret) -> Result<Cookie<'a>, AppError> {
+pub async fn create_access_token<'a>(
+    user_id: Uuid,
+    email: String,
+    ext: &JwtAccessSecret,
+) -> Result<Cookie<'a>, AppError> {
     // use credentials to create a new fresh access JWT
     // generate a cookie with key `jwt`
     // set the value to that encoded access JWT
@@ -124,15 +143,16 @@ pub async fn create_access_token<'a>(user_id: Uuid, email: String, ext: &JwtAcce
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(ext.0.expose_secret().as_bytes()),
-    ).context("Failed to encode the access JWT")?;
+    )
+    .context("Failed to encode the access JWT")?;
 
-    let cookie = Cookie::build(String::from("jwt"), token)
+    let cookie = Cookie::build(ACCESS_TOKEN_NAME, token)
         .http_only(true)
         .secure(true)
         .same_site(SameSite::Strict)
         .path("/")
         .finish();
-    
+
     Ok(cookie)
 }
 
@@ -165,7 +185,10 @@ impl FromRequestParts<AppState> for RefreshClaims {
     }
 }
 
-pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<RefreshClaims, AppError> {
+pub async fn verify_refresh_token(
+    req: &mut Parts,
+    state: &AppState,
+) -> Result<RefreshClaims, AppError> {
     let JwtRefreshSecret(jwt_key) = &state.token_ext.refresh;
     let jar = CookieJar::from_request_parts(req, state)
         .await
@@ -174,14 +197,15 @@ pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<R
     let mut validation = Validation::default();
     validation.leeway = 5;
 
-    let cookie = jar.get("refresh-jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "No refresh token found"))?;
+    let cookie = jar.get(REFRESH_TOKEN_NAME).ok_or(AppError::exp(
+        StatusCode::UNAUTHORIZED,
+        "No refresh token found",
+    ))?;
     let decoding_key = DecodingKey::from_secret(jwt_key.expose_secret().as_bytes());
 
-    let claims: RefreshClaims = decode(
-        cookie.value(),
-        &decoding_key,
-        &validation,
-    ).context("Invalid or expired token")?.claims;
+    let claims: RefreshClaims = decode(cookie.value(), &decoding_key, &validation)
+        .context("Invalid or expired token")?
+        .claims;
 
     let token_in_blacklist = query!(
         r#"
@@ -191,7 +215,10 @@ pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<R
             ) AS "exists!"
         "#,
         claims.jti,
-    ).fetch_one(&state.postgres).await?.exists;
+    )
+    .fetch_one(&state.postgres)
+    .await?
+    .exists;
 
     if token_in_blacklist {
         Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
@@ -200,24 +227,29 @@ pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<R
     }
 }
 
-pub fn validate_refresh_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) -> Result<RefreshClaims, AppError> {
+pub fn validate_refresh_token<'a>(
+    cookie: &Cookie<'a>,
+    secret: &Secret<String>,
+) -> Result<RefreshClaims, AppError> {
     let mut validation = Validation::default();
     validation.leeway = 5;
 
     let decoding_key = DecodingKey::from_secret(secret.expose_secret().as_bytes());
 
-    let claims: RefreshClaims = decode(
-        cookie.value(),
-        &decoding_key,
-        &validation,
-    ).context("Invalid or expired token")?.claims;
+    let claims: RefreshClaims = decode(cookie.value(), &decoding_key, &validation)
+        .context("Invalid or expired token")?
+        .claims;
 
     Ok(claims)
 }
 
-pub async fn add_refresh_token_to_blacklist<'c>(acq: impl Acquire<'c, Database = Postgres> + Send, claims: RefreshClaims) -> Result<(), AppError> {
+pub async fn add_refresh_token_to_blacklist<'c>(
+    acq: impl Acquire<'c, Database = Postgres> + Send,
+    claims: RefreshClaims,
+) -> Result<(), AppError> {
     let mut pg_tr = acq.begin().await?;
-    let expiry = OffsetDateTime::from_unix_timestamp(claims.exp as i64).context("Timestamp out of range")?;
+    let expiry =
+        OffsetDateTime::from_unix_timestamp(claims.exp as i64).context("Timestamp out of range")?;
     let _res = query!(
         r#"
             INSERT INTO jwt_blacklist (token_id, expiry)
@@ -225,27 +257,33 @@ pub async fn add_refresh_token_to_blacklist<'c>(acq: impl Acquire<'c, Database =
         "#,
         claims.jti,
         expiry,
-    ).execute(&mut *pg_tr).await?;
+    )
+    .execute(&mut *pg_tr)
+    .await?;
 
     Ok(())
 }
 
-pub async fn create_refresh_token<'a>(user_id: Uuid, ext: &JwtRefreshSecret) -> Result<Cookie<'a>, AppError> {
+pub async fn create_refresh_token<'a>(
+    user_id: Uuid,
+    ext: &JwtRefreshSecret,
+) -> Result<Cookie<'a>, AppError> {
     let claims = RefreshClaims::new(user_id, Duration::days(7));
 
     let token = encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(ext.0.expose_secret().as_bytes()),
-    ).context("Failed to encode the refresh JWT")?;
+    )
+    .context("Failed to encode the refresh JWT")?;
 
-    let cookie = Cookie::build(String::from("refresh-jwt"), token)
+    let cookie = Cookie::build(REFRESH_TOKEN_NAME, token)
         .http_only(true)
         .secure(true)
         .same_site(SameSite::Strict)
         .path("/")
         .finish();
-    
+
     Ok(cookie)
 }
 
