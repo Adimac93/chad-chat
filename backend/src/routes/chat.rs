@@ -1,4 +1,4 @@
-use crate::state::AppState;
+﻿use crate::state::AppState;
 use crate::utils::auth::models::Claims;
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
@@ -12,7 +12,9 @@ use crate::utils::roles::{
     single_set_group_user_role,
 };
 use axum::extract::State;
+use axum::headers::SecWebsocketKey;
 use axum::http::HeaderMap;
+use axum::TypedHeader;
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
     response::Response,
@@ -30,37 +32,24 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn chat_handler(
-    // can't get value TypedHeader(key): TypedHeader<SecWebsocketKey>,
-    headers: HeaderMap,
     ws: WebSocketUpgrade,
     claims: Claims,
     State(state): State<ChatState>,
     State(pool): State<PgPool>,
     State(gate): State<Gate<Role, (Uuid, Uuid)>>,
 ) -> Response {
-    let connection_id = get_connection_id(headers);
-    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, connection_id, gate))
+    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, gate))
 }
 
-fn get_connection_id(headers: HeaderMap) -> String {
-    if let Some(header) = headers.get("sec-websocket-key") {
-        if let Ok(connection_id) = header.to_str() {
-            return connection_id.to_string();
-        }
-    };
-    error!("Failed to get sec-websocket-key");
-    Uuid::new_v4().to_string()
-}
 
 pub async fn chat_socket(
     stream: WebSocket,
     state: ChatState,
     claims: Claims,
     pool: PgPool,
-    connection_id: String,
     gate: Gate<Role, (Uuid, Uuid)>,
 ) {
-    let mut controller = UserController::new(stream, claims.user_id, connection_id);
+    let mut controller = UserController::new(stream, claims.user_id);
 
     loop {
         // Wait for next client action

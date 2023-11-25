@@ -97,7 +97,7 @@ impl GroupUserData {
     }
 }
 
-struct UserConnections(Arc<RwLock<HashMap<String, UserChannelListener>>>);
+struct UserConnections(Arc<RwLock<HashMap<Uuid, UserChannelListener>>>);
 impl UserConnections {
     fn new() -> Self {
         Self(Arc::new(RwLock::new(HashMap::new())))
@@ -113,7 +113,7 @@ impl UserConnections {
 
 pub struct UserController {
     user_id: Uuid,
-    conn_id: String,
+    conn_id: Uuid,
     pub user_channel: UserChannel,
     group_conn: Option<GroupConnection>,
 }
@@ -132,10 +132,10 @@ impl GroupConnection {
     }
 }
 impl UserController {
-    pub fn new(stream: WebSocket, user_id: Uuid, conn_id: String) -> Self {
+    pub fn new(stream: WebSocket, user_id: Uuid) -> Self {
         Self {
             user_id,
-            conn_id,
+            conn_id: Uuid::new_v4(),
             user_channel: UserChannel::new(stream),
             group_conn: None,
         }
@@ -159,7 +159,7 @@ impl UserController {
                 .0
                 .write()
                 .await
-                .insert(self.conn_id.clone(), listener);
+                .insert(self.conn_id, listener);
 
             if let Some(prev_listener) = listener {
                 prev_listener.disconnect();
