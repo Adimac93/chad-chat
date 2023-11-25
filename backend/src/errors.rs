@@ -4,10 +4,11 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
 use sqlx::error::ErrorKind;
-use sqlx::Error;
 use thiserror::Error;
 use tracing::{debug, error};
 use typeshare::typeshare;
+
+const BACKTRACE_DEPTH: usize = 5;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -38,8 +39,15 @@ impl IntoResponse for AppError {
                 debug!("{error_message}");
                 (code, ErrorResponse::json(message))
             }
-            AppError::Unexpected(_) => {
-                error!("{error_message}");
+            AppError::Unexpected(e) => {
+                let backtrace = e.backtrace();
+                let filtered_backtrace = backtrace.to_string().lines().take(2*BACKTRACE_DEPTH).collect::<Vec<&str>>().join("\n");
+                if &filtered_backtrace == "disabled backtrace" {
+                    error!("{error_message}");
+                } else {
+                    error!("{error_message}\n\n{filtered_backtrace}");
+                }
+
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     ErrorResponse::json("Unexpected server error".into()),
@@ -60,7 +68,7 @@ impl AppError {
 }
 
 impl From<sqlx::Error> for AppError {
-    fn from(val: Error) -> Self {
+    fn from(val: sqlx::Error) -> Self {
         Self::Unexpected(anyhow!(val))
     }
 }
