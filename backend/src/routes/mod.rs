@@ -1,6 +1,10 @@
 use axum::{
-    debug_handler, extract::State, http::HeaderValue, response::IntoResponse, routing::{get, post}, Json,
-    Router,
+    debug_handler,
+    extract::State,
+    http::HeaderValue,
+    response::IntoResponse,
+    routing::{get, post},
+    Json, Router,
 };
 use hyper::{header::CONTENT_TYPE, StatusCode};
 use serde_json::json;
@@ -13,7 +17,7 @@ use tower_http::{
 use crate::{
     configuration::Settings,
     modules::extractors::{geolocation::NetworkData, user_agent::UserAgentData},
-    state::AppState
+    state::AppState,
 };
 
 pub mod auth;

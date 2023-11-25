@@ -290,7 +290,7 @@ impl<'c> Friend<'c> {
 
         Ok(())
     }
-    
+
     pub async fn is_friend(&mut self) -> sqlx::Result<bool> {
         let is_friend = query!(
             r#"

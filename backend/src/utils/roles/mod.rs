@@ -1,10 +1,9 @@
-﻿pub mod models;
+pub mod models;
 pub mod privileges;
 
 use sqlx::{query, Acquire, PgPool, Postgres};
 use uuid::Uuid;
 
-use crate::errors::AppError;
 use self::{
     models::{
         GroupRolePrivileges, PrivilegeChangeData, PrivilegeInterpretationData, Role,
@@ -12,6 +11,7 @@ use self::{
     },
     privileges::{Privilege, Privileges, QueryPrivilege},
 };
+use crate::errors::AppError;
 
 pub async fn single_set_group_role_privileges<'c>(
     conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,

@@ -1,5 +1,3 @@
-
-
 use secrecy::Secret;
 
 #[derive(Clone)]

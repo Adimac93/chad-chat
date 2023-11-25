@@ -1,4 +1,4 @@
-﻿use crate::state::AppState;
+use crate::state::AppState;
 use crate::utils::auth::models::Claims;
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
@@ -107,7 +107,7 @@ pub async fn chat_socket(
                 let Some(conn) = controller.get_group_conn().await else {
                     debug!(
                         "Cannot send message from user {} - group not selected",
-                        &claims.user_id, 
+                        &claims.user_id,
                     );
                     continue;
                 };
@@ -132,7 +132,7 @@ pub async fn chat_socket(
                 else {
                     error!(
                         "Failed to save the message from the user {} in the database",
-                        &claims.user_id, 
+                        &claims.user_id,
                     );
                     continue;
                 };
@@ -155,7 +155,7 @@ pub async fn chat_socket(
                 else {
                     error!(
                         "ws closed: Cannot fetch group messages for user {}",
-                        &claims.user_id, 
+                        &claims.user_id,
                     );
                     continue;
                 };
@@ -163,10 +163,7 @@ pub async fn chat_socket(
                 // Send messages json object
                 let payload = ServerAction::LoadRequested(messages);
                 if controller.user_channel.sender.send(&payload).await.is_err() {
-                    error!(
-                        "Failed to load messages for user {}",
-                        &claims.user_id, 
-                    );
+                    error!("Failed to load messages for user {}", &claims.user_id,);
                     continue;
                 }
             }
@@ -305,10 +302,7 @@ async fn connection_requirements(pool: &PgPool, group_id: &Uuid, claims: &Claims
         return false;
     };
     if !is_group_member {
-        info!(
-            "ws closed: User {} isn't a group member",
-            &claims.user_id, 
-        );
+        info!("ws closed: User {} isn't a group member", &claims.user_id,);
         return false;
     }
     true

@@ -1,4 +1,4 @@
-﻿use crate::errors::AppError;
+use crate::errors::AppError;
 use crate::state::AppState;
 use crate::utils::auth::models::Claims;
 use crate::utils::groups::models::NewGroup;
@@ -6,7 +6,7 @@ use crate::utils::groups::*;
 use axum::extract::State;
 use axum::Router;
 use axum::{extract::Json, routing::get};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use tracing::debug;
 
@@ -21,10 +21,7 @@ async fn get_user_groups(
 ) -> Result<Json<Value>, AppError> {
     let res = query_user_groups(&pool, &claims.user_id).await?;
 
-    debug!(
-        "Queried user {} groups successfully",
-        &claims.user_id
-    );
+    debug!("Queried user {} groups successfully", &claims.user_id);
 
     Ok(Json(json!({ "groups": res })))
 }

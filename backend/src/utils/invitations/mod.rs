@@ -64,9 +64,11 @@ pub async fn try_create_group_invitation_with_code(
 ) -> Result<String, AppError> {
     debug!("{invitation:#?}");
     let invitation = GroupInvitation::try_from(invitation)?;
-    create_group_invitation_raw(pool, user_id, &invitation).await.map_err(|e|
-        DbErrMessage::new(e).fk(StatusCode::BAD_REQUEST, "Group or user does not exist")
-    )?;
+    create_group_invitation_raw(pool, user_id, &invitation)
+        .await
+        .map_err(|e| {
+            DbErrMessage::new(e).fk(StatusCode::BAD_REQUEST, "Group or user does not exist")
+        })?;
 
     Ok(invitation.id)
 }
@@ -119,7 +121,7 @@ pub async fn fetch_group_info_by_code(pool: &PgPool, code: &str) -> Result<Group
 
     Ok(GroupInfo {
         name: invitation.name,
-        members: invitation.members_count as i32
+        members: invitation.members_count as i32,
     })
 }
 
@@ -139,7 +141,8 @@ pub async fn try_join_group_by_code<'c>(
         code
     )
     .fetch_optional(&mut *transaction)
-    .await?.ok_or(AppError::exp(
+    .await?
+    .ok_or(AppError::exp(
         StatusCode::BAD_REQUEST,
         "Invalid group invitation code",
     ))?;
@@ -163,7 +166,10 @@ pub async fn try_join_group_by_code<'c>(
         ))?;
     }
 
-    if invitation.expiration_date.is_some_and(|x| x < OffsetDateTime::now_utc()) {
+    if invitation
+        .expiration_date
+        .is_some_and(|x| x < OffsetDateTime::now_utc())
+    {
         let _res = query!(
             r"
                 DELETE FROM group_invitations

@@ -266,9 +266,10 @@ impl UserController {
             )))?;
 
         let mut users_guard = conn.controller.users.0.write().await;
-        let user = users_guard
-            .get_mut(&data.user_id)
-            .ok_or(AppError::exp(StatusCode::BAD_REQUEST, "User not found in the group"))?;
+        let user = users_guard.get_mut(&data.user_id).ok_or(AppError::exp(
+            StatusCode::BAD_REQUEST,
+            "User not found in the group",
+        ))?;
 
         user.role = data.value;
 

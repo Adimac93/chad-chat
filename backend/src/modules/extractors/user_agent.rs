@@ -1,15 +1,12 @@
 use axum::{
     async_trait,
-    extract::{FromRequestParts},
+    extract::FromRequestParts,
     http::{self, request::Parts},
 };
 use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    modules::external_api::{UserAgentParsed},
-    state::AppState,
-};
+use crate::{modules::external_api::UserAgentParsed, state::AppState};
 
 #[derive(sqlx::Type, Serialize, Deserialize, Debug)]
 #[sqlx(type_name = "user_agent_data")]

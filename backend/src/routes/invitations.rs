@@ -59,9 +59,6 @@ async fn post_join_group_by_code(
 ) -> Result<(), AppError> {
     try_join_group_by_code(&pool, &claims.user_id, &payload.code).await?;
 
-    debug!(
-        "User {} joined a group successfully",
-        &claims.user_id
-    );
+    debug!("User {} joined a group successfully", &claims.user_id);
     Ok(())
 }

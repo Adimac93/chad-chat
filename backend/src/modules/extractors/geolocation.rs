@@ -10,10 +10,7 @@ use hyper::StatusCode;
 use sqlx::types::ipnetwork::IpNetwork;
 use tracing::error;
 
-use crate::{
-    modules::external_api::{GeolocationData},
-    state::AppState,
-};
+use crate::{modules::external_api::GeolocationData, state::AppState};
 
 use super::addr::ClientAddr;
 

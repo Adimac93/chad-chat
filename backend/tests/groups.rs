@@ -1,8 +1,7 @@
 use backend::utils::groups::models::GroupInfo;
 use backend::utils::groups::{check_if_group_exists, get_group_info};
 use backend::utils::groups::{
-    check_if_group_member, create_group, query_user_groups,
-    try_add_user_to_group,
+    check_if_group_member, create_group, query_user_groups, try_add_user_to_group,
 };
 
 use serde_json::Value;
@@ -194,10 +193,7 @@ async fn get_group_info_health_check(db: PgPool) {
                 == GroupInfo {
                     members: 4,
                     name: "Chadders".to_string(),
-                } =>
-        {
-            
-        }
+                } => {}
         _ => panic!("Test result is {:?}", res),
     }
 }

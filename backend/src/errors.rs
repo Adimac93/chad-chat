@@ -41,7 +41,12 @@ impl IntoResponse for AppError {
             }
             AppError::Unexpected(e) => {
                 let backtrace = e.backtrace();
-                let filtered_backtrace = backtrace.to_string().lines().take(2*BACKTRACE_DEPTH).collect::<Vec<&str>>().join("\n");
+                let filtered_backtrace = backtrace
+                    .to_string()
+                    .lines()
+                    .take(2 * BACKTRACE_DEPTH)
+                    .collect::<Vec<&str>>()
+                    .join("\n");
                 if &filtered_backtrace == "disabled backtrace" {
                     error!("{error_message}");
                 } else {

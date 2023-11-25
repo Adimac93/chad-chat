@@ -1,4 +1,4 @@
-﻿use std::{cmp::Ordering, collections::HashSet, hash::Hash, mem::discriminant};
+use std::{cmp::Ordering, collections::HashSet, hash::Hash, mem::discriminant};
 
 use anyhow::anyhow;
 use axum::async_trait;
@@ -7,8 +7,8 @@ use sqlx::{query, Acquire, Postgres};
 
 use crate::utils::roles::models::Role;
 
-use crate::errors::AppError;
 use super::models::PrivilegeChangeData;
+use crate::errors::AppError;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -189,7 +189,9 @@ impl TryFrom<i32> for CanSendMessages {
 
     fn try_from(val: i32) -> Result<Self, Self::Error> {
         match val {
-            ..=-2 => Err(AppError::Unexpected(anyhow!("Failed to interpret privileges"))),
+            ..=-2 => Err(AppError::Unexpected(anyhow!(
+                "Failed to interpret privileges"
+            ))),
             -1 => Ok(CanSendMessages::No),
             // an extra assertion is used to ensure that it won't panic (not necessary)
             0..=i32::MAX => Ok(CanSendMessages::Yes(val as usize)),

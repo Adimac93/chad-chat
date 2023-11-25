@@ -1,13 +1,9 @@
-
 use anyhow::Result;
 use reqwest::Client;
 use serde::Serialize;
 use serde::{de, Deserialize};
 use serde_json::json;
 use serde_json::Value;
-
-
-
 
 use tracing::debug;
 
@@ -188,10 +184,6 @@ pub struct UserAgentParsed {
 
 use std::net::IpAddr;
 use std::str::FromStr;
-
-
-
-
 
 fn bool_from_string<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where

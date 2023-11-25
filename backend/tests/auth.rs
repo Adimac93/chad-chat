@@ -1,10 +1,9 @@
-﻿use nanoid::nanoid;
+use nanoid::nanoid;
 use reqwest::StatusCode;
 use serde_json::json;
 mod tools;
 
-
-use backend::utils::auth::{verify_user_credentials};
+use backend::utils::auth::verify_user_credentials;
 use secrecy::SecretString;
 use sqlx::PgPool;
 
