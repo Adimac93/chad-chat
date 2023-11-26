@@ -1,6 +1,6 @@
 use crate::errors::AppError;
 use crate::utils::roles::models::{
-    PrivilegeChangeData, Role, SocketGroupRolePrivileges, UserRoleChangeData,
+    PrivilegeChangeInput, Role, UserRoleChangeInput,
 };
 use crate::utils::roles::privileges::{Privilege, Privileges};
 
@@ -49,11 +49,11 @@ impl Groups {
         Self(DashMap::new())
     }
 
-    pub fn get(&self, group_id: &Uuid, privileges: SocketGroupRolePrivileges) -> GroupController {
+    pub fn get(&self, group_id: &Uuid) -> GroupController {
         let Groups(groups) = self;
         groups
             .entry(*group_id)
-            .or_insert(GroupController::new(100, privileges))
+            .or_insert(GroupController::new(100))
             .value()
             .clone()
     }
@@ -63,15 +63,13 @@ impl Groups {
 pub struct GroupController {
     pub channel: GroupChannel,
     users: Users,
-    privileges: SocketGroupRolePrivileges,
 }
 
 impl GroupController {
-    fn new(capacity: usize, privileges: SocketGroupRolePrivileges) -> Self {
+    fn new(capacity: usize) -> Self {
         Self {
             channel: GroupChannel::new(capacity),
             users: Users::new(),
-            privileges,
         }
     }
 }
@@ -221,7 +219,7 @@ impl UserController {
         }
     }
 
-    pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), AppError> {
+    pub async fn set_privilege(&self, data: &PrivilegeChangeInput) -> Result<(), AppError> {
         let conn = self
             .group_conn
             .as_ref()
@@ -257,7 +255,7 @@ impl UserController {
         Ok(())
     }
 
-    pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), AppError> {
+    pub async fn single_set_role(&self, data: &UserRoleChangeInput) -> Result<(), AppError> {
         let conn = self
             .group_conn
             .as_ref()
@@ -300,11 +298,6 @@ impl UserController {
             .await
             .get(&user_id)
             .map(|x| x.role)
-    }
-
-    pub fn get_group_privileges(&self) -> Option<&SocketGroupRolePrivileges> {
-        let connection = self.group_conn.as_ref()?;
-        Some(&connection.controller.privileges)
     }
 
     pub async fn get_user_privilege(&self, user_id: Uuid, val: Privilege) -> Option<Privilege> {
@@ -485,8 +478,8 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    SingleChangePrivileges { data: PrivilegeChangeData },
-    SingleChangeUserRole { data: UserRoleChangeData },
+    ChangePrivileges { data: PrivilegeChangeInput },
+    ChangeUserRole { data: UserRoleChangeInput },
     RequestMessages { loaded: i64 },
     Close,
     Ignore,

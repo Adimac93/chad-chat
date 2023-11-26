@@ -5,11 +5,10 @@ use crate::utils::chat::models::*;
 use crate::utils::chat::socket::{ChatState, ClientAction, ServerAction, UserController};
 use crate::utils::chat::*;
 use crate::utils::groups::*;
-use crate::utils::roles::models::{Gate, Role, SocketGroupRolePrivileges};
+use crate::utils::roles::models::{Gate, Role};
 use crate::utils::roles::privileges::{CanInvite, Privilege};
 use crate::utils::roles::{
-    get_group_role_privileges, get_user_role, single_set_group_role_privileges,
-    single_set_group_user_role,
+    get_user_role, get_all_privileges, set_privileges, set_role,
 };
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -73,13 +72,13 @@ pub async fn chat_socket(
                 }
 
                 // Fetch role and privileges in order to connect to group
-                let Ok(privileges) = get_group_role_privileges(&pool, group_id).await else {
+                let Ok(privileges) = get_all_privileges(&pool, group_id).await else {
                     error!("Cannot fetch group role privileges");
                     continue;
                 };
                 let group_controller = state
                     .groups
-                    .get(&group_id, SocketGroupRolePrivileges::from(privileges));
+                    .get(&group_id);
 
                 let Ok(role) = get_user_role(&pool, &claims.user_id, &group_id).await else {
                     error!("Cannot fetch group user role data");
@@ -238,36 +237,25 @@ pub async fn chat_socket(
 
                 // todo: disconnect group controllers
             }
-            ClientAction::SingleChangePrivileges { mut data } => {
-                let Some(socket_privileges) = controller.get_group_privileges() else {
-                    debug!("User trying to change privileges not in group");
-                    continue;
-                };
-
-                // there is a concurrency-related edge case which bypasses corrections
-                if data.maintain_hierarchy(socket_privileges).await.is_err() {
-                    error!("Error when maintaining role hierarchy");
-                    continue;
-                };
-
+            ClientAction::ChangePrivileges { data } => {
                 if controller.set_privilege(&data).await.is_err() {
                     error!("Error when changing privilege");
                     continue;
                 };
 
-                if single_set_group_role_privileges(&pool, &data)
+                if set_privileges(&pool, &data)
                     .await
                     .is_err()
                 {
                     error!("Error when setting group role privileges");
                 };
             }
-            ClientAction::SingleChangeUserRole { data } => {
+            ClientAction::ChangeUserRole { data } => {
                 if controller.single_set_role(&data).await.is_err() {
                     continue;
                 };
 
-                let res = single_set_group_user_role(&pool, &data).await;
+                let res = set_role(&pool, &data).await;
                 if res.is_err() {
                     debug!("Failed to change user role: {:#?}", res);
                 };
