@@ -8,7 +8,7 @@ use sqlx::{query, Acquire, Postgres};
 use crate::utils::roles::models::Role;
 
 use crate::errors::AppError;
-use super::models::PrivilegeChangeData;
+use super::models::PrivilegeChangeInput;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -101,7 +101,7 @@ pub trait QueryPrivilege<'c> {
     async fn set_privilege(
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
-        data: &PrivilegeChangeData,
+        data: &PrivilegeChangeInput,
     ) -> sqlx::Result<()>;
 }
 
@@ -110,7 +110,7 @@ impl<'c> QueryPrivilege<'c> for CanInvite {
     async fn set_privilege(
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
-        data: &PrivilegeChangeData,
+        data: &PrivilegeChangeInput,
     ) -> sqlx::Result<()> {
         let mut transaction = conn.begin().await?;
 
@@ -154,7 +154,7 @@ impl<'c> QueryPrivilege<'c> for CanSendMessages {
     async fn set_privilege(
         &self,
         conn: impl Acquire<'c, Database = Postgres> + std::marker::Send,
-        data: &PrivilegeChangeData,
+        data: &PrivilegeChangeInput,
     ) -> sqlx::Result<()> {
         let mut transaction = conn.begin().await?;
 

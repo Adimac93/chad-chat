@@ -94,9 +94,14 @@ export enum Role {
 	Owner = "owner",
 }
 
-export interface UserRoleChangeData {
+export interface UserRoleChangeInput {
 	group_id: string;
 	user_id: string;
 	value: Role;
+}
+
+export interface GroupPrivileges {
+	admin: number;
+	member: number;
 }
 

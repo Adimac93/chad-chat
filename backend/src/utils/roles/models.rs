@@ -1,13 +1,9 @@
-use anyhow::anyhow;
-use hyper::StatusCode;
-use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::HashMap, hash::Hash, sync::Arc};
-use tokio::sync::RwLock;
+﻿use serde::{Deserialize, Serialize};
+use std::{cmp::Ordering, collections::HashMap, hash::Hash};
 use typeshare::typeshare;
 use uuid::Uuid;
 
-use super::privileges::{CanInvite, CanSendMessages, Privilege, Privileges};
-use crate::errors::AppError;
+use super::privileges::Privilege;
 
 #[typeshare]
 #[derive(
@@ -39,80 +35,6 @@ impl Role {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct GroupRolePrivileges(pub HashMap<Role, Privileges>);
-
-#[derive(Clone)]
-pub struct SocketGroupRolePrivileges(pub HashMap<Role, Arc<RwLock<Privileges>>>);
-
-impl SocketGroupRolePrivileges {
-    pub async fn get_privileges(&self, role: Role) -> Option<Privileges> {
-        if role == Role::Owner {
-            Some(Privileges::max())
-        } else {
-            Some(self.0.get(&role)?.read().await.clone())
-        }
-    }
-
-    pub async fn get_privilege(&self, role: Role, val: Privilege) -> Option<Privilege> {
-        self.0.get(&role)?.read().await.0.get(&val).copied()
-    }
-
-    pub async fn verify_with_privilege(
-        &self,
-        role: Role,
-        min_val: Privilege,
-    ) -> Result<bool, AppError> {
-        let cmp_res = self
-            .get_privilege(role, min_val)
-            .await
-            .ok_or(AppError::Unexpected(anyhow!("No privilege found")))?
-            .partial_cmp(&min_val);
-        Ok(cmp_res == Some(Ordering::Greater) && cmp_res == Some(Ordering::Equal))
-    }
-}
-
-impl Default for GroupRolePrivileges {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl GroupRolePrivileges {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-}
-
-impl From<GroupRolePrivileges> for SocketGroupRolePrivileges {
-    fn from(val: GroupRolePrivileges) -> Self {
-        SocketGroupRolePrivileges(
-            val.0
-                .into_iter()
-                .map(|(k, v)| (k, Arc::new(RwLock::new(v))))
-                .collect::<HashMap<_, _>>(),
-        )
-    }
-}
-
-impl Privilege {
-    fn partial_cmp_max(self, other: Self) -> Option<Self> {
-        match &self.partial_cmp(&other) {
-            Some(Ordering::Greater) | Some(Ordering::Equal) => Some(self),
-            Some(Ordering::Less) => Some(other),
-            None => None,
-        }
-    }
-
-    fn partial_cmp_min(self, other: Self) -> Option<Self> {
-        match &self.partial_cmp(&other) {
-            Some(Ordering::Greater) | Some(Ordering::Equal) => Some(other),
-            Some(Ordering::Less) => Some(self),
-            None => None,
-        }
-    }
-}
-
 impl PartialOrd for Privilege {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match self {
@@ -129,13 +51,13 @@ impl PartialOrd for Privilege {
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-pub struct PrivilegeChangeData {
+pub struct PrivilegeChangeInput {
     pub group_id: Uuid,
     pub role: Role,
     pub value: Privilege,
 }
 
-impl PrivilegeChangeData {
+impl PrivilegeChangeInput {
     pub fn new(group_id: Uuid, role: Role, value: Privilege) -> Self {
         Self {
             group_id,
@@ -145,81 +67,15 @@ impl PrivilegeChangeData {
     }
 }
 
-impl PrivilegeChangeData {
-    pub async fn maintain_hierarchy(
-        &mut self,
-        other: &SocketGroupRolePrivileges,
-    ) -> Result<(), AppError> {
-        self.maintain_hierarchy_l(other).await?;
-        self.maintain_hierarchy_h(other).await?;
-        Ok(())
-    }
-
-    pub async fn maintain_hierarchy_l(
-        &mut self,
-        other: &SocketGroupRolePrivileges,
-    ) -> Result<(), AppError> {
-        let Some(other_role) = self.role.decrement() else {
-            return Ok(());
-        };
-
-        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(
-            StatusCode::BAD_REQUEST,
-            "Role not found in the group",
-        ))?;
-        let other_privileges = other_privileges_ref.read().await;
-        let privilege = other_privileges
-            .0
-            .get(&self.value)
-            .ok_or(AppError::Unexpected(anyhow!("Privilege not found")))?;
-
-        self.value = self
-            .value
-            .partial_cmp_max(*privilege)
-            .ok_or(AppError::Unexpected(anyhow!("Mismatched privileges")))?;
-
-        Ok(())
-    }
-
-    pub async fn maintain_hierarchy_h(
-        &mut self,
-        other: &SocketGroupRolePrivileges,
-    ) -> Result<(), AppError> {
-        let Some(other_role) = self.role.increment() else {
-            return Ok(());
-        };
-        if other_role == Role::Owner {
-            return Ok(());
-        }
-
-        let other_privileges_ref = other.0.get(&other_role).ok_or(AppError::exp(
-            StatusCode::BAD_REQUEST,
-            "Role not found in the group",
-        ))?;
-        let other_privileges = other_privileges_ref.read().await;
-        let privilege = other_privileges
-            .0
-            .get(&self.value)
-            .ok_or(AppError::Unexpected(anyhow!("Privilege not found")))?;
-
-        self.value = self
-            .value
-            .partial_cmp_min(*privilege)
-            .ok_or(AppError::Unexpected(anyhow!("Mismatched privileges")))?;
-
-        Ok(())
-    }
-}
-
 #[typeshare]
 #[derive(Serialize, Deserialize)]
-pub struct UserRoleChangeData {
+pub struct UserRoleChangeInput {
     pub group_id: Uuid,
     pub user_id: Uuid,
     pub value: Role,
 }
 
-impl UserRoleChangeData {
+impl UserRoleChangeInput {
     pub fn new(group_id: Uuid, user_id: Uuid, value: Role) -> Self {
         Self {
             group_id,
@@ -229,35 +85,15 @@ impl UserRoleChangeData {
     }
 }
 
-#[derive(Debug)]
-pub struct PrivilegeInterpretationData {
-    pub can_invite: bool,
-    pub can_send_messages: i32,
+#[typeshare]
+#[derive(Serialize)]
+pub struct GroupPrivileges {
+    pub admin: u8,
+    pub member: u8,
 }
 
-impl PrivilegeInterpretationData {
-    pub fn new(can_invite: bool, can_send_messages: i32) -> Self {
-        Self {
-            can_invite,
-            can_send_messages,
-        }
-    }
-}
-
-impl TryFrom<PrivilegeInterpretationData> for Privileges {
-    type Error = AppError;
-
-    fn try_from(val: PrivilegeInterpretationData) -> Result<Self, Self::Error> {
-        let mut res = Privileges::new();
-        res.0
-            .insert(Privilege::CanInvite(CanInvite::from(val.can_invite)));
-        res.0
-            .insert(Privilege::CanSendMessages(CanSendMessages::try_from(
-                val.can_send_messages,
-            )?));
-
-        Ok(res)
-    }
+pub struct UserPrivileges {
+    pub privileges: u8,
 }
 
 #[derive(Clone)]
