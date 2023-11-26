@@ -319,18 +319,6 @@ impl<'c> User<'c> {
     }
 
     pub async fn friends(&mut self) -> sqlx::Result<Vec<FriendModel>> {
-        let friends = query_as!(
-        FriendModel,
-        r#"
-            SELECT users.activity_status as "status: ActivityStatus", users.profile_picture_url, user_friends.note FROM user_friends
-            JOIN users ON users.id = user_friends.friend_id
-            WHERE user_id = $1
-        "#,
-        self.user_id
-        )
-        .fetch_all(&mut *self.conn)
-        .await?;
-
-        Ok(friends)
+        todo!()
     }
 }

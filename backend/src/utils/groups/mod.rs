@@ -80,8 +80,14 @@ pub async fn create_group(pool: &PgPool, name: &str, user_id: Uuid) -> Result<()
 
     let group = insert_group_raw(&mut transaction, name).await?;
     let username = select_username_by_id(&mut transaction, user_id).await?;
-    insert_default_roles(&mut transaction, group.id).await.context("Failed to initiate group roles")?;
-    insert_group_owner(&mut transaction, user_id, group.id, &username).await.map_err(|e| DbErrMessage::new(e).unique(StatusCode::BAD_REQUEST, "User already in group"))?;
+    insert_default_roles(&mut transaction, group.id)
+        .await
+        .context("Failed to initiate group roles")?;
+    insert_group_owner(&mut transaction, user_id, group.id, &username)
+        .await
+        .map_err(|e| {
+            DbErrMessage::new(e).unique(StatusCode::BAD_REQUEST, "User already in group")
+        })?;
 
     transaction.commit().await?;
 
@@ -93,7 +99,7 @@ async fn insert_group_raw<'c>(
     group_name: &str,
 ) -> sqlx::Result<Group> {
     let mut tr = conn.begin().await?;
-    
+
     let group = query_as!(
         Group,
         r#"
@@ -133,18 +139,7 @@ async fn insert_default_roles<'c>(
     conn: impl Acquire<'c, Database = Postgres>,
     group_id: Uuid,
 ) -> sqlx::Result<()> {
-    let mut tr = conn.begin().await?;
-
-    query!(
-        r#"
-            SELECT add_group_roles($1)
-        "#,
-        group_id,
-    )
-    .execute(&mut *tr)
-    .await?;
-
-    Ok(())
+    todo!()
 }
 
 async fn insert_group_owner<'c>(
@@ -255,7 +250,8 @@ pub async fn get_group_info(pool: &PgPool, group_id: &Uuid) -> Result<GroupInfo,
         group_id
     )
     .fetch_optional(pool)
-    .await?.ok_or(AppError::exp(
+    .await?
+    .ok_or(AppError::exp(
         StatusCode::BAD_REQUEST,
         "Group does not exist",
     ))?;
