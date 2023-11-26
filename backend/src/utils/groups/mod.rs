@@ -50,13 +50,8 @@ async fn insert_group_user<'c>(
 
     query!(
         r#"
-            INSERT INTO group_users (user_id, group_id, nickname, role_id)
-            VALUES ($1, $2, $3, (
-                SELECT role_id
-                FROM group_roles
-                WHERE group_roles.group_id = $2
-                AND group_roles.role_type = 'member'
-            ))
+            INSERT INTO group_users (user_id, group_id, nickname, role_type)
+            VALUES ($1, $2, $3, 'member')
         "#,
         user_id,
         group_id,
@@ -157,13 +152,8 @@ async fn insert_group_owner<'c>(
 
     query!(
         r#"
-            INSERT INTO group_users (user_id, group_id, nickname, role_id)
-            VALUES ($1, $2, $3, (
-                SELECT role_id
-                FROM group_roles
-                WHERE group_roles.group_id = $2
-                AND group_roles.role_type = 'owner'
-            ))
+            INSERT INTO group_users (user_id, group_id, nickname, role_type)
+            VALUES ($1, $2, $3, 'owner')
         "#,
         user_id,
         group_id,
@@ -182,16 +172,18 @@ pub async fn check_if_group_member(
 ) -> sqlx::Result<bool> {
     let res = query!(
         r#"
-            SELECT * FROM group_users
-            WHERE user_id = $1 AND group_id = $2
+            SELECT EXISTS (
+                SELECT 1 FROM group_users
+                WHERE user_id = $1 AND group_id = $2
+            ) AS "exists!"
         "#,
         user_id,
         group_id
     )
-    .fetch_optional(pool)
-    .await?;
+    .fetch_one(pool)
+    .await?.exists;
 
-    Ok(res.is_some())
+    Ok(res)
 }
 
 pub async fn query_user_groups(pool: &PgPool, user_id: &Uuid) -> sqlx::Result<Vec<Group>> {
