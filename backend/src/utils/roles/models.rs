@@ -1,9 +1,7 @@
 ﻿use serde::{Deserialize, Serialize};
-use std::{cmp::Ordering, collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash};
 use typeshare::typeshare;
 use uuid::Uuid;
-
-use super::privileges::Privilege;
 
 #[typeshare]
 #[derive(
@@ -35,19 +33,12 @@ impl Role {
     }
 }
 
-impl PartialOrd for Privilege {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match self {
-            Privilege::CanInvite(x) => match other {
-                Privilege::CanInvite(y) => x.partial_cmp(y),
-                _ => None,
-            },
-            Privilege::CanSendMessages(x) => match other {
-                Privilege::CanSendMessages(y) => x.partial_cmp(y),
-                _ => None,
-            },
-        }
-    }
+#[typeshare]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(tag = "type", content = "content")]
+pub enum Privilege {
+    CanInvite(bool),
+    CanSendMessages(bool),
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]

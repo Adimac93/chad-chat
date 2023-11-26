@@ -105,3 +105,7 @@ export interface GroupPrivileges {
 	member: number;
 }
 
+export type Privilege = 
+	| { type: "CanInvite", content: boolean }
+	| { type: "CanSendMessages", content: boolean };
+
