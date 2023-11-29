@@ -22,6 +22,10 @@ ADD COLUMN privileges INT;
 UPDATE group_roles
 SET privileges = 3;
 
+ALTER TABLE group_roles
+ALTER COLUMN privileges
+SET NOT NULL;
+
 ALTER TABLE group_users
 DROP COLUMN role_id;
 
@@ -38,6 +42,10 @@ WHERE (user_id, group_id) IN (
 UPDATE group_users
 SET role_type = 'member'
 WHERE role_type IS NULL;
+
+ALTER TABLE group_users
+ALTER COLUMN role_type
+SET NOT NULL;
 
 ALTER TABLE group_users
 ADD CONSTRAINT group_users_group_id_role_id_fkey FOREIGN KEY (group_id, role_type) REFERENCES group_roles (group_id, role_type)
