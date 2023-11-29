@@ -2,7 +2,7 @@ use crate::errors::AppError;
 use crate::utils::roles::models::{
     PrivilegeChangeInput, Role, UserRoleChangeInput,
 };
-use crate::utils::roles::privileges::{Privilege, Privileges};
+use crate::utils::roles::models::Privilege;
 
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;
@@ -218,107 +218,6 @@ impl UserController {
             }
         }
     }
-
-    pub async fn set_privilege(&self, data: &PrivilegeChangeInput) -> Result<(), AppError> {
-        let conn = self
-            .group_conn
-            .as_ref()
-            .ok_or(AppError::Unexpected(anyhow!(
-                "No group connection found in the user controller"
-            )))?;
-
-        let privilege_ref =
-            conn.controller
-                .privileges
-                .0
-                .get(&data.role)
-                .ok_or(AppError::Unexpected(anyhow!(
-                    "No role {:?} found in a group",
-                    &data.role
-                )))?;
-
-        let mut privilege_guard = privilege_ref.write().await;
-        privilege_guard.0.replace(data.value);
-
-        let users_guard = conn.controller.users.0.read().await;
-
-        // send new privileges to every user, whose privileges were changed
-        for (_, user_data) in users_guard.iter() {
-            if user_data.role == data.role {
-                user_data
-                    .connections
-                    .send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone()))
-                    .await;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn single_set_role(&self, data: &UserRoleChangeInput) -> Result<(), AppError> {
-        let conn = self
-            .group_conn
-            .as_ref()
-            .ok_or(AppError::Unexpected(anyhow!(
-                "No group connection found in the user controller"
-            )))?;
-
-        let mut users_guard = conn.controller.users.0.write().await;
-        let user = users_guard
-            .get_mut(&data.user_id)
-            .ok_or(AppError::exp(StatusCode::BAD_REQUEST, "User not found in the group"))?;
-
-        user.role = data.value;
-
-        let privileges = conn
-            .controller
-            .privileges
-            .get_privileges(data.value)
-            .await
-            .ok_or(AppError::Unexpected(anyhow!(
-                "No role {:?} found in the group",
-                data.value
-            )))?;
-
-        user.connections
-            .send_across_all(&ServerAction::SetPrivileges(privileges))
-            .await;
-        Ok(())
-    }
-
-    pub async fn get_role(&self, user_id: Uuid) -> Option<Role> {
-        let Some(conn) = &self.group_conn else {
-            return None;
-        };
-
-        conn.controller
-            .users
-            .0
-            .read()
-            .await
-            .get(&user_id)
-            .map(|x| x.role)
-    }
-
-    pub async fn get_user_privilege(&self, user_id: Uuid, val: Privilege) -> Option<Privilege> {
-        let role = self.get_role(user_id).await?;
-        self.get_group_privileges()?.get_privilege(role, val).await
-    }
-
-    pub async fn verify_with_privilege(
-        &self,
-        user_id: Uuid,
-        min_val: Privilege,
-    ) -> Result<bool, AppError> {
-        let role = self
-            .get_role(user_id)
-            .await
-            .ok_or(AppError::Unexpected(anyhow!("No role found for user_id")))?;
-        let privileges = self
-            .get_group_privileges()
-            .ok_or(AppError::Unexpected(anyhow!("No socket privileges found")))?;
-        privileges.verify_with_privilege(role, min_val).await
-    }
 }
 
 pub struct UserChannelListener {
@@ -468,7 +367,6 @@ pub enum ServerAction {
     GroupInvite,
     Message(GroupUserMessage),
     Kick(KickMessage),
-    SetPrivileges(Privileges),
 }
 
 /// Client action send to server
@@ -478,8 +376,6 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    ChangePrivileges { data: PrivilegeChangeInput },
-    ChangeUserRole { data: UserRoleChangeInput },
     RequestMessages { loaded: i64 },
     Close,
     Ignore,
