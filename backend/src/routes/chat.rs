@@ -1,4 +1,4 @@
-﻿use crate::state::AppState;
+﻿use crate::state::{AppState, RdPool};
 use crate::utils::auth::models::Claims;
 use crate::utils::chat::messages::fetch_last_messages_in_range;
 use crate::utils::chat::models::*;
@@ -6,7 +6,7 @@ use crate::utils::chat::socket::{ChatState, ClientAction, ServerAction, UserCont
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::roles::models::{Gate, Role};
-use crate::utils::roles::privileges::{CanInvite, Privilege};
+use crate::utils::roles::models::Privilege;
 use crate::utils::roles::{
     get_user_role, get_all_privileges, set_privileges, set_role,
 };
@@ -34,11 +34,12 @@ async fn chat_handler(
     ws: WebSocketUpgrade,
     claims: Claims,
     State(state): State<ChatState>,
-    State(pool): State<PgPool>,
+    State(pg): State<PgPool>,
+    State(rd): State<RdPool>,
     State(gate): State<Gate<Role, (Uuid, Uuid)>>,
 ) -> Response {
     let connection_id = get_connection_id(headers);
-    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pool, connection_id, gate))
+    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pg, rd, connection_id, gate))
 }
 
 fn get_connection_id(headers: HeaderMap) -> String {
@@ -55,7 +56,8 @@ pub async fn chat_socket(
     stream: WebSocket,
     state: ChatState,
     claims: Claims,
-    pool: PgPool,
+    pg: PgPool,
+    mut rd: RdPool,
     connection_id: String,
     gate: Gate<Role, (Uuid, Uuid)>,
 ) {
@@ -67,12 +69,12 @@ pub async fn chat_socket(
         match action {
             ClientAction::ChangeGroup { group_id } => {
                 // Security checks
-                if !connection_requirements(&pool, &group_id, &claims).await {
+                if !connection_requirements(&pg, &group_id, &claims).await {
                     break;
                 }
 
                 // Fetch role and privileges in order to connect to group
-                let Ok(privileges) = get_all_privileges(&pool, group_id).await else {
+                let Ok(privileges) = get_all_privileges(&pg, &mut rd, group_id).await else {
                     error!("Cannot fetch group role privileges");
                     continue;
                 };
@@ -80,7 +82,7 @@ pub async fn chat_socket(
                     .groups
                     .get(&group_id);
 
-                let Ok(role) = get_user_role(&pool, &claims.user_id, &group_id).await else {
+                let Ok(role) = get_user_role(&pg, &mut rd, claims.user_id, group_id).await else {
                     error!("Cannot fetch group user role data");
                     continue;
                 };
@@ -89,7 +91,7 @@ pub async fn chat_socket(
                 controller.connect(group_id, group_controller, role).await;
 
                 // Load last group messages
-                let Ok(messages) = fetch_last_messages_in_range(&pool, &group_id, 10, 0).await
+                let Ok(messages) = fetch_last_messages_in_range(&pg, &group_id, 10, 0).await
                 else {
                     error!("ws closed: Cannot fetch group {} messages", &group_id);
                     continue;
@@ -123,11 +125,11 @@ pub async fn chat_socket(
 
                 // todo: make transaction
                 // Save message in database
-                let nickname = get_group_nickname(&pool, &claims.user_id, &conn.group_id)
+                let nickname = get_group_nickname(&pg, &claims.user_id, &conn.group_id)
                     .await
                     .unwrap_or("unknown_user".into());
 
-                let Ok(_) = create_message(&pool, &claims.user_id, &conn.group_id, &content).await
+                let Ok(_) = create_message(&pg, &claims.user_id, &conn.group_id, &content).await
                 else {
                     error!(
                         "Failed to save the message from the user {} in the database",
@@ -150,7 +152,7 @@ pub async fn chat_socket(
 
                 // Load older messages
                 let Ok(messages) =
-                    fetch_last_messages_in_range(&pool, &conn.group_id, 10, loaded).await
+                    fetch_last_messages_in_range(&pg, &conn.group_id, 10, loaded).await
                 else {
                     error!(
                         "ws closed: Cannot fetch group messages for user {}",
@@ -171,29 +173,30 @@ pub async fn chat_socket(
             }
             // todo: send group invites in chat
             ClientAction::GroupInvite { group_id } => {
-                match controller
-                    .verify_with_privilege(claims.user_id, Privilege::CanInvite(CanInvite::Yes))
-                    .await
-                {
-                    Ok(false) => {
-                        info!("User does not have privileges to invite other users");
-                        continue;
-                    }
-                    Err(e) => {
-                        error!("Failed to verify with privilege: {:?}", e);
-                        continue;
-                    }
-                    _ => (),
-                }
+                todo!();
+                // match controller
+                //     .verify_with_privilege(claims.user_id, Privilege::CanInvite(CanInvite::Yes))
+                //     .await
+                // {
+                //     Ok(false) => {
+                //         info!("User does not have privileges to invite other users");
+                //         continue;
+                //     }
+                //     Err(e) => {
+                //         error!("Failed to verify with privilege: {:?}", e);
+                //         continue;
+                //     }
+                //     _ => (),
+                // }
 
-                let Ok(_is_member) = check_if_group_member(&pool, &claims.user_id, &group_id).await
+                let Ok(_is_member) = check_if_group_member(&pg, &claims.user_id, &group_id).await
                 else {
                     error!("Failed to check whether a user {} is a group {} member (during sending a group invite)", &claims.user_id, &group_id);
                     continue;
                 };
             }
             ClientAction::RemoveUser { user_id, group_id } => {
-                match check_if_group_member(&pool, &user_id, &group_id).await {
+                match check_if_group_member(&pg, &user_id, &group_id).await {
                     Ok(false) => {
                         debug!(
                             "Cannot remove user {} from group {} - user is not a group member",
@@ -208,23 +211,24 @@ pub async fn chat_socket(
                     _ => (),
                 };
 
-                let Some(user_role) = controller.get_role(claims.user_id).await else {
-                    error!("Failed to get the controller's role");
-                    continue;
-                };
+                todo!();
+                // let Some(user_role) = controller.get_role(claims.user_id).await else {
+                //     error!("Failed to get the controller's role");
+                //     continue;
+                // };
 
-                let Some(target_user_role) = controller.get_role(user_id).await else {
-                    error!("Failed to get the target user's role");
-                    continue;
-                };
+                // let Some(target_user_role) = controller.get_role(user_id).await else {
+                //     error!("Failed to get the target user's role");
+                //     continue;
+                // };
 
-                if !gate.verify(user_role, target_user_role, (claims.user_id, user_id)) {
-                    info!("User does not have privileges to kick another user");
-                    continue;
-                }
+                // if !gate.verify(user_role, target_user_role, (claims.user_id, user_id)) {
+                //     info!("User does not have privileges to kick another user");
+                //     continue;
+                // }
 
                 // Remove user from group
-                let Ok(_) = try_remove_user_from_group(&pool, user_id, group_id).await else {
+                let Ok(_) = try_remove_user_from_group(&pg, user_id, group_id).await else {
                     error!(
                         "Failed to remove user {} from a group {}",
                         &user_id, &group_id
@@ -236,29 +240,6 @@ pub async fn chat_socket(
                 controller.kick(user_id).await;
 
                 // todo: disconnect group controllers
-            }
-            ClientAction::ChangePrivileges { data } => {
-                if controller.set_privilege(&data).await.is_err() {
-                    error!("Error when changing privilege");
-                    continue;
-                };
-
-                if set_privileges(&pool, &data)
-                    .await
-                    .is_err()
-                {
-                    error!("Error when setting group role privileges");
-                };
-            }
-            ClientAction::ChangeUserRole { data } => {
-                if controller.single_set_role(&data).await.is_err() {
-                    continue;
-                };
-
-                let res = set_role(&pool, &data).await;
-                if res.is_err() {
-                    debug!("Failed to change user role: {:#?}", res);
-                };
             }
             ClientAction::Close => {
                 info!("WebSocket closed explicitly");
