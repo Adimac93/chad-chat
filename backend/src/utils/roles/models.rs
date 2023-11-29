@@ -1,7 +1,10 @@
-﻿use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, hash::Hash};
+﻿use redis::{FromRedisValue, RedisError, ErrorKind};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, hash::Hash, fmt::Display, str::from_utf8};
 use typeshare::typeshare;
 use uuid::Uuid;
+
+use crate::errors::TryFromStrError;
 
 #[typeshare]
 #[derive(
@@ -33,12 +36,69 @@ impl Role {
     }
 }
 
+impl Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let res = match self {
+            Self::Admin => "admin",
+            Self::Member => "member",
+            Self::Owner => "owner",
+        };
+
+        write!(f, "{res}")
+    }
+}
+
+impl TryFrom<&str> for Role {
+    type Error = TryFromStrError;
+
+    fn try_from(val: &str) -> Result<Self, Self::Error> {
+        match val {
+            "admin" => Ok(Role::Admin),
+            "member" => Ok(Role::Member),
+            "owner" => Ok(Role::Owner),
+            _ => Err(TryFromStrError::new("expected \"admin\", \"member\" or \"owner\""))
+        }
+    }
+}
+
+impl FromRedisValue for Role {
+    fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
+        match v {
+            redis::Value::Data(d) => {
+                let s = from_utf8(d).map_err(|_| RedisError::from((ErrorKind::TypeError, "Expected UTF-8 string")))?;
+                // TODO: use the error returned by the TryFromStrError
+                Role::try_from(s).map_err(|_| RedisError::from((ErrorKind::ResponseError, "expected \"admin\", \"member\" or \"owner\"")))
+            },
+            _ => Err(RedisError::from((ErrorKind::TypeError, "Expected UTF-8 string"))),
+        }
+    }
+}
+
 #[typeshare]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(tag = "type", content = "content")]
 pub enum Privilege {
     CanInvite(bool),
     CanSendMessages(bool),
+}
+
+impl Privilege {
+    /// Interprets the privilege in terms of updated bits. The first number of the result represents the decimal representation of bits,
+    /// shifted by the necessary amount. The second result consists of ones at the places concerning a given privilege.
+    pub fn to_bits(self) -> (u8, u8) {
+        match self {
+            Self::CanInvite(v) => if v {
+                (1, 0)
+            } else {
+                (0, 0)
+            },
+            Self::CanSendMessages(v) => if v {
+                (1 << 1, 1 << 1)
+            } else {
+                (0 << 1, 1 << 1)
+            },
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
@@ -79,8 +139,7 @@ impl UserRoleChangeInput {
 #[typeshare]
 #[derive(Serialize)]
 pub struct GroupPrivileges {
-    pub admin: u8,
-    pub member: u8,
+    pub privileges: HashMap<Role, u8>,
 }
 
 pub struct UserPrivileges {

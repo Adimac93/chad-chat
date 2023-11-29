@@ -101,8 +101,7 @@ export interface UserRoleChangeInput {
 }
 
 export interface GroupPrivileges {
-	admin: number;
-	member: number;
+	privileges: Record<Role, number>;
 }
 
 export type Privilege = 
