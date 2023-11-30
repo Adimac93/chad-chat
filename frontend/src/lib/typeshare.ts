@@ -96,7 +96,7 @@ export enum Role {
 
 export interface UserRoleChangeInput {
 	group_id: string;
-	user_id: string;
+	target_user_id: string;
 	value: Role;
 }
 
