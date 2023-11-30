@@ -1,8 +1,8 @@
-mod tools;
+use redis::Cmd;
 
-use redis::Client;
+mod tools;
 
 #[tokio::test]
 async fn redis_health_check() {
-    let res = tools::add_redis(1, vec!["", "PING", "SET a b", "SET c d", "SADD my_set 1 2 4 5"]).await;
+    let rd = tools::add_redis(100, vec!["", "PING", "SET a b", "SET c d", "SADD my_set 1 2 4 5"]).await;
 }

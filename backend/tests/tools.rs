@@ -1,9 +1,12 @@
 ﻿use backend::{configuration::get_config, routes::app};
 use dotenv::dotenv;
-use redis::{cmd, Client as RedisClient, aio::ConnectionManager};
+use redis::{cmd, Client as RedisClient, aio::ConnectionManager, Value};
 use reqwest::Client;
 use sqlx::PgPool;
 use std::net::{SocketAddr, TcpListener};
+
+#[cfg(test)]
+const DEFAULT_BASE_REDIS_URL: &str = "redis://127.0.0.1:6379/";
 
 async fn spawn_app(db: PgPool) -> SocketAddr {
     dotenv().ok();
@@ -49,8 +52,10 @@ where
     <T as IntoIterator>::Item: Into<String> {
     dotenv::dotenv().ok();
 
+    let base_redis_url = std::env::var("BASE_REDIS_URL").unwrap_or(DEFAULT_BASE_REDIS_URL.to_string());
+
     let client =
-        RedisClient::open(format!("{}{db_number}", std::env::var("BASE_REDIS_URL").unwrap())).expect("Cannot establish redis connection");
+        RedisClient::open(format!("{base_redis_url}{db_number}")).expect("Cannot establish redis connection");
     
     let mut rd = client
         .get_tokio_connection_manager()
@@ -64,8 +69,8 @@ where
         if s.trim().is_empty() {
             continue;
         };
-        let args: Vec<String> = parse_args(s);
-        let _ = rd.send_packed_command(&cmd(&args[0]).arg(&args[1..])).await.unwrap();
+        let args = parse_args(s);
+        let _: Value = cmd(&args[0]).arg(&args[1..]).query_async(&mut rd).await.unwrap();
     };
 
     rd
