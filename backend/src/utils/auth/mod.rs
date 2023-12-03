@@ -3,11 +3,13 @@ pub mod models;
 pub mod tokens;
 use crate::errors::AppError;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
+use crate::state::RdPool;
 use anyhow::Context;
 use argon2::verify_encoded;
 use axum_extra::extract::CookieJar;
 use hyper::StatusCode;
 use models::*;
+use redis::Pipeline;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sqlx::{query, types::ipnetwork::IpNetwork, PgPool};
@@ -169,7 +171,8 @@ pub async fn verify_user_credentials(
     }
 }
 
-pub async fn generate_token_cookies(
+pub async fn generate_tokens(
+    rd: &mut RdPool,
     user_id: Uuid,
     login: &str,
     ext: &TokenExtractors,
@@ -179,9 +182,20 @@ pub async fn generate_token_cookies(
 
     trace!("Access JWT: {access_cookie:#?}");
 
-    let refresh_cookie = create_refresh_token(user_id, &ext.refresh).await?;
+    let refresh_cookie = setup_refresh_token(rd, user_id, &ext.refresh).await?;
 
     trace!("Refresh JWT: {refresh_cookie:#?}");
 
     Ok(jar.add(access_cookie).add(refresh_cookie))
+}
+
+pub async fn consume_refresh_token(
+    rd: &mut RdPool,
+    claims: RefreshClaims,
+) -> Result<(), AppError> {
+    let mut pipe = Pipeline::new();
+    add_refresh_token_to_blacklist(&mut pipe, claims).await?;
+    pipe.query_async(rd).await.context("Failed to add refresh token to the blacklist")?;
+
+    Ok(())
 }

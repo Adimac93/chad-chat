@@ -35,7 +35,8 @@ pub fn router() -> Router<AppState> {
 
 #[debug_handler(state = AppState)]
 async fn post_register_user(
-    State(pgpool): State<PgPool>,
+    State(pg): State<PgPool>,
+    State(mut rd): State<RdPool>,
     State(mailer): State<Mailer>,
     State(token_ext): State<TokenExtractors>,
     ConnectInfo(addr): ConnectInfo<ClientAddr>,
@@ -43,7 +44,7 @@ async fn post_register_user(
     Json(register_credentials): extract::Json<RegisterCredentials>,
 ) -> Result<CookieJar, AppError> {
     let user_id = try_register_user(
-        &pgpool,
+        &pg,
         addr.network(),
         Some(mailer),
         register_credentials.email.trim(),
@@ -54,7 +55,7 @@ async fn post_register_user(
 
     let login_credentials =
         LoginCredentials::new(&register_credentials.email, &register_credentials.password);
-    let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
+    let jar = generate_tokens(&mut rd, user_id, &login_credentials.email, &token_ext, jar).await?;
 
     debug!(
         "User {} registered successfully",
@@ -66,7 +67,8 @@ async fn post_register_user(
 
 #[debug_handler(state = AppState)]
 async fn post_login_user(
-    State(pool): State<PgPool>,
+    State(pg): State<PgPool>,
+    State(mut rd): State<RdPool>,
     State(token_ext): State<TokenExtractors>,
     ConnectInfo(_addr): ConnectInfo<ClientAddr>,
     jar: CookieJar,
@@ -74,13 +76,13 @@ async fn post_login_user(
 ) -> Result<CookieJar, AppError> {
     // returns if credentials are wrong
     let user_id = verify_user_credentials(
-        &pool,
+        &pg,
         &login_credentials.email,
         SecretString::new(login_credentials.password.clone()),
     )
     .await?;
 
-    let jar = generate_token_cookies(user_id, &login_credentials.email, &token_ext, jar).await?;
+    let jar = generate_tokens(&mut rd, user_id, &login_credentials.email, &token_ext, jar).await?;
 
     debug!(
         "User {} logged in successfully",
@@ -153,7 +155,8 @@ async fn post_refresh_user_token(
 
     let email = get_user_email_by_id(&pool, &user_id).await?;
     let access_token_cookie = create_access_token(user_id, email, &ext.access).await?;
-    // add_refresh_token_to_blacklist(&mut rdpool, refresh_claims).await?;
+
+    consume_refresh_token(&mut rdpool, refresh_claims).await?;
 
     debug!(
         "User {} access token refreshed successfully",

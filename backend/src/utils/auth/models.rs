@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     errors::AppError,
     modules::extractors::jwt::{JwtAccessSecret, JwtRefreshSecret},
@@ -20,7 +22,7 @@ use typeshare::typeshare;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Claims {
     pub jti: Uuid,
     pub user_id: Uuid,
@@ -64,7 +66,7 @@ pub async fn verify_access_token(req: &mut Parts, state: &AppState) -> Result<Cl
     let cookie = jar.get("jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "No access token found"))?;
     let claims = validate_access_token(cookie, jwt_key)?;
 
-    let token_in_blacklist = state.redis.clone().send_packed_command(&Cmd::get(claims.jti.as_bytes())).await.context("Failed to select the access token from blacklist")?;
+    let token_in_blacklist = get_access_token_from_blacklist(&mut state.redis.clone(), claims.user_id, claims.jti).await?;
 
     if token_in_blacklist == Value::Nil {
         Ok(claims)
@@ -92,7 +94,7 @@ pub async fn add_access_token_to_blacklist<'c>(pipe: &mut Pipeline, claims: Clai
     // this is converted into the transaction
     // performs an insert to add an access token to the blacklist
 
-    pipe.set(claims.jti.as_bytes(), claims.exp);
+    pipe.hset(&format!("tokens:{}:blacklist", claims.user_id), claims.jti.as_bytes(), claims.exp);
     
     Ok(())
 }
@@ -120,7 +122,12 @@ pub async fn create_access_token<'a>(user_id: Uuid, email: String, ext: &JwtAcce
     Ok(cookie)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+pub async fn get_access_token_from_blacklist(rd: &mut RdPool, user_id: Uuid, jti: Uuid) -> Result<Value, AppError> {
+    let val = Cmd::hget(&format!("tokens:{}:blacklist", user_id), jti.as_bytes()).query_async(rd).await.context("Failed to get the token from the blacklist")?;
+    Ok(val)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct RefreshClaims {
     pub jti: Uuid,
     pub user_id: Uuid,
@@ -167,11 +174,13 @@ pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<R
         &validation,
     ).context("Invalid or expired token")?.claims;
 
-    let token_in_blacklist = state.redis.clone().send_packed_command(&Cmd::get(claims.jti.as_bytes())).await.context("Failed to select the refresh token from blacklist")?;
+    let mut rd = state.redis.clone();
+    let token_in_blacklist = get_refresh_token_from_blacklist(&mut rd, claims).await?;
 
     if token_in_blacklist == Value::Nil {
         Ok(claims)
     } else {
+        invalidate_all_refresh_tokens(&mut rd, claims.user_id).await?;
         Err(AppError::exp(StatusCode::UNAUTHORIZED, "Invalid token"))
     }
 }
@@ -192,14 +201,27 @@ pub fn validate_refresh_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) 
 }
 
 pub async fn add_refresh_token_to_blacklist<'c>(pipe: &mut Pipeline, claims: RefreshClaims) -> Result<(), AppError> {
-    pipe.set(claims.jti.as_bytes(), claims.exp);
+    pipe.hdel(&format!("tokens:{}:whitelist", claims.user_id), claims.jti.as_bytes());
+    pipe.hset(&format!("tokens:{}:blacklist", claims.user_id), claims.jti.as_bytes(), claims.exp);
 
     Ok(())
 }
 
-pub async fn create_refresh_token<'a>(user_id: Uuid, ext: &JwtRefreshSecret) -> Result<Cookie<'a>, AppError> {
+pub async fn setup_refresh_token<'a>(rd: &mut RdPool, user_id: Uuid, ext: &JwtRefreshSecret) -> Result<Cookie<'a>, AppError> {
     let claims = RefreshClaims::new(user_id, Duration::days(7));
 
+    add_refresh_token_to_whitelist(rd, claims).await?;
+    let cookie = create_refresh_token(claims, ext)?;
+
+    Ok(cookie)
+}
+
+pub async fn add_refresh_token_to_whitelist(rd: &mut RdPool, claims: RefreshClaims) -> Result<(), AppError> {
+    Cmd::hset(&format!("tokens:{}:whitelist", claims.user_id), claims.jti.as_bytes(), claims.exp).query_async(rd).await.context("Failed to add refresh token to whitelist")?;
+    Ok(())
+}
+
+pub fn create_refresh_token<'a>(claims: RefreshClaims, ext: &JwtRefreshSecret) -> Result<Cookie<'a>, AppError> {
     let token = encode(
         &Header::default(),
         &claims,
@@ -214,6 +236,23 @@ pub async fn create_refresh_token<'a>(user_id: Uuid, ext: &JwtRefreshSecret) -> 
         .finish();
     
     Ok(cookie)
+}
+
+pub async fn get_refresh_token_from_blacklist(rd: &mut RdPool, claims: RefreshClaims) -> Result<Value, AppError> {
+    let val = Cmd::hget(&format!("tokens:{}:blacklist", claims.user_id), claims.jti.as_bytes()).query_async(rd).await.context("Failed to get the token from the blacklist")?;
+    Ok(val)
+}
+
+pub async fn invalidate_all_refresh_tokens(rd: &mut RdPool, user_id: Uuid) -> Result<(), AppError> {
+    let val: HashMap<String, i64> = Cmd::hgetall(&format!("tokens:{}:whitelist", user_id)).query_async(rd).await.context("Failed to read tokens from the whitelist")?;
+    
+    let mut pipe = Pipeline::new();
+    let atomic_pipe = pipe.atomic();
+    atomic_pipe.hset_multiple(&format!("tokens:{}:blacklist", user_id), &val.into_iter().collect::<Vec<(String, i64)>>());
+    atomic_pipe.del(&format!("tokens:{}:whitelist", user_id));
+    atomic_pipe.query_async(rd).await.context("Failed to transfer refresh tokens to the blacklist")?;
+    
+    Ok(())
 }
 
 #[typeshare]
