@@ -200,10 +200,11 @@ pub async fn set_role(
     pg: &PgPool,
     rd: &mut RdPool,
     user_id: Uuid,
+    target_user_id: Uuid,
     data: &UserRoleChangeInput,
 ) -> Result<(), AppError> {
     let user_role = get_user_role(pg, rd, user_id, data.group_id).await?;
-    let target_user_current_role = get_user_role(pg, rd, data.target_user_id, data.group_id).await?;
+    let target_user_current_role = get_user_role(pg, rd, target_user_id, data.group_id).await?;
     if data.value > user_role || target_user_current_role >= user_role {
         return Err(AppError::exp(StatusCode::FORBIDDEN, &format!("Cannot set role from {target_user_current_role} to {} as {user_role}", data.value)));
     }
@@ -215,11 +216,11 @@ pub async fn set_role(
     let mut pipe = Pipeline::new();
     let atomic_pipe = pipe.atomic();
     
-    update_role(&mut *pg_tr, data.value, data.group_id, data.target_user_id).await?;
-    cache_user_role(atomic_pipe, data.target_user_id, data.group_id, data.value);
+    update_role(&mut *pg_tr, data.value, data.group_id, target_user_id).await?;
+    cache_user_role(atomic_pipe, target_user_id, data.group_id, data.value);
     if change_owner {
         update_role(&mut *pg_tr, Role::Admin, data.group_id, user_id).await?;
-        cache_user_role(atomic_pipe, data.target_user_id, data.group_id, data.value);
+        cache_user_role(atomic_pipe, user_id, data.group_id, data.value);
     }
 
     atomic_pipe.query_async(rd).await.context("Cache write failed")?;

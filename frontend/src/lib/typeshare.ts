@@ -94,9 +94,12 @@ export enum Role {
 	Owner = "owner",
 }
 
+export interface ReceiveRoleOutput {
+	role: Role;
+}
+
 export interface UserRoleChangeInput {
 	group_id: string;
-	target_user_id: string;
 	value: Role;
 }
 

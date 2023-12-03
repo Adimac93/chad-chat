@@ -7,6 +7,12 @@ use uuid::Uuid;
 use crate::errors::TryFromStrError;
 
 #[typeshare]
+#[derive(Serialize)]
+pub struct ReceiveRoleOutput {
+    pub role: Role,
+}
+
+#[typeshare]
 #[derive(
     sqlx::Type, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy,
 )]
@@ -122,15 +128,13 @@ impl PrivilegeChangeInput {
 #[derive(Serialize, Deserialize)]
 pub struct UserRoleChangeInput {
     pub group_id: Uuid,
-    pub target_user_id: Uuid,
     pub value: Role,
 }
 
 impl UserRoleChangeInput {
-    pub fn new(group_id: Uuid, target_user_id: Uuid, value: Role) -> Self {
+    pub fn new(group_id: Uuid, value: Role) -> Self {
         Self {
             group_id,
-            target_user_id,
             value,
         }
     }
