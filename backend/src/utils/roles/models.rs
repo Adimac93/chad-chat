@@ -137,7 +137,7 @@ impl UserRoleChangeInput {
 }
 
 #[typeshare]
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct GroupPrivileges {
     pub privileges: HashMap<Role, u8>,
 }

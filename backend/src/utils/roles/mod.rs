@@ -15,7 +15,7 @@ use self::models::{
     };
 
 const ROLES_COUNT: usize = 3;
-const CACHE_DURATION_IN_SECS: usize = 60;
+const CACHE_DURATION_IN_SECS: usize = 900;
 
 pub async fn set_privileges<'c>(
     pg: &PgPool,
@@ -32,7 +32,13 @@ pub async fn set_privileges<'c>(
     let new_privileges = privileges.update_with(data.value);
 
     cache_privileges(rd, new_privileges, data.group_id, data.role).await?;
-    update_privileges(pg, new_privileges, data.group_id, data.role).await?;
+    let query_res = update_privileges(pg, new_privileges, data.group_id, data.role).await;
+
+    if query_res.is_err() {
+        invalidate_privilege_cache(rd, data.group_id).await?;
+        query_res?;
+    }
+    
     Ok(())
 }
 
@@ -78,14 +84,31 @@ async fn cache_privileges(rd: &mut RdPool, privileges: PrivilegesNumber, group_i
     Ok(())
 }
 
+async fn invalidate_privilege_cache(rd: &mut RdPool, group_id: Uuid) -> Result<(), AppError> {
+    let mut pipe = Pipeline::new();
+
+    [Role::Owner, Role::Admin, Role::Member].into_iter().for_each(|role| {
+        pipe.add_command(Cmd::del(&format!("group:{group_id}:role:{role}")));
+    });
+
+    pipe.query_async(rd).await.context("Failed to invalidate privilege cache")?;
+
+    Ok(())
+}
+
 pub async fn get_all_privileges(
     pg: &PgPool,
     rd: &mut RdPool,
     group_id: Uuid,
 ) -> Result<GroupPrivileges, AppError> {
     let cached_privileges = read_group_cached_privileges(rd, group_id).await?;
+    let cache_missed = cached_privileges.is_none();
     let privileges = cached_privileges.unwrap_or(select_all_privileges(pg, group_id).await?);
     
+    if cache_missed {
+        cache_group_privileges(rd, group_id, privileges.clone()).await?;
+    }
+
     Ok(privileges)
 }
 
@@ -128,6 +151,25 @@ fn map_privileges(
     Ok(GroupPrivileges {
         privileges: HashMap::from_iter(db_res),
     })
+}
+
+/// Caches all privileges in the group for all provided roles.
+/// Does not cache any privileges in unspecified roles.
+async fn cache_group_privileges(
+    rd: &mut RdPool,
+    group_id: Uuid,
+    privileges: GroupPrivileges,
+) -> Result<(), AppError> {
+    let mut pipe = Pipeline::new();
+    [Role::Owner, Role::Admin, Role::Member].into_iter().for_each(|role| {
+        let role_privileges = privileges.privileges.get(&role);
+        if role_privileges.is_some() {
+            pipe.add_command(Cmd::set_ex(&format!("group:{group_id}:role:{}", role), role_privileges, CACHE_DURATION_IN_SECS));
+        }
+    });
+    pipe.query_async(rd).await.context("Failed to cache group privileges")?;
+
+    Ok(())
 }
 
 async fn read_group_cached_privileges(
@@ -174,10 +216,10 @@ pub async fn set_role(
     let atomic_pipe = pipe.atomic();
     
     update_role(&mut *pg_tr, data.value, data.group_id, data.target_user_id).await?;
-    cache_role(atomic_pipe, data.target_user_id, data.group_id, data.value);
+    cache_user_role(atomic_pipe, data.target_user_id, data.group_id, data.value);
     if change_owner {
         update_role(&mut *pg_tr, Role::Admin, data.group_id, user_id).await?;
-        cache_role(atomic_pipe, data.target_user_id, data.group_id, data.value);
+        cache_user_role(atomic_pipe, data.target_user_id, data.group_id, data.value);
     }
 
     atomic_pipe.query_async(rd).await.context("Cache write failed")?;
@@ -209,7 +251,7 @@ async fn update_role<'c>(
     Ok(())
 }
 
-fn cache_role(
+fn cache_user_role(
     pipe: &mut Pipeline,
     target_user_id: Uuid,
     group_id: Uuid,
@@ -226,6 +268,11 @@ pub async fn get_user_role(
 ) -> Result<Role, AppError> {
     let cached_role = read_cached_role(rd, user_id, group_id).await?;
     let role = cached_role.unwrap_or(select_role(pg, user_id, group_id).await?);
+    
+    if cached_role.is_none() {
+        let mut pipe = Pipeline::new();
+        cache_user_role(&mut pipe, user_id, group_id, role);
+    }
 
     Ok(role)
 }
@@ -267,6 +314,11 @@ pub async fn get_user_privileges(
 ) -> Result<PrivilegesNumber, AppError> {
     let cached_privileges = read_cached_user_privileges(rd, user_id, group_id).await?;
     let privileges = cached_privileges.unwrap_or(select_user_privileges(pg, user_id, group_id).await?);
+
+    if cached_privileges.is_none() {
+        let role = get_user_role(pg, rd, user_id, group_id).await?;
+        cache_privileges(rd, privileges, group_id, role).await?;
+    }
 
     Ok(privileges)
 }
