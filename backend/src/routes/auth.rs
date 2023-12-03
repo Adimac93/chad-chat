@@ -6,6 +6,7 @@ use crate::state::{AppState, RdPool};
 use crate::utils::auth::models::*;
 use crate::utils::auth::*;
 use crate::utils::chat::get_user_email_by_id;
+use anyhow::Context;
 use axum::extract::{ConnectInfo, State};
 
 use axum::{debug_handler, extract, http::StatusCode, Json};
@@ -16,6 +17,7 @@ use axum::{
 use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
 use jsonwebtoken::Validation;
+use redis::{transaction, pipe, ConnectionLike};
 use secrecy::SecretString;
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -102,11 +104,14 @@ async fn post_user_logout(
 
     // let mut pg_tr = pool.begin().await?;
 
+    let mut pipe = pipe();
+    let atomic_pipe = pipe.atomic();
+
     if let Some(access_token_cookie) = jar.get("jwt") {
         let verify_res = validate_access_token(access_token_cookie, &token_extensions.access.0);
 
         if let Ok(claims) = verify_res {
-            add_access_token_to_blacklist(&mut pool, claims).await?;
+            add_access_token_to_blacklist(atomic_pipe, claims).await?;
         }
     };
 
@@ -114,9 +119,11 @@ async fn post_user_logout(
         let verify_res = validate_refresh_token(refresh_token_cookie, &token_extensions.refresh.0);
 
         if let Ok(claims) = verify_res {
-            add_refresh_token_to_blacklist(&mut pool, claims).await?;
+            add_refresh_token_to_blacklist(atomic_pipe, claims).await?;
         }
     };
+
+    atomic_pipe.query_async(&mut pool).await.context("Failed to add tokens to the blacklist")?;
 
     // pg_tr.commit().await?;
 
@@ -146,7 +153,7 @@ async fn post_refresh_user_token(
 
     let email = get_user_email_by_id(&pool, &user_id).await?;
     let access_token_cookie = create_access_token(user_id, email, &ext.access).await?;
-    add_refresh_token_to_blacklist(&mut rdpool, refresh_claims).await?;
+    // add_refresh_token_to_blacklist(&mut rdpool, refresh_claims).await?;
 
     debug!(
         "User {} access token refreshed successfully",

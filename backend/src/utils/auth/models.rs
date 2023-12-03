@@ -11,7 +11,7 @@ use axum_extra::extract::{
 };
 use hyper::StatusCode;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use redis::{Cmd, Value};
+use redis::{Cmd, Value, ConnectionLike, Pipeline};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use sqlx::{query, Acquire, Postgres};
@@ -88,11 +88,11 @@ pub fn validate_access_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) -
     Ok(claims)
 }
 
-pub async fn add_access_token_to_blacklist<'c>(pool: &mut RdPool, claims: Claims) -> Result<(), AppError> {
+pub async fn add_access_token_to_blacklist<'c>(pipe: &mut Pipeline, claims: Claims) -> Result<(), AppError> {
     // this is converted into the transaction
     // performs an insert to add an access token to the blacklist
 
-    let _res = pool.send_packed_command(&Cmd::set(claims.jti.as_bytes(), claims.exp)).await.context("Failed to add the access token to blacklist")?;
+    pipe.set(claims.jti.as_bytes(), claims.exp);
     
     Ok(())
 }
@@ -191,8 +191,8 @@ pub fn validate_refresh_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) 
     Ok(claims)
 }
 
-pub async fn add_refresh_token_to_blacklist<'c>(pool: &mut RdPool, claims: RefreshClaims) -> Result<(), AppError> {
-    let _res = pool.send_packed_command(&Cmd::set(claims.jti.as_bytes(), claims.exp)).await.context("Failed to add the refresh token to blacklist")?;
+pub async fn add_refresh_token_to_blacklist<'c>(pipe: &mut Pipeline, claims: RefreshClaims) -> Result<(), AppError> {
+    pipe.set(claims.jti.as_bytes(), claims.exp);
 
     Ok(())
 }
