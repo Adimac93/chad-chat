@@ -20,19 +20,23 @@ const CACHE_DURATION_IN_SECS: usize = 60;
 pub async fn set_privileges<'c>(
     pg: &PgPool,
     rd: &mut RdPool,
+    user_id: Uuid,
     data: &PrivilegeChangeInput,
 ) -> Result<(), AppError> {
-    let privileges = update_privileges(pg, data).await?;
-    cache_privileges(rd, data.group_id, data.role, privileges).await?;
+    let user_role = get_user_role(pg, rd, user_id, data.group_id).await?;
+    if data.role >= user_role {
+        return Err(AppError::exp(StatusCode::FORBIDDEN, &format!("Cannot set privileges of {} as {user_role}", data.role)));
+    }
+
+    let privileges = get_group_role_privileges(pg, data.group_id, data.role).await?;
+    let new_privileges = privileges.update_with(data.value);
+
+    cache_privileges(rd, new_privileges, data.group_id, data.role).await?;
+    update_privileges(pg, new_privileges, data.group_id, data.role).await?;
     Ok(())
 }
 
-async fn update_privileges(pg: &PgPool, data: &PrivilegeChangeInput) -> Result<PrivilegesNumber, AppError> {
-    let privileges = get_group_role_privileges(pg, data.group_id, data.role).await?;
-    let (target_bits, updated_bits) = data.value.to_bits();
-
-    let target_privileges = ((privileges ^ target_bits) & updated_bits) ^ privileges;
-
+async fn update_privileges(pg: &PgPool, new_value: PrivilegesNumber, group_id: Uuid, role: Role) -> Result<(), AppError> {
     query!(
         r#"
             UPDATE group_roles
@@ -40,19 +44,19 @@ async fn update_privileges(pg: &PgPool, data: &PrivilegeChangeInput) -> Result<P
             WHERE group_id = $2
             AND role_type = $3
         "#,
-        target_privileges as i32,
-        data.group_id,
-        data.role as _,
+        new_value.inner as i32,
+        group_id,
+        role as _,
     ).execute(pg).await?;
 
-    Ok(PrivilegesNumber::new(target_privileges))
+    Ok(())
 }
 
 pub async fn get_group_role_privileges(
     pg: &PgPool,
     group_id: Uuid,
     role: Role,
-) -> Result<u8, AppError> {
+) -> Result<PrivilegesNumber, AppError> {
     let query_res = query!(
         r#"
             SELECT privileges
@@ -66,10 +70,10 @@ pub async fn get_group_role_privileges(
 
     let res: u8 = query_res.privileges.try_into().map_err(|_| AppError::Unexpected(anyhow!("Failed to retrieve the privileges as u8")))?;
 
-    Ok(res)
+    Ok(PrivilegesNumber::new(res))
 }
 
-async fn cache_privileges(rd: &mut RdPool, group_id: Uuid, role: Role, privileges: PrivilegesNumber) -> Result<(), AppError> {
+async fn cache_privileges(rd: &mut RdPool, privileges: PrivilegesNumber, group_id: Uuid, role: Role) -> Result<(), AppError> {
     rd.send_packed_command(&Cmd::set_ex(&format!("group:{group_id}:role:{role}"), privileges.inner, CACHE_DURATION_IN_SECS)).await.context("Failed to cache privileges")?;
     Ok(())
 }
@@ -156,6 +160,12 @@ pub async fn set_role(
     user_id: Uuid,
     data: &UserRoleChangeInput,
 ) -> Result<(), AppError> {
+    let user_role = get_user_role(pg, rd, user_id, data.group_id).await?;
+    let target_user_current_role = get_user_role(pg, rd, data.target_user_id, data.group_id).await?;
+    if data.value > user_role || target_user_current_role >= user_role {
+        return Err(AppError::exp(StatusCode::FORBIDDEN, &format!("Cannot set role from {target_user_current_role} to {} as {user_role}", data.value)));
+    }
+
     let is_owner = select_role(pg, user_id, data.group_id).await? == Role::Owner;
     let change_owner = is_owner && data.value == Role::Owner;
 
@@ -170,8 +180,8 @@ pub async fn set_role(
         cache_role(atomic_pipe, data.target_user_id, data.group_id, data.value);
     }
 
-    pg_tr.commit().await?;
     atomic_pipe.query_async(rd).await.context("Cache write failed")?;
+    pg_tr.commit().await?;
 
     Ok(())
 }

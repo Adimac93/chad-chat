@@ -142,6 +142,7 @@ pub struct GroupPrivileges {
     pub privileges: HashMap<Role, u8>,
 }
 
+#[derive(Clone, Copy)]
 pub struct PrivilegesNumber {
     pub inner: u8,
 }
@@ -149,6 +150,11 @@ pub struct PrivilegesNumber {
 impl PrivilegesNumber {
     pub fn new(inner: u8) -> Self {
         Self { inner }
+    }
+
+    pub fn update_with(self, privilege: Privilege) -> Self {
+        let (target_bits, updated_bits) = privilege.to_bits();
+        Self::new(((self.inner ^ target_bits) & updated_bits) ^ self.inner)
     }
 }
 
