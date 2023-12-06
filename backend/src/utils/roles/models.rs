@@ -94,9 +94,9 @@ impl Privilege {
     pub fn to_bits(self) -> (u8, u8) {
         match self {
             Self::CanInvite(v) => if v {
-                (1, 0)
+                (1, 1)
             } else {
-                (0, 0)
+                (0, 1)
             },
             Self::CanSendMessages(v) => if v {
                 (1 << 1, 1 << 1)
