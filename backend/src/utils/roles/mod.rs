@@ -367,3 +367,42 @@ async fn read_cached_privileges_by_role(
     let res = rd.send_packed_command(&Cmd::get(&format!("group:{group_id}:role:{role}"))).await.context("Failed to query Redis")?;
     Ok(u8::from_redis_value(&res).ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use redis::RedisError;
+    use uuid::uuid;
+
+    use crate::modules::redis_tools::{add_redis, get_at, redis_path::RedisRoot};
+
+    use super::*;
+
+    const CHADDERS_ID: Uuid = uuid!("b8c9a317-a456-458f-af88-01d99633f8e2");
+
+    async fn get_privileges(mut rd: &mut RdPool, group_id: Uuid) -> Result<GroupPrivileges, RedisError> {
+        let member_privileges: u8 = u8::from_redis_value(&get_at(&mut rd, RedisRoot.group(group_id).role(Role::Member)).await?)?;
+        let admin_privileges: u8 = u8::from_redis_value(&get_at(&mut rd, RedisRoot.group(group_id).role(Role::Admin)).await?)?;
+        let owner_privileges: u8 = u8::from_redis_value(&get_at(&mut rd, RedisRoot.group(group_id).role(Role::Owner)).await?)?;
+
+        Ok(GroupPrivileges {
+            privileges: HashMap::from([(Role::Owner, owner_privileges), (Role::Admin, admin_privileges), (Role::Member, member_privileges)])
+        })
+    }
+
+    #[tokio::test]
+    async fn add_privileges_to_redis() {
+        let mut rd = add_redis::<Vec<String>>(7, vec![]).await;
+        let privileges = GroupPrivileges {
+            privileges: HashMap::from([(Role::Owner, 3), (Role::Admin, 3), (Role::Member, 1)]),
+        };
+
+        cache_group_privileges(&mut rd, CHADDERS_ID, privileges).await.unwrap();
+
+        let GroupPrivileges { privileges: res } = get_privileges(&mut rd, CHADDERS_ID).await.unwrap();
+
+        dbg!(&res);
+        assert_eq!(res.get(&Role::Member).copied(), Some(1));
+        assert_eq!(res.get(&Role::Admin).copied(), Some(3));
+        assert_eq!(res.get(&Role::Owner).copied(), Some(3));
+    }
+}
