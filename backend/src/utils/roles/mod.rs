@@ -220,7 +220,7 @@ pub async fn set_role(
     cache_user_role(atomic_pipe, target_user_id, data.group_id, data.value);
     if change_owner {
         update_role(&mut *pg_tr, Role::Admin, data.group_id, user_id).await?;
-        cache_user_role(atomic_pipe, user_id, data.group_id, data.value);
+        cache_user_role(atomic_pipe, user_id, data.group_id, Role::Admin);
     }
 
     atomic_pipe.query_async(rd).await.context("Cache write failed")?;
