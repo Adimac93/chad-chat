@@ -2,6 +2,7 @@ mod tools;
 
 use std::collections::HashMap;
 
+use backend::modules::redis_tools::add_redis;
 use backend::utils::roles::{models::{Role, PrivilegeChangeInput, Privilege, PrivilegesNumber, UserRoleChangeInput}, set_privileges, set_role};
 use sqlx::{PgPool, query};
 use uuid::{uuid, Uuid};
@@ -43,7 +44,7 @@ async fn select_users_with_roles(pg: &PgPool, group_id: Uuid) -> Result<HashMap<
 
 #[sqlx::test(fixtures("roles/set_privileges"))]
 async fn change_privileges(pg: PgPool) {
-    let mut rd = tools::add_redis::<Vec<String>>(1, vec![]).await;
+    let mut rd = add_redis::<Vec<String>>(1, vec![]).await;
 
     set_privileges(&pg, &mut rd, ADIMAC_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(false))).await.unwrap();
 
@@ -55,7 +56,7 @@ async fn change_privileges(pg: PgPool) {
 
 #[sqlx::test(fixtures("roles/set_privileges"))]
 async fn change_privileges_insufficient_role(pg: PgPool) {
-    let mut rd = tools::add_redis::<Vec<String>>(2, vec![]).await;
+    let mut rd = add_redis::<Vec<String>>(2, vec![]).await;
 
     let res = set_privileges(&pg, &mut rd, HUBERT_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(false))).await;
 
@@ -64,7 +65,7 @@ async fn change_privileges_insufficient_role(pg: PgPool) {
 
 #[sqlx::test(fixtures("roles/set_role"))]
 async fn change_user_role(pg: PgPool) {
-    let mut rd = tools::add_redis::<Vec<String>>(3, vec![]).await;
+    let mut rd = add_redis::<Vec<String>>(3, vec![]).await;
     
     set_role(&pg, &mut rd, HUBERT_ID, SOME_USER_ID, &UserRoleChangeInput {
         group_id: CHADDERS_ID,
@@ -79,7 +80,7 @@ async fn change_user_role(pg: PgPool) {
 
 #[sqlx::test(fixtures("roles/set_role"))]
 async fn change_user_role_new_owner(pg: PgPool) {
-    let mut rd = tools::add_redis::<Vec<String>>(4, vec![]).await;
+    let mut rd = add_redis::<Vec<String>>(4, vec![]).await;
     
     set_role(&pg, &mut rd, ADIMAC_ID, HUBERT_ID, &UserRoleChangeInput {
         group_id: CHADDERS_ID,
@@ -95,7 +96,7 @@ async fn change_user_role_new_owner(pg: PgPool) {
 
 #[sqlx::test(fixtures("roles/set_role"))]
 async fn change_user_role_insufficient_role(pg: PgPool) {
-    let mut rd = tools::add_redis::<Vec<String>>(5, vec![]).await;
+    let mut rd = add_redis::<Vec<String>>(5, vec![]).await;
     
     let res = set_role(&pg, &mut rd, SOME_USER_ID, SOME_USER_ID, &UserRoleChangeInput {
         group_id: CHADDERS_ID,
@@ -107,7 +108,7 @@ async fn change_user_role_insufficient_role(pg: PgPool) {
 
 #[sqlx::test(fixtures("roles/set_role"))]
 async fn change_user_role_too_high_target_role(pg: PgPool) {
-    let mut rd = tools::add_redis::<Vec<String>>(6, vec![]).await;
+    let mut rd = add_redis::<Vec<String>>(6, vec![]).await;
     
     let res = set_role(&pg, &mut rd, HUBERT_ID, SOME_USER_ID, &UserRoleChangeInput {
         group_id: CHADDERS_ID,
