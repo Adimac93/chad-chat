@@ -4,11 +4,11 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Context};
 use hyper::StatusCode;
-use redis::{Cmd, Pipeline, Value, FromRedisValue};
+use redis::{Cmd, Pipeline, Value, FromRedisValue, aio::ConnectionLike};
 use sqlx::{Acquire, PgPool, Postgres, query};
 use uuid::Uuid;
 
-use crate::{errors::AppError, state::RdPool};
+use crate::errors::AppError;
 use self::models::{
         PrivilegeChangeInput, Role,
         UserRoleChangeInput, GroupPrivileges, PrivilegesNumber,
@@ -19,7 +19,7 @@ const CACHE_DURATION_IN_SECS: usize = 900;
 
 pub async fn set_privileges<'c>(
     pg: &PgPool,
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     user_id: Uuid,
     data: &PrivilegeChangeInput,
 ) -> Result<(), AppError> {
@@ -79,12 +79,12 @@ pub async fn get_group_role_privileges(
     Ok(PrivilegesNumber::new(res))
 }
 
-async fn cache_privileges(rd: &mut RdPool, privileges: PrivilegesNumber, group_id: Uuid, role: Role) -> Result<(), AppError> {
-    rd.send_packed_command(&Cmd::set_ex(&format!("group:{group_id}:role:{role}"), privileges.inner, CACHE_DURATION_IN_SECS)).await.context("Failed to cache privileges")?;
+async fn cache_privileges(rd: &mut impl ConnectionLike, privileges: PrivilegesNumber, group_id: Uuid, role: Role) -> Result<(), AppError> {
+    Cmd::set_ex(&format!("group:{group_id}:role:{role}"), privileges.inner, CACHE_DURATION_IN_SECS).query_async(rd).await.context("Failed to cache privileges")?;
     Ok(())
 }
 
-async fn invalidate_privilege_cache(rd: &mut RdPool, group_id: Uuid) -> Result<(), AppError> {
+async fn invalidate_privilege_cache(rd: &mut impl ConnectionLike, group_id: Uuid) -> Result<(), AppError> {
     let mut pipe = Pipeline::new();
 
     [Role::Owner, Role::Admin, Role::Member].into_iter().for_each(|role| {
@@ -98,7 +98,7 @@ async fn invalidate_privilege_cache(rd: &mut RdPool, group_id: Uuid) -> Result<(
 
 pub async fn get_all_privileges(
     pg: &PgPool,
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     group_id: Uuid,
 ) -> Result<GroupPrivileges, AppError> {
     let cached_privileges = read_group_cached_privileges(rd, group_id).await?;
@@ -156,7 +156,7 @@ fn map_privileges(
 /// Caches all privileges in the group for all provided roles.
 /// Does not cache any privileges in unspecified roles.
 async fn cache_group_privileges(
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     group_id: Uuid,
     privileges: GroupPrivileges,
 ) -> Result<(), AppError> {
@@ -173,7 +173,7 @@ async fn cache_group_privileges(
 }
 
 async fn read_group_cached_privileges(
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     group_id: Uuid,
 ) -> Result<Option<GroupPrivileges>, AppError> {
     let mut pipe = Pipeline::new();
@@ -198,7 +198,7 @@ async fn read_group_cached_privileges(
 
 pub async fn set_role(
     pg: &PgPool,
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     user_id: Uuid,
     target_user_id: Uuid,
     data: &UserRoleChangeInput,
@@ -263,7 +263,7 @@ fn cache_user_role(
 
 pub async fn get_user_role(
     pg: &PgPool,
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<Role, AppError> {
@@ -298,18 +298,18 @@ async fn select_role(
 }
 
 async fn read_cached_role(
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<Option<Role>, AppError> {
-    let res = rd.send_packed_command(&Cmd::get(&format!("group_id:{group_id}:user:{user_id}:role"))).await.context("Failed to query Redis")?;
+    let res = Cmd::get(&format!("group_id:{group_id}:user:{user_id}:role")).query_async(rd).await.context("Failed to query Redis")?;
     
     Ok(Role::from_redis_value(&res).ok())
 }
 
 pub async fn get_user_privileges(
     pg: &PgPool,
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<PrivilegesNumber, AppError> {
@@ -346,7 +346,7 @@ async fn select_user_privileges(
 }
 
 async fn read_cached_user_privileges(
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<Option<PrivilegesNumber>, AppError> {
@@ -360,11 +360,11 @@ async fn read_cached_user_privileges(
 }
 
 async fn read_cached_privileges_by_role(
-    rd: &mut RdPool,
+    rd: &mut impl ConnectionLike,
     group_id: Uuid,
     role: Role,
 ) -> Result<Option<u8>, AppError> {
-    let res = rd.send_packed_command(&Cmd::get(&format!("group:{group_id}:role:{role}"))).await.context("Failed to query Redis")?;
+    let res = Cmd::get(&format!("group:{group_id}:role:{role}")).query_async(rd).await.context("Failed to query Redis")?;
     Ok(u8::from_redis_value(&res).ok())
 }
 
@@ -373,16 +373,16 @@ mod tests {
     use redis::RedisError;
     use uuid::uuid;
 
-    use crate::modules::redis_tools::{add_redis, get_at, redis_path::RedisRoot};
+    use crate::{modules::redis_tools::{add_redis, get_at, redis_path::RedisRoot}, state::RdPool};
 
     use super::*;
 
     const CHADDERS_ID: Uuid = uuid!("b8c9a317-a456-458f-af88-01d99633f8e2");
 
-    async fn get_privileges(mut rd: &mut RdPool, group_id: Uuid) -> Result<GroupPrivileges, RedisError> {
-        let member_privileges: u8 = u8::from_redis_value(&get_at(&mut rd, RedisRoot.group(group_id).role(Role::Member)).await?)?;
-        let admin_privileges: u8 = u8::from_redis_value(&get_at(&mut rd, RedisRoot.group(group_id).role(Role::Admin)).await?)?;
-        let owner_privileges: u8 = u8::from_redis_value(&get_at(&mut rd, RedisRoot.group(group_id).role(Role::Owner)).await?)?;
+    async fn get_privileges(rd: &mut RdPool, group_id: Uuid) -> Result<GroupPrivileges, RedisError> {
+        let member_privileges: u8 = u8::from_redis_value(&get_at(rd, RedisRoot.group(group_id).role(Role::Member)).await?)?;
+        let admin_privileges: u8 = u8::from_redis_value(&get_at(rd, RedisRoot.group(group_id).role(Role::Admin)).await?)?;
+        let owner_privileges: u8 = u8::from_redis_value(&get_at(rd, RedisRoot.group(group_id).role(Role::Owner)).await?)?;
 
         Ok(GroupPrivileges {
             privileges: HashMap::from([(Role::Owner, owner_privileges), (Role::Admin, admin_privileges), (Role::Member, member_privileges)])
@@ -391,7 +391,7 @@ mod tests {
 
     #[tokio::test]
     async fn add_privileges_to_redis() {
-        let mut rd = add_redis::<Vec<String>>(7, vec![]).await;
+        let mut rd = add_redis::<Vec<String>>(vec![]).await;
         let privileges = GroupPrivileges {
             privileges: HashMap::from([(Role::Owner, 3), (Role::Admin, 3), (Role::Member, 1)]),
         };
