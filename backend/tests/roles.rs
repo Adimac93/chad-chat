@@ -2,7 +2,6 @@ mod tools;
 
 use std::collections::HashMap;
 
-use backend::modules::redis_tools::add_redis;
 use backend::utils::roles::{models::{Role, PrivilegeChangeInput, Privilege, PrivilegesNumber, UserRoleChangeInput}, set_privileges, set_role};
 use redis::aio::ConnectionManager;
 use sqlx::{PgPool, query};

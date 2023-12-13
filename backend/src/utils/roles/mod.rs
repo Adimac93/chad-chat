@@ -3,12 +3,13 @@
 use std::collections::HashMap;
 
 use anyhow::{anyhow, Context};
+use axum::async_trait;
 use hyper::StatusCode;
-use redis::{Cmd, Pipeline, Value, FromRedisValue, aio::ConnectionLike};
+use redis::{Cmd, Pipeline, Value, FromRedisValue, aio::ConnectionLike, RedisError};
 use sqlx::{Acquire, PgPool, Postgres, query};
 use uuid::Uuid;
 
-use crate::errors::AppError;
+use crate::{errors::AppError, modules::redis_tools::{redis_path::RedisRoot, RedisOps, execute_commands}};
 use self::models::{
         PrivilegeChangeInput, Role,
         UserRoleChangeInput, GroupPrivileges, PrivilegesNumber,
@@ -213,17 +214,15 @@ pub async fn set_role(
     let change_owner = is_owner && data.value == Role::Owner;
 
     let mut pg_tr = pg.begin().await?;
-    let mut pipe = Pipeline::new();
-    let atomic_pipe = pipe.atomic();
     
     update_role(&mut *pg_tr, data.value, data.group_id, target_user_id).await?;
-    cache_user_role(atomic_pipe, target_user_id, data.group_id, data.value);
+    let mut cmds = UserRole::new(target_user_id, data.group_id).write(data.value);
     if change_owner {
         update_role(&mut *pg_tr, Role::Admin, data.group_id, user_id).await?;
-        cache_user_role(atomic_pipe, user_id, data.group_id, Role::Admin);
+        cmds.extend(UserRole::new(user_id, data.group_id).write(Role::Admin));
     }
 
-    atomic_pipe.query_async(rd).await.context("Cache write failed")?;
+    execute_commands(rd, cmds).await.context("Cache write failed")?;
     pg_tr.commit().await?;
 
     Ok(())
@@ -248,17 +247,10 @@ async fn update_role<'c>(
         group_id,
         target_user_id,
     ).execute(&mut *pg_tr).await?;
+
+    pg_tr.commit().await?;
     
     Ok(())
-}
-
-fn cache_user_role(
-    pipe: &mut Pipeline,
-    target_user_id: Uuid,
-    group_id: Uuid,
-    role: Role,
-) {
-    pipe.add_command(Cmd::set_ex(&format!("group_id:{group_id}:user:{target_user_id}:role"), role.to_string(), CACHE_DURATION_IN_SECS));
 }
 
 pub async fn get_user_role(
@@ -267,12 +259,11 @@ pub async fn get_user_role(
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<Role, AppError> {
-    let cached_role = read_cached_role(rd, user_id, group_id).await?;
+    let cached_role = UserRole::new(user_id, group_id).read_conv(rd).await.context("Cache read failed")?;
     let role = cached_role.unwrap_or(select_role(pg, user_id, group_id).await?);
     
     if cached_role.is_none() {
-        let mut pipe = Pipeline::new();
-        cache_user_role(&mut pipe, user_id, group_id, role);
+        execute_commands(rd, UserRole::new(user_id, group_id).write(role)).await.context("Cache read failed")?;
     }
 
     Ok(role)
@@ -295,16 +286,6 @@ async fn select_role(
     ).fetch_one(pg).await?;
 
     Ok(res.role_type)
-}
-
-async fn read_cached_role(
-    rd: &mut impl ConnectionLike,
-    user_id: Uuid,
-    group_id: Uuid,
-) -> Result<Option<Role>, AppError> {
-    let res = Cmd::get(&format!("group_id:{group_id}:user:{user_id}:role")).query_async(rd).await.context("Failed to query Redis")?;
-    
-    Ok(Role::from_redis_value(&res).ok())
 }
 
 pub async fn get_user_privileges(
@@ -350,7 +331,7 @@ async fn read_cached_user_privileges(
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<Option<PrivilegesNumber>, AppError> {
-    let Some(role) = read_cached_role(rd, user_id, group_id).await? else {
+    let Some(role) = UserRole::new(user_id, group_id).read_conv(rd).await.context("Cache read failed")? else {
         return Ok(None);
     };
 
@@ -368,12 +349,48 @@ async fn read_cached_privileges_by_role(
     Ok(u8::from_redis_value(&res).ok())
 }
 
+#[derive(Clone, Copy)]
+struct UserRole {
+    user_id: Uuid,
+    group_id: Uuid,
+}
+
+impl UserRole {
+    pub fn new(user_id: Uuid, group_id: Uuid) -> Self {
+        Self {
+            user_id,
+            group_id,
+        }
+    }
+
+    pub async fn read_conv(self, rd: &mut impl ConnectionLike) -> Result<Option<Role>, RedisError> {
+        let res = execute_commands(rd, self.read()).await?;
+        Ok(Role::from_redis_value(&res).ok())
+    }
+}
+
+impl RedisOps for UserRole {
+    type Stored = Role;
+
+    fn write(&self, data: Self::Stored) -> Vec<Cmd> {
+        vec![Cmd::set(RedisRoot.group(self.group_id).user(self.user_id).to_string(), data.to_string())]
+    }
+
+    fn read(&self) -> Vec<Cmd> {
+        vec![Cmd::get(RedisRoot.group(self.group_id).user(self.user_id).to_string())]
+    }
+
+    fn invalidate(&self) -> Vec<Cmd> {
+        vec![Cmd::del(RedisRoot.group(self.group_id).user(self.user_id).to_string())]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use redis::RedisError;
     use uuid::uuid;
 
-    use crate::{modules::redis_tools::{add_redis, get_at, redis_path::RedisRoot}, state::RdPool};
+    use crate::{modules::redis_tools::{get_at, redis_path::RedisRoot}, state::RdPool};
 
     use super::*;
 
@@ -389,9 +406,9 @@ mod tests {
         })
     }
 
+    #[redis_macros::test]
     #[tokio::test]
-    async fn add_privileges_to_redis() {
-        let mut rd = add_redis::<Vec<String>>(vec![]).await;
+    async fn add_privileges_to_redis(rd: ConnectionManager) {
         let privileges = GroupPrivileges {
             privileges: HashMap::from([(Role::Owner, 3), (Role::Admin, 3), (Role::Member, 1)]),
         };
