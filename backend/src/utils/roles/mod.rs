@@ -8,7 +8,7 @@ use redis::{Cmd, Pipeline, Value, FromRedisValue, aio::ConnectionLike, RedisErro
 use sqlx::{Acquire, PgPool, Postgres, query};
 use uuid::Uuid;
 
-use crate::{errors::AppError, modules::redis_tools::{redis_path::RedisRoot, RedisOps, execute_commands}};
+use crate::{errors::AppError, modules::redis_tools::{redis_path::RedisRoot, execute_commands, CacheWrite, CacheRead, CacheInvalidate}};
 use self::models::{
         PrivilegeChangeInput, Role,
         UserRoleChangeInput, GroupPrivileges, PrivilegesNumber,
@@ -19,7 +19,7 @@ const CACHE_DURATION_IN_SECS: usize = 900;
 
 pub async fn set_privileges<'c>(
     pg: &PgPool,
-    rd: &mut impl ConnectionLike,
+    rd: &mut (impl ConnectionLike + Send),
     user_id: Uuid,
     data: &PrivilegeChangeInput,
 ) -> Result<(), AppError> {
@@ -31,11 +31,11 @@ pub async fn set_privileges<'c>(
     let privileges = get_group_role_privileges(pg, data.group_id, data.role).await?;
     let new_privileges = privileges.update_with(data.value);
 
-    execute_commands(rd, CachedUserPrivileges::new(data.group_id, data.role).write(new_privileges)).await?;
+    CachedUserPrivileges::new(data.group_id, data.role).write(rd, new_privileges).await?;
     let query_res = update_privileges(pg, new_privileges, data.group_id, data.role).await;
 
     if query_res.is_err() {
-        execute_commands(rd, CachedUserPrivileges::new(data.group_id, data.role).invalidate()).await?;
+        CachedUserPrivileges::new(data.group_id, data.role).invalidate(rd).await?;
         return query_res;
     }
     
@@ -81,15 +81,15 @@ pub async fn get_group_role_privileges(
 
 pub async fn get_all_privileges(
     pg: &PgPool,
-    rd: &mut impl ConnectionLike,
+    rd: &mut (impl ConnectionLike + Send),
     group_id: Uuid,
 ) -> Result<GroupPrivileges, AppError> {
-    let cached_privileges = CachedPrivileges::new(group_id).read_conv(rd).await?;
+    let cached_privileges = CachedPrivileges::new(group_id).read(rd).await?;
     let cache_missed = cached_privileges.is_none();
     let privileges = cached_privileges.unwrap_or(select_all_privileges(pg, group_id).await?);
     
     if cache_missed {
-        execute_commands(rd, CachedPrivileges::new(group_id).write(privileges.clone())).await?;
+        CachedPrivileges::new(group_id).write(rd, privileges.clone()).await?;
     }
 
     Ok(privileges)
@@ -138,7 +138,7 @@ fn map_privileges(
 
 pub async fn set_role(
     pg: &PgPool,
-    rd: &mut impl ConnectionLike,
+    rd: &mut (impl ConnectionLike + Send),
     user_id: Uuid,
     target_user_id: Uuid,
     data: &UserRoleChangeInput,
@@ -155,10 +155,10 @@ pub async fn set_role(
     let mut pg_tr = pg.begin().await?;
     
     update_role(&mut *pg_tr, data.value, data.group_id, target_user_id).await?;
-    let mut cmds = UserRole::new(target_user_id, data.group_id).write(data.value);
+    let mut cmds = UserRole::new(target_user_id, data.group_id).write_cmd(data.value);
     if change_owner {
         update_role(&mut *pg_tr, Role::Admin, data.group_id, user_id).await?;
-        cmds.extend(UserRole::new(user_id, data.group_id).write(Role::Admin));
+        cmds.extend(UserRole::new(user_id, data.group_id).write_cmd(Role::Admin));
     }
 
     execute_commands(rd, cmds).await?;
@@ -194,15 +194,15 @@ async fn update_role<'c>(
 
 pub async fn get_user_role(
     pg: &PgPool,
-    rd: &mut impl ConnectionLike,
+    rd: &mut (impl ConnectionLike + Send),
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<Role, AppError> {
-    let cached_role = UserRole::new(user_id, group_id).read_conv(rd).await?;
+    let cached_role = UserRole::new(user_id, group_id).read(rd).await?;
     let role = cached_role.unwrap_or(select_role(pg, user_id, group_id).await?);
     
     if cached_role.is_none() {
-        execute_commands(rd, UserRole::new(user_id, group_id).write(role)).await?;
+        UserRole::new(user_id, group_id).write(rd, role).await?;
     }
 
     Ok(role)
@@ -229,7 +229,7 @@ async fn select_role(
 
 pub async fn get_user_privileges(
     pg: &PgPool,
-    rd: &mut impl ConnectionLike,
+    rd: &mut (impl ConnectionLike + Send),
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<PrivilegesNumber, AppError> {
@@ -238,7 +238,7 @@ pub async fn get_user_privileges(
 
     if cached_privileges.is_none() {
         let role = get_user_role(pg, rd, user_id, group_id).await?;
-        execute_commands(rd, CachedUserPrivileges::new(group_id, role).write(privileges)).await?;
+        CachedUserPrivileges::new(group_id, role).write(rd, privileges).await?;
     }
 
     Ok(privileges)
@@ -266,17 +266,17 @@ async fn select_user_privileges(
 }
 
 async fn read_cached_user_privileges(
-    rd: &mut impl ConnectionLike,
+    rd: &mut (impl ConnectionLike + Send),
     user_id: Uuid,
     group_id: Uuid,
 ) -> Result<Option<PrivilegesNumber>, AppError> {
-    let Some(role) = UserRole::new(user_id, group_id).read_conv(rd).await? else {
+    let Some(role) = UserRole::new(user_id, group_id).read(rd).await? else {
         return Ok(None);
     };
 
-    let privileges = CachedUserPrivileges::new(group_id, role).read_conv(rd).await?;
+    let privileges = CachedUserPrivileges::new(group_id, role).read(rd).await?;
 
-    Ok(privileges.map(PrivilegesNumber::new))
+    Ok(privileges)
 }
 
 #[derive(Clone, Copy)]
@@ -288,47 +288,25 @@ impl CachedPrivileges {
     pub fn new(group_id: Uuid) -> Self {
         Self { group_id, }
     }
-
-    pub async fn read_conv(&self, rd: &mut impl ConnectionLike) -> Result<Option<GroupPrivileges>, RedisError> {
-        let Value::Bulk(privileges) = execute_commands(rd, self.read()).await? else {
-            return Ok(None);
-        };
-
-        if privileges.len() != ROLES_COUNT {
-            return Ok(None);
-        }
-
-        let privileges = privileges.into_iter().map(|x| u8::from_redis_value(&x)).collect::<Result<Vec<u8>, RedisError>>()?;
-
-        Ok(Some(GroupPrivileges {
-            privileges: HashMap::from([
-                (Role::Owner, privileges[0]),
-                (Role::Owner, privileges[1]),
-                (Role::Owner, privileges[2]),
-            ]),
-        }))
-    }
 }
 
-impl RedisOps for CachedPrivileges {
+impl CacheWrite for CachedPrivileges {
     type Stored = GroupPrivileges;
 
-    fn write(&self, data: Self::Stored) -> Vec<Cmd> {
+    fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd> {
         [Role::Owner, Role::Admin, Role::Member].into_iter().filter_map(|role| {
             let privilege_num = data.privileges.get(&role);
             privilege_num.map(|num| Cmd::set(RedisRoot.group(self.group_id).role(role).to_string(), num))
         }).collect()
     }
+}
 
-    fn read(&self) -> Vec<Cmd> {
+impl CacheRead for CachedPrivileges {
+    type Stored = GroupPrivileges;
+
+    fn read_cmd(&self) -> Vec<Cmd> {
         [Role::Owner, Role::Admin, Role::Member].into_iter().map(|role| {
             Cmd::get(RedisRoot.group(self.group_id).role(role).to_string())
-        }).collect()
-    }
-
-    fn invalidate(&self) -> Vec<Cmd> {
-        [Role::Owner, Role::Admin, Role::Member].into_iter().map(|role| {
-            Cmd::del(RedisRoot.group(self.group_id).role(role).to_string())
         }).collect()
     }
 }
@@ -343,25 +321,26 @@ impl CachedUserPrivileges {
     pub fn new(group_id: Uuid, role: Role) -> Self {
         Self { group_id, role, }
     }
+}
 
-    pub async fn read_conv(&self, rd: &mut impl ConnectionLike) -> Result<Option<u8>, RedisError> {
-        let query_res = execute_commands(rd, self.read()).await?;
-        Ok(u8::from_redis_value(&query_res).ok())
+impl CacheWrite for CachedUserPrivileges {
+    type Stored = PrivilegesNumber;
+
+    fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd> {
+        vec![Cmd::set(RedisRoot.group(self.group_id).role(self.role).to_string(), data.inner)]
     }
 }
 
-impl RedisOps for CachedUserPrivileges {
+impl CacheRead for CachedUserPrivileges {
     type Stored = PrivilegesNumber;
 
-    fn write(&self, data: Self::Stored) -> Vec<Cmd> {
-        vec![Cmd::set(RedisRoot.group(self.group_id).role(self.role).to_string(), data.inner)]
-    }
-
-    fn read(&self) -> Vec<Cmd> {
+    fn read_cmd(&self) -> Vec<Cmd> {
         vec![Cmd::get(RedisRoot.group(self.group_id).role(self.role).to_string())]
     }
+}
 
-    fn invalidate(&self) -> Vec<Cmd> {        
+impl CacheInvalidate for CachedUserPrivileges {
+    fn invalidate_cmd(&self) -> Vec<Cmd> {        
         vec![Cmd::del(RedisRoot.group(self.group_id).role(self.role).to_string())]
     }
 }
@@ -379,26 +358,21 @@ impl UserRole {
             group_id,
         }
     }
+}
 
-    pub async fn read_conv(self, rd: &mut impl ConnectionLike) -> Result<Option<Role>, RedisError> {
-        let res = execute_commands(rd, self.read()).await?;
-        Ok(Role::from_redis_value(&res).ok())
+impl CacheWrite for UserRole {
+    type Stored = Role;
+
+    fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd> {
+        vec![Cmd::set(RedisRoot.group(self.group_id).user(self.user_id).to_string(), data.to_string())]
     }
 }
 
-impl RedisOps for UserRole {
+impl CacheRead for UserRole {
     type Stored = Role;
 
-    fn write(&self, data: Self::Stored) -> Vec<Cmd> {
-        vec![Cmd::set(RedisRoot.group(self.group_id).user(self.user_id).to_string(), data.to_string())]
-    }
-
-    fn read(&self) -> Vec<Cmd> {
+    fn read_cmd(&self) -> Vec<Cmd> {
         vec![Cmd::get(RedisRoot.group(self.group_id).user(self.user_id).to_string())]
-    }
-
-    fn invalidate(&self) -> Vec<Cmd> {
-        vec![Cmd::del(RedisRoot.group(self.group_id).user(self.user_id).to_string())]
     }
 }
 
@@ -430,7 +404,7 @@ mod tests {
             privileges: HashMap::from([(Role::Owner, 3), (Role::Admin, 3), (Role::Member, 1)]),
         };
 
-        execute_commands(&mut rd, CachedPrivileges::new(CHADDERS_ID).write(privileges)).await.unwrap();
+        CachedPrivileges::new(CHADDERS_ID).write(&mut rd, privileges).await.unwrap();
 
         let GroupPrivileges { privileges: res } = get_privileges(&mut rd, CHADDERS_ID).await.unwrap();
 

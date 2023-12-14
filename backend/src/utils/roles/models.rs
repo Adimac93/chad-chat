@@ -1,10 +1,12 @@
-﻿use redis::{FromRedisValue, RedisError, ErrorKind};
+﻿use redis::{FromRedisValue, RedisError, ErrorKind, aio::ConnectionManager, Cmd, Value};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash, fmt::Display, str::from_utf8};
 use typeshare::typeshare;
 use uuid::Uuid;
 
 use crate::errors::TryFromStrError;
+
+use super::ROLES_COUNT;
 
 #[typeshare]
 #[derive(Serialize)]
@@ -146,6 +148,29 @@ pub struct GroupPrivileges {
     pub privileges: HashMap<Role, u8>,
 }
 
+impl FromRedisValue for GroupPrivileges {
+    fn from_redis_value(val: &redis::Value) -> redis::RedisResult<Self> {
+        match val {
+            redis::Value::Bulk(privileges) => {
+                if privileges.len() != ROLES_COUNT {
+                    return Err(RedisError::from((ErrorKind::ResponseError, "not enough roles")));
+                }
+        
+                let privileges = privileges.into_iter().map(|x| u8::from_redis_value(&x)).collect::<Result<Vec<u8>, RedisError>>()?;
+        
+                Ok(GroupPrivileges {
+                    privileges: HashMap::from([
+                        (Role::Owner, privileges[0]),
+                        (Role::Admin, privileges[1]),
+                        (Role::Member, privileges[2]),
+                    ]),
+                })
+            },
+            _ => Err(RedisError::from((ErrorKind::TypeError, "expected \"bulk\" redis value"))),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct PrivilegesNumber {
     pub inner: u8,
@@ -159,6 +184,19 @@ impl PrivilegesNumber {
     pub fn update_with(self, privilege: Privilege) -> Self {
         let (target_bits, updated_bits) = privilege.to_bits();
         Self::new(((self.inner ^ target_bits) & updated_bits) ^ self.inner)
+    }
+}
+
+impl FromRedisValue for PrivilegesNumber {
+    fn from_redis_value(val: &redis::Value) -> redis::RedisResult<Self> {
+        match val {
+            redis::Value::Data(bytes) => {
+                let returned_string = String::from_utf8(bytes.clone()).map_err(|_| RedisError::from((ErrorKind::TypeError, "expected valid UTF-8 string")))?;
+                let parsed = returned_string.parse().map_err(|_| RedisError::from((ErrorKind::TypeError, "expected integer")))?;
+                Ok(PrivilegesNumber::new(parsed))
+            },
+            _ => Err(RedisError::from((ErrorKind::TypeError, "expected \"string\" redis value"))),
+        }
     }
 }
 
