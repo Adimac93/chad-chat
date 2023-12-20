@@ -6,9 +6,9 @@ use crate::utils::chat::socket::{ChatState, ClientAction, ServerAction, UserCont
 use crate::utils::chat::*;
 use crate::utils::groups::*;
 use crate::utils::roles::models::{Gate, Role};
-use crate::utils::roles::privileges::Privilege;
+use crate::utils::roles::privileges::{Privilege, CanInvite, CanSendMessages};
 use crate::utils::roles::{
-    get_user_role, get_all_privileges, set_privileges, set_role,
+    get_user_role, get_all_privileges, set_privileges, set_role, get_user_privileges,
 };
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -73,11 +73,6 @@ pub async fn chat_socket(
                     break;
                 }
 
-                // Fetch role and privileges in order to connect to group
-                let Ok(privileges) = get_all_privileges(&pg, &mut rd, group_id).await else {
-                    error!("Cannot fetch group role privileges");
-                    continue;
-                };
                 let group_controller = state
                     .groups
                     .get(&group_id);
@@ -111,6 +106,27 @@ pub async fn chat_socket(
                         &claims.user_id, 
                     );
                     continue;
+                };
+
+                let privilege_number = match get_user_privileges(&pg, &mut rd, claims.user_id, conn.group_id).await {
+                    Err(e) => {
+                        error!("Failed to verify with privilege: {:?}", e);
+                        continue;
+                    }
+                    Ok(val) => val,
+                };
+
+                // TODO: implement slow chat; currently, slow chat is treated as "yes"
+                match privilege_number.get_privilege::<CanSendMessages>() {
+                    Err(e) => {
+                        error!("Failed to interpret privileges: {:?}", e);
+                        continue;
+                    },
+                    Ok(CanSendMessages::No) => {
+                        info!("User does not have privileges to send messages");
+                        continue;
+                    },
+                    Ok(_) => (),
                 };
 
                 // Forbid too long messages
@@ -173,21 +189,25 @@ pub async fn chat_socket(
             }
             // todo: send group invites in chat
             ClientAction::GroupInvite { group_id } => {
-                todo!();
-                // match controller
-                //     .verify_with_privilege(claims.user_id, Privilege::CanInvite(CanInvite::Yes))
-                //     .await
-                // {
-                //     Ok(false) => {
-                //         info!("User does not have privileges to invite other users");
-                //         continue;
-                //     }
-                //     Err(e) => {
-                //         error!("Failed to verify with privilege: {:?}", e);
-                //         continue;
-                //     }
-                //     _ => (),
-                // }
+                let privilege_number = match get_user_privileges(&pg, &mut rd, claims.user_id, group_id).await {
+                    Err(e) => {
+                        error!("Failed to verify with privilege: {:?}", e);
+                        continue;
+                    }
+                    Ok(val) => val,
+                };
+
+                match privilege_number.get_privilege::<CanInvite>() {
+                    Err(e) => {
+                        error!("Failed to interpret privileges: {:?}", e);
+                        continue;
+                    },
+                    Ok(CanInvite::Yes) => (),
+                    Ok(_) => {
+                        info!("User does not have privileges to invite other users");
+                        continue;
+                    },
+                };
 
                 let Ok(_is_member) = check_if_group_member(&pg, &claims.user_id, &group_id).await
                 else {
@@ -211,21 +231,26 @@ pub async fn chat_socket(
                     _ => (),
                 };
 
-                todo!();
-                // let Some(user_role) = controller.get_role(claims.user_id).await else {
-                //     error!("Failed to get the controller's role");
-                //     continue;
-                // };
+                let user_role = match get_user_role(&pg, &mut rd, claims.user_id, group_id).await {
+                    Err(e) => {
+                        error!("Failed to get user role: {:?}", e);
+                        continue;
+                    }
+                    Ok(val) => val,
+                };
 
-                // let Some(target_user_role) = controller.get_role(user_id).await else {
-                //     error!("Failed to get the target user's role");
-                //     continue;
-                // };
+                let target_user_role = match get_user_role(&pg, &mut rd, user_id, group_id).await {
+                    Err(e) => {
+                        error!("Failed to get user role: {:?}", e);
+                        continue;
+                    }
+                    Ok(val) => val
+                };
 
-                // if !gate.verify(user_role, target_user_role, (claims.user_id, user_id)) {
-                //     info!("User does not have privileges to kick another user");
-                //     continue;
-                // }
+                if user_role <= target_user_role {
+                    info!("User does not have privileges to kick another user");
+                    continue;
+                }
 
                 // Remove user from group
                 let Ok(_) = try_remove_user_from_group(&pg, user_id, group_id).await else {
