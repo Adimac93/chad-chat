@@ -280,7 +280,7 @@ async fn read_cached_user_privileges(
 }
 
 #[derive(Clone, Copy)]
-struct CachedPrivileges {
+pub struct CachedPrivileges {
     group_id: Uuid,
     expiry: Option<usize>,
 }
@@ -288,6 +288,10 @@ struct CachedPrivileges {
 impl CachedPrivileges {
     pub fn new(group_id: Uuid) -> Self {
         Self { group_id, expiry: Some(CACHE_DURATION_IN_SECS), }
+    }
+
+    pub fn new_no_exp(group_id: Uuid) -> Self {
+        Self { group_id, expiry: None, }
     }
 }
 
@@ -313,7 +317,7 @@ impl CacheRead for CachedPrivileges {
 }
 
 #[derive(Clone, Copy)]
-struct CachedUserPrivileges {
+pub struct CachedUserPrivileges {
     group_id: Uuid,
     role: Role,
     expiry: Option<usize>,
@@ -322,6 +326,10 @@ struct CachedUserPrivileges {
 impl CachedUserPrivileges {
     pub fn new(group_id: Uuid, role: Role) -> Self {
         Self { group_id, role, expiry: Some(CACHE_DURATION_IN_SECS), }
+    }
+
+    pub fn new_no_exp(group_id: Uuid, role: Role) -> Self {
+        Self { group_id, role, expiry: None, }
     }
 }
 
@@ -348,7 +356,7 @@ impl CacheInvalidate for CachedUserPrivileges {
 }
 
 #[derive(Clone, Copy)]
-struct UserRole {
+pub struct UserRole {
     user_id: Uuid,
     group_id: Uuid,
     expiry: Option<usize>,
@@ -360,6 +368,14 @@ impl UserRole {
             user_id,
             group_id,
             expiry: Some(CACHE_DURATION_IN_SECS),
+        }
+    }
+
+    pub fn new_no_exp(user_id: Uuid, group_id: Uuid) -> Self {
+        Self {
+            user_id,
+            group_id,
+            expiry: None,
         }
     }
 }
@@ -390,6 +406,7 @@ mod tests {
     use super::*;
 
     const CHADDERS_ID: Uuid = uuid!("b8c9a317-a456-458f-af88-01d99633f8e2");
+    const HUBERT_ID: Uuid = uuid!("263541a8-fa1e-4f13-9e5d-5b250a5a71e6");
 
     async fn get_privileges(rd: &mut RdPool, group_id: Uuid) -> Result<GroupPrivileges, RedisError> {
         let member_privileges: u8 = u8::from_redis_value(&get_at(rd, RedisRoot.group(group_id).role(Role::Member)).await?)?;
@@ -401,6 +418,10 @@ mod tests {
         })
     }
 
+    async fn get_role(rd: &mut RdPool, group_id: Uuid, user_id: Uuid) -> Result<Role, RedisError> {
+        Ok(Role::from_redis_value(&get_at(rd, RedisRoot.group(group_id).user(user_id)).await?)?)
+    }
+
     #[redis_macros::test]
     #[tokio::test]
     async fn add_privileges_to_redis(rd: ConnectionManager) {
@@ -408,7 +429,7 @@ mod tests {
             privileges: HashMap::from([(Role::Owner, 3), (Role::Admin, 3), (Role::Member, 1)]),
         };
 
-        CachedPrivileges::new(CHADDERS_ID).write(&mut rd, privileges).await.unwrap();
+        CachedPrivileges::new_no_exp(CHADDERS_ID).write(&mut rd, privileges).await.unwrap();
 
         let GroupPrivileges { privileges: res } = get_privileges(&mut rd, CHADDERS_ID).await.unwrap();
 
@@ -416,5 +437,16 @@ mod tests {
         assert_eq!(res.get(&Role::Member).copied(), Some(1));
         assert_eq!(res.get(&Role::Admin).copied(), Some(3));
         assert_eq!(res.get(&Role::Owner).copied(), Some(3));
+    }
+
+    #[redis_macros::test]
+    #[tokio::test]
+    async fn set_role(rd: ConnectionManager) {
+        let role = Role::Admin;
+
+        UserRole::new_no_exp(HUBERT_ID, CHADDERS_ID).write(&mut rd, role).await.unwrap();
+
+        let res = get_role(&mut rd, CHADDERS_ID, HUBERT_ID).await.unwrap();
+        assert_eq!(res, Role::Admin);
     }
 }
