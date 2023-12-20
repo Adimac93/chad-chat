@@ -43,3 +43,6 @@ console-subscriber = "0.2.0"
 redis = { version = "0.23.3", features = ["tokio-comp", "tokio-rustls-comp", "aio", "connection-manager"] }
 redis_macros = { path = "../redis-macros" }
 redis_macros_core = { path = "../redis-macros-core" }
+
+[dev-dependencies]
+rstest = "0.18.2"

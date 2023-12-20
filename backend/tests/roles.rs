@@ -2,7 +2,7 @@ mod tools;
 
 use std::collections::HashMap;
 
-use backend::utils::roles::{models::{Role, PrivilegeChangeInput, Privilege, PrivilegesNumber, UserRoleChangeInput}, set_privileges, set_role};
+use backend::utils::roles::{models::{Role, PrivilegeChangeInput, UserRoleChangeInput}, set_privileges, set_role, privileges::{Privilege, CanInvite}};
 use redis::aio::ConnectionManager;
 use sqlx::{PgPool, query};
 use uuid::{uuid, Uuid};
@@ -45,7 +45,7 @@ async fn select_users_with_roles(pg: &PgPool, group_id: Uuid) -> Result<HashMap<
 #[redis_macros::test]
 #[sqlx::test(fixtures("fixtures/roles/set_privileges.sql"))]
 async fn change_privileges(pg: PgPool, rd: ConnectionManager) {
-    set_privileges(&pg, &mut rd, ADIMAC_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(false))).await.unwrap();
+    set_privileges(&pg, &mut rd, ADIMAC_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(CanInvite::No))).await.unwrap();
 
     let privileges = select_privileges(&pg, CHADDERS_ID).await.unwrap();
 
@@ -56,7 +56,7 @@ async fn change_privileges(pg: PgPool, rd: ConnectionManager) {
 #[redis_macros::test]
 #[sqlx::test(fixtures("fixtures/roles/set_privileges.sql"))]
 async fn change_privileges_insufficient_role(pg: PgPool, rd: ConnectionManager) {
-    let res = set_privileges(&pg, &mut rd, HUBERT_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(false))).await;
+    let res = set_privileges(&pg, &mut rd, HUBERT_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(CanInvite::No))).await;
 
     assert!(res.is_err());
 }

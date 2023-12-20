@@ -2,7 +2,7 @@ use crate::errors::AppError;
 use crate::utils::roles::models::{
     PrivilegeChangeInput, Role, UserRoleChangeInput,
 };
-use crate::utils::roles::models::Privilege;
+use crate::utils::roles::privileges::Privilege;
 
 use super::models::{GroupUserMessage, KickMessage};
 use anyhow::anyhow;

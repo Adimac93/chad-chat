@@ -1,4 +1,5 @@
 ﻿pub mod models;
+pub mod privileges;
 
 use std::collections::HashMap;
 
@@ -9,10 +10,9 @@ use sqlx::{Acquire, PgPool, Postgres, query};
 use uuid::Uuid;
 
 use crate::{errors::AppError, modules::redis_tools::{redis_path::RedisRoot, execute_commands, CacheWrite, CacheRead, CacheInvalidate, set_opt_ex}};
-use self::models::{
-        PrivilegeChangeInput, Role,
-        UserRoleChangeInput, GroupPrivileges, PrivilegesNumber,
-    };
+use self::privileges::{GroupPrivileges, PrivilegesNumber};
+
+use self::models::{Role, PrivilegeChangeInput, UserRoleChangeInput};
 
 const ROLES_COUNT: usize = 3;
 const CACHE_DURATION_IN_SECS: usize = 60;
@@ -50,7 +50,7 @@ async fn update_privileges(pg: &PgPool, new_value: PrivilegesNumber, group_id: U
             WHERE group_id = $2
             AND role_type = $3
         "#,
-        new_value.inner as i32,
+        new_value.inner() as i32,
         group_id,
         role as _,
     ).execute(pg).await?;
@@ -337,7 +337,7 @@ impl CacheWrite for CachedUserPrivileges {
     type Stored = PrivilegesNumber;
 
     fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd> {
-        vec![set_opt_ex(RedisRoot.group(self.group_id).role(self.role).to_string(), data.inner, self.expiry)]
+        vec![set_opt_ex(RedisRoot.group(self.group_id).role(self.role).to_string(), data.inner(), self.expiry)]
     }
 }
 
