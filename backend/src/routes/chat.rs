@@ -5,10 +5,9 @@ use crate::utils::chat::models::*;
 use crate::utils::chat::socket::{ChatState, ClientAction, ServerAction, UserController};
 use crate::utils::chat::*;
 use crate::utils::groups::*;
-use crate::utils::roles::models::{Gate, Role};
-use crate::utils::roles::privileges::{Privilege, CanInvite, CanSendMessages};
+use crate::utils::roles::privileges::{CanInvite, CanSendMessages};
 use crate::utils::roles::{
-    get_user_role, get_all_privileges, set_privileges, set_role, get_user_privileges,
+    get_user_role, get_user_privileges,
 };
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -36,10 +35,9 @@ async fn chat_handler(
     State(state): State<ChatState>,
     State(pg): State<PgPool>,
     State(rd): State<RdPool>,
-    State(gate): State<Gate<Role, (Uuid, Uuid)>>,
 ) -> Response {
     let connection_id = get_connection_id(headers);
-    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pg, rd, connection_id, gate))
+    ws.on_upgrade(|socket| chat_socket(socket, state, claims, pg, rd, connection_id))
 }
 
 fn get_connection_id(headers: HeaderMap) -> String {
@@ -59,7 +57,6 @@ pub async fn chat_socket(
     pg: PgPool,
     mut rd: RdPool,
     connection_id: String,
-    gate: Gate<Role, (Uuid, Uuid)>,
 ) {
     let mut controller = UserController::new(stream, claims.user_id, connection_id);
 
@@ -77,13 +74,8 @@ pub async fn chat_socket(
                     .groups
                     .get(&group_id);
 
-                let Ok(role) = get_user_role(&pg, &mut rd, claims.user_id, group_id).await else {
-                    error!("Cannot fetch group user role data");
-                    continue;
-                };
-
                 // Connect user controller to group
-                controller.connect(group_id, group_controller, role).await;
+                controller.connect(group_id, group_controller).await;
 
                 // Load last group messages
                 let Ok(messages) = fetch_last_messages_in_range(&pg, &group_id, 10, 0).await

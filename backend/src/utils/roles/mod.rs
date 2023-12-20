@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Context};
 use hyper::StatusCode;
-use redis::{Cmd, Pipeline, Value, FromRedisValue, aio::ConnectionLike, RedisError};
+use redis::{Cmd, aio::ConnectionLike};
 use sqlx::{Acquire, PgPool, Postgres, query};
 use uuid::Uuid;
 
@@ -398,7 +398,7 @@ impl CacheRead for UserRole {
 
 #[cfg(test)]
 mod tests {
-    use redis::RedisError;
+    use redis::{FromRedisValue, RedisError};
     use uuid::uuid;
 
     use crate::{modules::redis_tools::{get_at, redis_path::RedisRoot}, state::RdPool};

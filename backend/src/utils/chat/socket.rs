@@ -1,17 +1,9 @@
-use crate::errors::AppError;
-use crate::utils::roles::models::{
-    PrivilegeChangeInput, Role, UserRoleChangeInput,
-};
-use crate::utils::roles::privileges::Privilege;
-
 use super::models::{GroupUserMessage, KickMessage};
-use anyhow::anyhow;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::FromRef;
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -82,14 +74,12 @@ impl Users {
     }
 }
 struct GroupUserData {
-    role: Role,
     connections: UserConnections,
 }
 
 impl GroupUserData {
-    fn new(role: Role) -> Self {
+    fn new() -> Self {
         Self {
-            role,
             connections: UserConnections::new(),
         }
     }
@@ -139,7 +129,7 @@ impl UserController {
         }
     }
 
-    pub async fn connect(&mut self, group_id: Uuid, group_controller: GroupController, role: Role) {
+    pub async fn connect(&mut self, group_id: Uuid, group_controller: GroupController) {
         if let None = self.group_conn {
             let listener = UserChannelListener::new(
                 self.user_channel.sender.clone(),
@@ -152,7 +142,7 @@ impl UserController {
                 .write()
                 .await
                 .entry(self.user_id)
-                .or_insert(GroupUserData::new(role))
+                .or_insert(GroupUserData::new())
                 .connections
                 .0
                 .write()
