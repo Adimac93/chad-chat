@@ -1,19 +1,10 @@
 pub mod redis_path;
 
 use std::fmt::Display;
-use std::sync::Mutex;
 use axum::async_trait;
 use redis::{RedisResult, Pipeline, FromRedisValue};
 use redis::aio::ConnectionLike;
-use redis::{Client as RedisClient, cmd, Cmd, Value, aio::ConnectionManager};
-
-const DEFAULT_BASE_REDIS_URL: &str = "redis://127.0.0.1:6379/";
-
-static REDIS_DB_NUM: Mutex<i32> = Mutex::new(0);
-
-fn parse_args(s: String) -> Vec<String> {
-    s.split_whitespace().filter(|&x| x != "").map(|x| x.to_string()).collect()
-}
+use redis::{cmd, Cmd, Value};
 
 pub async fn get_at(rd: &mut impl ConnectionLike, path: impl Display) -> RedisResult<Value> {
     cmd("GET").arg(path.to_string()).query_async(rd).await
