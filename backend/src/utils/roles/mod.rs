@@ -8,14 +8,14 @@ use redis::{Cmd, Pipeline, Value, FromRedisValue, aio::ConnectionLike, RedisErro
 use sqlx::{Acquire, PgPool, Postgres, query};
 use uuid::Uuid;
 
-use crate::{errors::AppError, modules::redis_tools::{redis_path::RedisRoot, execute_commands, CacheWrite, CacheRead, CacheInvalidate}};
+use crate::{errors::AppError, modules::redis_tools::{redis_path::RedisRoot, execute_commands, CacheWrite, CacheRead, CacheInvalidate, set_opt_ex}};
 use self::models::{
         PrivilegeChangeInput, Role,
         UserRoleChangeInput, GroupPrivileges, PrivilegesNumber,
     };
 
 const ROLES_COUNT: usize = 3;
-const CACHE_DURATION_IN_SECS: usize = 900;
+const CACHE_DURATION_IN_SECS: usize = 60;
 
 pub async fn set_privileges<'c>(
     pg: &PgPool,
@@ -282,11 +282,12 @@ async fn read_cached_user_privileges(
 #[derive(Clone, Copy)]
 struct CachedPrivileges {
     group_id: Uuid,
+    expiry: Option<usize>,
 }
 
 impl CachedPrivileges {
     pub fn new(group_id: Uuid) -> Self {
-        Self { group_id, }
+        Self { group_id, expiry: Some(CACHE_DURATION_IN_SECS), }
     }
 }
 
@@ -296,7 +297,7 @@ impl CacheWrite for CachedPrivileges {
     fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd> {
         [Role::Owner, Role::Admin, Role::Member].into_iter().filter_map(|role| {
             let privilege_num = data.privileges.get(&role);
-            privilege_num.map(|num| Cmd::set(RedisRoot.group(self.group_id).role(role).to_string(), num))
+            privilege_num.map(|num| set_opt_ex(RedisRoot.group(self.group_id).role(role).to_string(), num, self.expiry))
         }).collect()
     }
 }
@@ -315,11 +316,12 @@ impl CacheRead for CachedPrivileges {
 struct CachedUserPrivileges {
     group_id: Uuid,
     role: Role,
+    expiry: Option<usize>,
 }
 
 impl CachedUserPrivileges {
     pub fn new(group_id: Uuid, role: Role) -> Self {
-        Self { group_id, role, }
+        Self { group_id, role, expiry: Some(CACHE_DURATION_IN_SECS), }
     }
 }
 
@@ -327,7 +329,7 @@ impl CacheWrite for CachedUserPrivileges {
     type Stored = PrivilegesNumber;
 
     fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd> {
-        vec![Cmd::set(RedisRoot.group(self.group_id).role(self.role).to_string(), data.inner)]
+        vec![set_opt_ex(RedisRoot.group(self.group_id).role(self.role).to_string(), data.inner, self.expiry)]
     }
 }
 
@@ -349,6 +351,7 @@ impl CacheInvalidate for CachedUserPrivileges {
 struct UserRole {
     user_id: Uuid,
     group_id: Uuid,
+    expiry: Option<usize>,
 }
 
 impl UserRole {
@@ -356,6 +359,7 @@ impl UserRole {
         Self {
             user_id,
             group_id,
+            expiry: Some(CACHE_DURATION_IN_SECS),
         }
     }
 }
@@ -364,7 +368,7 @@ impl CacheWrite for UserRole {
     type Stored = Role;
 
     fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd> {
-        vec![Cmd::set(RedisRoot.group(self.group_id).user(self.user_id).to_string(), data.to_string())]
+        vec![set_opt_ex(RedisRoot.group(self.group_id).user(self.user_id).to_string(), data.to_string(), self.expiry)]
     }
 }
 

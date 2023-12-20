@@ -2,12 +2,20 @@ pub mod redis_path;
 
 use std::fmt::Display;
 use axum::async_trait;
-use redis::{RedisResult, Pipeline, FromRedisValue};
+use redis::{RedisResult, Pipeline, FromRedisValue, ToRedisArgs};
 use redis::aio::ConnectionLike;
 use redis::{cmd, Cmd, Value};
 
 pub async fn get_at(rd: &mut impl ConnectionLike, path: impl Display) -> RedisResult<Value> {
     cmd("GET").arg(path.to_string()).query_async(rd).await
+}
+
+pub fn set_opt_ex<'a, K: ToRedisArgs, V: ToRedisArgs>(key: K, value: V, opt_exp: Option<usize>) -> Cmd {
+    if let Some(exp) = opt_exp {
+        Cmd::set_ex(key, value, exp)
+    } else {
+        Cmd::set(key, value)
+    }
 }
 
 #[async_trait]
