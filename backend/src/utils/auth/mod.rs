@@ -2,6 +2,7 @@ pub mod additions;
 pub mod models;
 pub mod tokens;
 use crate::errors::AppError;
+use crate::modules::redis_tools::CacheWrite;
 use crate::modules::{extractors::jwt::TokenExtractors, smtp::Mailer};
 use crate::state::RdPool;
 use anyhow::Context;
@@ -193,9 +194,7 @@ pub async fn consume_refresh_token(
     rd: &mut RdPool,
     claims: RefreshClaims,
 ) -> Result<(), AppError> {
-    let mut pipe = Pipeline::new();
-    add_refresh_token_to_blacklist(&mut pipe, claims).await?;
-    pipe.query_async(rd).await.context("Failed to add refresh token to the blacklist")?;
+    TokenWhitelist::new(claims.user_id, claims.jti).move_token_to_blacklist(rd, claims.exp).await?;
 
     Ok(())
 }
