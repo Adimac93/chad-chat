@@ -65,6 +65,12 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
+impl From<redis::RedisError> for AppError {
+    fn from(val: redis::RedisError) -> Self {
+        Self::Unexpected(anyhow!(val))
+    }
+}
+
 pub struct DbErrMessage {
     pub err: AppError,
     pub kind: ErrorKind,
@@ -118,5 +124,23 @@ impl DbErrMessage {
 impl From<DbErrMessage> for AppError {
     fn from(val: DbErrMessage) -> Self {
         val.err
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("{message}")]
+pub struct TryFromStrError {
+    message: String,
+}
+
+impl TryFromStrError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into()
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }

@@ -94,9 +94,39 @@ export enum Role {
 	Owner = "owner",
 }
 
-export interface UserRoleChangeData {
+export interface ReceiveRoleOutput {
+	role: Role;
+}
+
+export interface UserRoleChangeInput {
 	group_id: string;
-	user_id: string;
 	value: Role;
+}
+
+export interface GroupPrivileges {
+	privileges: Record<Role, number>;
+}
+
+export type Privilege = 
+	| { type: "CanInvite", content: CanInvite }
+	| { type: "CanSendMessages", content: CanSendMessages };
+
+export enum CanInvite {
+	Yes = "Yes",
+	No = "No",
+}
+
+export type CanSendMessages = 
+	| { type: "Yes", content?: undefined }
+	| { type: "SlowChat", content: SlowChat }
+	| { type: "No", content?: undefined };
+
+export enum SlowChat {
+	OneSec = "OneSec",
+	FiveSecs = "FiveSecs",
+	ThirtySecs = "ThirtySecs",
+	OneMinute = "OneMinute",
+	FiveMinutes = "FiveMinutes",
+	FifteenMinutes = "FifteenMinutes",
 }
 

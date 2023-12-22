@@ -21,6 +21,7 @@ pub mod chat;
 pub mod friends;
 pub mod groups;
 pub mod invitations;
+pub mod roles;
 
 pub async fn app(config: Settings, test_pool: Option<PgPool>) -> Router {
     let origin = config

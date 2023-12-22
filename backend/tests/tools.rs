@@ -1,5 +1,6 @@
 ﻿use backend::{configuration::get_config, routes::app};
 use dotenv::dotenv;
+use redis::{cmd, Client as RedisClient, aio::ConnectionManager, Value};
 use reqwest::Client;
 use sqlx::PgPool;
 use std::net::{SocketAddr, TcpListener};

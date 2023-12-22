@@ -1,17 +1,9 @@
-use crate::errors::AppError;
-use crate::utils::roles::models::{
-    PrivilegeChangeData, Role, SocketGroupRolePrivileges, UserRoleChangeData,
-};
-use crate::utils::roles::privileges::{Privilege, Privileges};
-
 use super::models::{GroupUserMessage, KickMessage};
-use anyhow::anyhow;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::FromRef;
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
-use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -49,11 +41,11 @@ impl Groups {
         Self(DashMap::new())
     }
 
-    pub fn get(&self, group_id: &Uuid, privileges: SocketGroupRolePrivileges) -> GroupController {
+    pub fn get(&self, group_id: &Uuid) -> GroupController {
         let Groups(groups) = self;
         groups
             .entry(*group_id)
-            .or_insert(GroupController::new(100, privileges))
+            .or_insert(GroupController::new(100))
             .value()
             .clone()
     }
@@ -63,15 +55,13 @@ impl Groups {
 pub struct GroupController {
     pub channel: GroupChannel,
     users: Users,
-    privileges: SocketGroupRolePrivileges,
 }
 
 impl GroupController {
-    fn new(capacity: usize, privileges: SocketGroupRolePrivileges) -> Self {
+    fn new(capacity: usize) -> Self {
         Self {
             channel: GroupChannel::new(capacity),
             users: Users::new(),
-            privileges,
         }
     }
 }
@@ -84,14 +74,12 @@ impl Users {
     }
 }
 struct GroupUserData {
-    role: Role,
     connections: UserConnections,
 }
 
 impl GroupUserData {
-    fn new(role: Role) -> Self {
+    fn new() -> Self {
         Self {
-            role,
             connections: UserConnections::new(),
         }
     }
@@ -141,7 +129,7 @@ impl UserController {
         }
     }
 
-    pub async fn connect(&mut self, group_id: Uuid, group_controller: GroupController, role: Role) {
+    pub async fn connect(&mut self, group_id: Uuid, group_controller: GroupController) {
         if let None = self.group_conn {
             let listener = UserChannelListener::new(
                 self.user_channel.sender.clone(),
@@ -154,7 +142,7 @@ impl UserController {
                 .write()
                 .await
                 .entry(self.user_id)
-                .or_insert(GroupUserData::new(role))
+                .or_insert(GroupUserData::new())
                 .connections
                 .0
                 .write()
@@ -219,112 +207,6 @@ impl UserController {
                 }
             }
         }
-    }
-
-    pub async fn set_privilege(&self, data: &PrivilegeChangeData) -> Result<(), AppError> {
-        let conn = self
-            .group_conn
-            .as_ref()
-            .ok_or(AppError::Unexpected(anyhow!(
-                "No group connection found in the user controller"
-            )))?;
-
-        let privilege_ref =
-            conn.controller
-                .privileges
-                .0
-                .get(&data.role)
-                .ok_or(AppError::Unexpected(anyhow!(
-                    "No role {:?} found in a group",
-                    &data.role
-                )))?;
-
-        let mut privilege_guard = privilege_ref.write().await;
-        privilege_guard.0.replace(data.value);
-
-        let users_guard = conn.controller.users.0.read().await;
-
-        // send new privileges to every user, whose privileges were changed
-        for (_, user_data) in users_guard.iter() {
-            if user_data.role == data.role {
-                user_data
-                    .connections
-                    .send_across_all(&ServerAction::SetPrivileges(privilege_guard.clone()))
-                    .await;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn single_set_role(&self, data: &UserRoleChangeData) -> Result<(), AppError> {
-        let conn = self
-            .group_conn
-            .as_ref()
-            .ok_or(AppError::Unexpected(anyhow!(
-                "No group connection found in the user controller"
-            )))?;
-
-        let mut users_guard = conn.controller.users.0.write().await;
-        let user = users_guard
-            .get_mut(&data.user_id)
-            .ok_or(AppError::exp(StatusCode::BAD_REQUEST, "User not found in the group"))?;
-
-        user.role = data.value;
-
-        let privileges = conn
-            .controller
-            .privileges
-            .get_privileges(data.value)
-            .await
-            .ok_or(AppError::Unexpected(anyhow!(
-                "No role {:?} found in the group",
-                data.value
-            )))?;
-
-        user.connections
-            .send_across_all(&ServerAction::SetPrivileges(privileges))
-            .await;
-        Ok(())
-    }
-
-    pub async fn get_role(&self, user_id: Uuid) -> Option<Role> {
-        let Some(conn) = &self.group_conn else {
-            return None;
-        };
-
-        conn.controller
-            .users
-            .0
-            .read()
-            .await
-            .get(&user_id)
-            .map(|x| x.role)
-    }
-
-    pub fn get_group_privileges(&self) -> Option<&SocketGroupRolePrivileges> {
-        let connection = self.group_conn.as_ref()?;
-        Some(&connection.controller.privileges)
-    }
-
-    pub async fn get_user_privilege(&self, user_id: Uuid, val: Privilege) -> Option<Privilege> {
-        let role = self.get_role(user_id).await?;
-        self.get_group_privileges()?.get_privilege(role, val).await
-    }
-
-    pub async fn verify_with_privilege(
-        &self,
-        user_id: Uuid,
-        min_val: Privilege,
-    ) -> Result<bool, AppError> {
-        let role = self
-            .get_role(user_id)
-            .await
-            .ok_or(AppError::Unexpected(anyhow!("No role found for user_id")))?;
-        let privileges = self
-            .get_group_privileges()
-            .ok_or(AppError::Unexpected(anyhow!("No socket privileges found")))?;
-        privileges.verify_with_privilege(role, min_val).await
     }
 }
 
@@ -475,7 +357,6 @@ pub enum ServerAction {
     GroupInvite,
     Message(GroupUserMessage),
     Kick(KickMessage),
-    SetPrivileges(Privileges),
 }
 
 /// Client action send to server
@@ -485,8 +366,6 @@ pub enum ClientAction {
     SendMessage { content: String },
     GroupInvite { group_id: Uuid },
     RemoveUser { user_id: Uuid, group_id: Uuid },
-    SingleChangePrivileges { data: PrivilegeChangeData },
-    SingleChangeUserRole { data: UserRoleChangeData },
     RequestMessages { loaded: i64 },
     Close,
     Ignore,

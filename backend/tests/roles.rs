@@ -1,388 +1,113 @@
-use backend::utils::roles::models::{GroupRolePrivileges, Role};
-use backend::utils::roles::models::{
-    PrivilegeChangeData, PrivilegeInterpretationData, SocketGroupRolePrivileges, UserRoleChangeData,
-};
-use backend::utils::roles::privileges::{CanInvite, CanSendMessages, Privilege, Privileges};
-use backend::utils::roles::{
-    get_group_role_privileges, get_user_role, single_set_group_role_privileges,
-    single_set_group_user_role,
-};
-use sqlx::{query, PgPool};
-use std::collections::{HashMap, HashSet};
-use uuid::Uuid;
+mod tools;
 
-#[derive(Debug, PartialEq)]
-struct RoleData {
-    role: Role,
-    privileges: Privileges,
-}
+use std::collections::HashMap;
 
-const ADIMAC_ID: &str = "ba34ff10-4b89-44cb-9b36-31eb57c41556";
-const HUBERT_ID: &str = "263541a8-fa1e-4f13-9e5d-5b250a5a71e6";
-const MARCO_ID: &str = "4bd30a6a-7dfe-46a2-b741-f49612aa85c1";
-const POLO_ID: &str = "6666e44f-14ce-4aa5-b5f9-8a4cc5ee5c58";
+use backend::utils::roles::{models::{Role, PrivilegeChangeInput, UserRoleChangeInput}, set_privileges, set_role, privileges::{Privilege, CanInvite}};
+use redis::aio::ConnectionManager;
+use sqlx::{PgPool, query};
+use uuid::{uuid, Uuid};
 
-#[sqlx::test(fixtures("groups", "roles", "group_roles"))]
-async fn get_group_role_privileges_health_check(db: PgPool) {
-    // Hard working rust programmers
-    let res = get_group_role_privileges(
-        &db,
-        Uuid::parse_str("a1fd5c51-326f-476e-a4f7-2e61a692bb56").unwrap(),
-    )
-    .await
-    .expect("Query failed");
+const ADIMAC_ID: Uuid = uuid!("ba34ff10-4b89-44cb-9b36-31eb57c41556");
+const HUBERT_ID: Uuid = uuid!("263541a8-fa1e-4f13-9e5d-5b250a5a71e6");
+const SOME_USER_ID: Uuid = uuid!("e287ccab-fb33-4314-8d81-bfa9d6e52928");
+const CHADDERS_ID: Uuid = uuid!("b8c9a317-a456-458f-af88-01d99633f8e2");
 
-    assert_eq!(
-        res,
-        GroupRolePrivileges(HashMap::from([
-            (
-                Role::Admin,
-                Privileges(HashSet::from([
-                    Privilege::CanInvite(CanInvite::Yes),
-                    Privilege::CanSendMessages(CanSendMessages::Yes(2)),
-                ]))
-            ),
-            (
-                Role::Member,
-                Privileges(HashSet::from([
-                    Privilege::CanInvite(CanInvite::No),
-                    Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-                ]))
-            ),
-        ]))
-    )
-}
-
-#[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
-async fn get_user_role_health_check(db: PgPool) {
-    // Hubert - Chadders
-    let res = get_user_role(
-        &db,
-        &Uuid::parse_str(HUBERT_ID).unwrap(),
-        &Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
-    )
-    .await
-    .expect("Query failed");
-
-    assert_eq!(res, Role::Admin)
-}
-
-// #[tokio::test]
-// async fn preprocess_health_check() {
-//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-//     let mut data = GroupUsersRole::from((
-//         group_id,
-//         [(
-//             Role::Admin,
-//             vec![Uuid::parse_str(MARCO_ID).unwrap()],
-//         )],
-//     ));
-
-//     let res = data.preprocess(
-//         Role::Admin,
-//         Uuid::parse_str(HUBERT_ID).unwrap(),
-//     );
-
-//     assert!(res.is_ok());
-//     assert_eq!(
-//         data,
-//         GroupUsersRole::from((
-//             group_id,
-//             [(
-//                 Role::Admin,
-//                 vec![Uuid::parse_str(MARCO_ID).unwrap()],
-//             )],
-//         ))
-//     )
-// }
-
-// #[tokio::test]
-// async fn preprocess_owner_gives_1_owner() {
-//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-//     let mut data = GroupUsersRole::from((
-//         group_id,
-//         [(
-//             Role::Owner,
-//             vec![Uuid::parse_str(MARCO_ID).unwrap()],
-//         )],
-//     ));
-
-//     let res = data.preprocess(
-//         Role::Owner,
-//         Uuid::parse_str(ADIMAC_ID).unwrap(),
-//     );
-
-//     assert!(res.is_ok());
-//     assert_eq!(
-//         data,
-//         GroupUsersRole::from((
-//             group_id,
-//             [(Role::Owner,
-//                 vec![Uuid::parse_str(MARCO_ID).unwrap()]
-//             ),
-//             (Role::Admin,
-//                 vec![Uuid::parse_str(ADIMAC_ID).unwrap()]
-//             )]
-//         ))
-//     )
-// }
-
-// #[tokio::test]
-// async fn preprocess_owner_gives_2_owners() {
-//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-//     let mut data = GroupUsersRole::from((
-//         group_id,
-//         [(Role::Owner,
-//         vec![
-//             Uuid::parse_str(MARCO_ID).unwrap(),
-//             Uuid::parse_str(POLO_ID).unwrap(),
-//         ])],
-//     ));
-
-//     let res = data.preprocess(
-//         Role::Owner,
-//         Uuid::parse_str(ADIMAC_ID).unwrap(),
-//     );
-
-//     assert!(res.is_err());
-// }
-
-// #[tokio::test]
-// async fn preprocess_admin_gives_1_owner() {
-//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-//     let mut data = GroupUsersRole::from((
-//         group_id,
-//         [(Role::Owner,
-//         vec![Uuid::parse_str(MARCO_ID).unwrap()])],
-//     ));
-
-//     let res = data.preprocess(
-//         Role::Admin,
-//         Uuid::parse_str(HUBERT_ID).unwrap(),
-//     );
-
-//     assert!(res.is_err());
-// }
-
-// #[tokio::test]
-// async fn preprocess_member_changes_role() {
-//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-//     let mut data = GroupUsersRole::from((
-//         group_id,
-//         [(Role::Admin,
-//         vec![Uuid::parse_str(MARCO_ID).unwrap()])],
-//     ));
-
-//     let res = data.preprocess(
-//         Role::Member,
-//         Uuid::parse_str(POLO_ID).unwrap(),
-//     );
-
-//     assert!(res.is_err());
-// }
-
-// #[tokio::test]
-// async fn preprocess_self_role() {
-//     let group_id = Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap();
-
-//     let mut data = GroupUsersRole::from((
-//         group_id,
-//         [(Role::Owner,
-//         vec![Uuid::parse_str(ADIMAC_ID).unwrap(),])],
-//     ));
-
-//     let res = data.preprocess(
-//         Role::Owner,
-//         Uuid::parse_str(ADIMAC_ID).unwrap(),
-//     );
-
-//     assert!(res.is_ok());
-//     assert_eq!(data, GroupUsersRole::from((group_id, [])));
-// }
-
-#[tokio::test]
-async fn maintain_hierarchy_health_check() {
-    let old_privileges = SocketGroupRolePrivileges::from(GroupRolePrivileges(HashMap::from([
-        (
-            Role::Admin,
-            Privileges(HashSet::from([
-                Privilege::CanInvite(CanInvite::Yes),
-                Privilege::CanSendMessages(CanSendMessages::Yes(5)),
-            ])),
-        ),
-        (
-            Role::Member,
-            Privileges(HashSet::from([
-                Privilege::CanInvite(CanInvite::No),
-                Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-            ])),
-        ),
-    ])));
-
-    let random_group_id = Uuid::new_v4();
-    let mut new_privileges = PrivilegeChangeData::new(
-        random_group_id,
-        Role::Admin,
-        Privilege::CanSendMessages(CanSendMessages::Yes(15)),
-    );
-
-    new_privileges
-        .maintain_hierarchy(&old_privileges)
-        .await
-        .unwrap();
-
-    assert_eq!(
-        new_privileges,
-        PrivilegeChangeData::new(
-            random_group_id,
-            Role::Admin,
-            Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-        ),
-    );
-}
-
-#[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
-async fn single_set_group_role_privileges_health_check(db: PgPool) {
-    let data = PrivilegeChangeData {
-        group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
-        role: Role::Member,
-        value: Privilege::CanInvite(CanInvite::No),
-    };
-
-    // let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
-    //     (
-    //         Role::Admin,
-    //         Arc::new(RwLock::new(Privileges(HashSet::from([
-    //             Privilege::CanInvite(CanInvite::Yes),
-    //             Privilege::CanSendMessages(CanSendMessages::Yes(5)),
-    //         ])))),
-    //     ),
-    //     (
-    //         Role::Member,
-    //         Arc::new(RwLock::new(Privileges(HashSet::from([
-    //             Privilege::CanInvite(CanInvite::Yes),
-    //             Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-    //         ])))),
-    //     ),
-    // ]));
-
-    // data.maintain_hierarchy(&old_privileges).await.unwrap();
-    single_set_group_role_privileges(&db, &data).await.unwrap();
-
+async fn select_privileges(pg: &PgPool, group_id: Uuid) -> Result<HashMap<Role, i32>, sqlx::Error> {
     let query_res = query!(
         r#"
-            SELECT roles.can_invite, roles.can_send_messages
-                FROM group_roles JOIN roles ON group_roles.role_id = roles.id
-                WHERE group_roles.group_id = $1
-                AND group_roles.role_type = $2
+            SELECT role_type AS "role: Role", privileges
+            FROM group_roles
+            WHERE group_id = $1
         "#,
-        data.group_id,
-        data.role as Role,
-    )
-    .fetch_one(&db)
-    .await
-    .unwrap();
+        group_id,
+    ).fetch_all(pg).await?;
 
-    let res = Privileges::try_from(PrivilegeInterpretationData::new(
-        query_res.can_invite,
-        query_res.can_send_messages,
-    ))
-    .unwrap();
-    assert_eq!(
-        res,
-        Privileges::from([
-            Privilege::CanInvite(CanInvite::No),
-            Privilege::CanSendMessages(CanSendMessages::Yes(10)),
-        ])
-    )
+    let res = HashMap::from_iter(query_res.into_iter().map(|x| (x.role, x.privileges)));
+
+    Ok(res)
 }
 
-// #[sqlx::test(fixtures("users", "groups", "roles", "group_roles"))]
-// async fn single_set_group_role_privileges_with_hierarchy(db: PgPool) {
-//     let mut data = PrivilegeChangeData {
-//         group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
-//         role: Role::Admin,
-//         privilege: PrivilegeType::CanInvite,
-//         value: Privilege::CanInvite(CanInvite::No),
-//     };
+async fn select_users_with_roles(pg: &PgPool, group_id: Uuid) -> Result<HashMap<Uuid, Role>, sqlx::Error> {
+    let query_res = query!(
+        r#"
+            SELECT user_id, role_type AS "role_type: Role"
+            FROM group_users
+            WHERE group_id = $1
+        "#,
+        group_id,
+    ).fetch_all(pg).await?;
 
-//     let old_privileges = SocketGroupRolePrivileges ( HashMap::from([
-//         (
-//             Role::Admin,
-//             Arc::new(RwLock::new(Privileges(HashMap::from([
-//                 (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-//                 (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(2))),
-//             ])))),
-//         ),
-//         (
-//             Role::Member,
-//             Arc::new(RwLock::new(Privileges(HashMap::from([
-//                 (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-//                 (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(10))),
-//             ])))),
-//         ),
-//     ]));
+    let res = HashMap::from_iter(query_res.into_iter().map(|x| (x.user_id, x.role_type)));
 
-//     data.maintain_hierarchy(&old_privileges).await.unwrap();
-//     single_set_group_role_privileges(&db, &data).await.unwrap();
+    Ok(res)
+}
 
-//     let query_res = query!(
-//         r#"
-//             SELECT roles.privileges
-//                 FROM group_roles JOIN roles ON group_roles.role_id = roles.id
-//                 WHERE group_roles.group_id = $1
-//                 AND group_roles.role_type = $2
-//         "#,
-//         data.group_id,
-//         data.role as Role,
-//     )
-//     .fetch_one(&db)
-//     .await
-//     .unwrap();
+#[redis_macros::test]
+#[sqlx::test(fixtures("fixtures/roles/set_privileges.sql"))]
+async fn change_privileges(pg: PgPool, rd: ConnectionManager) {
+    set_privileges(&pg, &mut rd, ADIMAC_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(CanInvite::No))).await.unwrap();
 
-//     let res: Privileges = serde_json::from_value(query_res.privileges).unwrap();
-//     assert_eq!(
-//         res,
-//         // the change should not happen
-//         Privileges(HashMap::from([
-//             (PrivilegeType::CanInvite, Privilege::CanInvite(CanInvite::Yes)),
-//             (PrivilegeType::CanSendMessages, Privilege::CanSendMessages(CanSendMessages::Yes(2))),
-//         ]))
-//     )
-// }
+    let privileges = select_privileges(&pg, CHADDERS_ID).await.unwrap();
 
-#[sqlx::test(fixtures("users", "groups", "roles", "group_roles", "group_users"))]
-async fn single_set_group_user_role_health_check(db: PgPool) {
-    // Chadders - Marco gets Admin
-    let data = UserRoleChangeData {
-        group_id: Uuid::parse_str("b8c9a317-a456-458f-af88-01d99633f8e2").unwrap(),
-        user_id: Uuid::parse_str(MARCO_ID).unwrap(),
+    dbg!(&privileges);
+    assert_eq!(privileges.get(&Role::Admin).copied(), Some(2))
+}
+
+#[redis_macros::test]
+#[sqlx::test(fixtures("fixtures/roles/set_privileges.sql"))]
+async fn change_privileges_insufficient_role(pg: PgPool, rd: ConnectionManager) {
+    let res = set_privileges(&pg, &mut rd, HUBERT_ID, &PrivilegeChangeInput::new(CHADDERS_ID, Role::Admin, Privilege::CanInvite(CanInvite::No))).await;
+
+    assert!(res.is_err());
+}
+
+#[redis_macros::test]
+#[sqlx::test(fixtures("fixtures/roles/set_role.sql"))]
+async fn change_user_role(pg: PgPool, rd: ConnectionManager) {
+    set_role(&pg, &mut rd, HUBERT_ID, SOME_USER_ID, &UserRoleChangeInput {
+        group_id: CHADDERS_ID,
         value: Role::Admin,
-    };
+    }).await.unwrap();
 
-    single_set_group_user_role(&db, &data).await.unwrap();
+    let res = select_users_with_roles(&pg, CHADDERS_ID).await.unwrap();
 
-    let query_res = query!(
-        r#"
-            SELECT group_users.user_id, group_roles.role_type as "role: Role" from
-            group_users JOIN group_roles ON group_users.role_id = group_roles.role_id
-            WHERE group_users.group_id = $1
-            AND group_users.user_id = $2
-        "#,
-        data.group_id,
-        data.user_id,
-    )
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    dbg!(&res);
+    assert_eq!(res.get(&SOME_USER_ID).copied(), Some(Role::Admin));
+}
 
-    assert_eq!(
-        (query_res.user_id, query_res.role),
-        (Uuid::parse_str(MARCO_ID).unwrap(), Role::Admin),
-    )
+#[redis_macros::test]
+#[sqlx::test(fixtures("fixtures/roles/set_role.sql"))]
+async fn change_user_role_new_owner(pg: PgPool, rd: ConnectionManager) {
+    set_role(&pg, &mut rd, ADIMAC_ID, HUBERT_ID, &UserRoleChangeInput {
+        group_id: CHADDERS_ID,
+        value: Role::Owner,
+    }).await.unwrap();
+
+    let res = select_users_with_roles(&pg, CHADDERS_ID).await.unwrap();
+
+    dbg!(&res);
+    assert_eq!(res.get(&HUBERT_ID).copied(), Some(Role::Owner));
+    assert_eq!(res.get(&ADIMAC_ID).copied(), Some(Role::Admin));
+}
+
+#[redis_macros::test]
+#[sqlx::test(fixtures("fixtures/roles/set_role.sql"))]
+async fn change_user_role_insufficient_role(pg: PgPool, rd: ConnectionManager) {
+    let res = set_role(&pg, &mut rd, SOME_USER_ID, SOME_USER_ID, &UserRoleChangeInput {
+        group_id: CHADDERS_ID,
+        value: Role::Member,
+    }).await;
+
+    assert!(res.is_err());
+}
+
+#[redis_macros::test(fixtures("SET a b", "SET c d"))]
+#[sqlx::test(fixtures("fixtures/roles/set_role.sql"))]
+async fn change_user_role_too_high_target_role(pg: PgPool, rd: ConnectionManager) {    
+    let res = set_role(&pg, &mut rd, HUBERT_ID, SOME_USER_ID, &UserRoleChangeInput {
+        group_id: CHADDERS_ID,
+        value: Role::Owner,
+    }).await;
+
+    assert!(res.is_err());
 }
