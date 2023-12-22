@@ -20,7 +20,7 @@ pub fn set_opt_ex<'a, K: ToRedisArgs, V: ToRedisArgs>(key: K, value: V, opt_exp:
 
 #[async_trait]
 pub trait CacheWrite {
-    type Stored: Send + FromRedisValue;
+    type Stored: Send;
 
     fn write_cmd(&self, data: Self::Stored) -> Vec<Cmd>;
     

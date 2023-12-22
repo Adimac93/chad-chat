@@ -10,6 +10,10 @@ impl RedisRoot {
     pub fn group(self, id: Uuid) -> RedisGroup {
         RedisGroup(id)
     }
+
+    pub fn tokens(self, user_id: Uuid) -> RedisTokens {
+        RedisTokens(user_id)
+    }
 }
 
 impl Display for RedisRoot {
@@ -63,5 +67,39 @@ pub struct RedisGroupRole(Uuid, Role);
 impl Display for RedisGroupRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "group:{}:role:{}", self.0, self.1)
+    }
+}
+
+pub struct RedisTokens(Uuid);
+
+impl RedisTokens {
+    pub fn whitelist(self) -> RedisTokensWhitelist {
+        RedisTokensWhitelist(self.0)
+    }
+
+    pub fn blacklist(self) -> RedisTokensBlacklist {
+        RedisTokensBlacklist(self.0)
+    }
+}
+
+impl Display for RedisTokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "tokens:{}", self.0)
+    }
+}
+
+pub struct RedisTokensWhitelist(Uuid);
+
+impl Display for RedisTokensWhitelist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "tokens:{}:whitelist", self.0)
+    }
+}
+
+pub struct RedisTokensBlacklist(Uuid);
+
+impl Display for RedisTokensBlacklist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "tokens:{}:blacklist", self.0)
     }
 }
