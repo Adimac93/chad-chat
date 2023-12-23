@@ -324,3 +324,79 @@ impl RegisterCredentials {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::modules::redis_tools::RedisUuid;
+
+    use super::*;
+    use uuid::uuid;
+
+    const USER_ID: Uuid = uuid!("263541a8-fa1e-4f13-9e5d-5b250a5a71e6");
+    const TOKEN_ID: Uuid = uuid!("cd972e13-46c0-4e9f-ad29-711e1993a719");
+    const EXP: u64 = 1703317304;
+
+    async fn read_from_blacklist_raw(rd: &mut impl ConnectionLike, user_id: Uuid) -> Result<HashMap<Uuid, u64>, RedisError> {
+        let res: HashMap<RedisUuid, u64> = Cmd::hgetall(RedisRoot.tokens(user_id).blacklist().to_string()).query_async(rd).await?;
+        Ok(res.into_iter().map(|(k, v)| (k.into_inner(), v)).collect())
+    }
+
+    async fn read_from_whitelist_raw(rd: &mut impl ConnectionLike, user_id: Uuid) -> Result<HashMap<Uuid, u64>, RedisError> {
+        let res: HashMap<RedisUuid, u64> = Cmd::hgetall(RedisRoot.tokens(user_id).whitelist().to_string()).query_async(rd).await?;
+        Ok(res.into_iter().map(|(k, v)| (k.into_inner(), v)).collect())
+    }
+
+    #[redis_macros::test]
+    #[tokio::test]
+    async fn add_to_blacklist(rd: ConnectionManager) {
+        let blacklist = TokenBlacklist::new(USER_ID, TOKEN_ID);
+        blacklist.write(&mut rd, EXP).await.unwrap();
+
+        let res = read_from_blacklist_raw(&mut rd, USER_ID).await.unwrap();
+        
+        dbg!(&res);
+        assert_eq!(res.get(&TOKEN_ID), Some(&EXP));
+    }
+
+    #[redis_macros::test(fixtures("HSET tokens:263541a8-fa1e-4f13-9e5d-5b250a5a71e6:blacklist cd972e13-46c0-4e9f-ad29-711e1993a719 1703317304"))]
+    #[tokio::test]
+    async fn read_from_blacklist(rd: ConnectionManager) {
+        let blacklist = TokenBlacklist::new(USER_ID, TOKEN_ID);
+        let res = blacklist.read(&mut rd).await.unwrap();
+
+        assert_eq!(res, Some(EXP));
+    }
+
+    #[redis_macros::test]
+    #[tokio::test]
+    async fn add_to_whitelist(rd: ConnectionManager) {
+        let whitelist = TokenWhitelist::new(USER_ID, TOKEN_ID);
+        whitelist.write(&mut rd, EXP).await.unwrap();
+
+        let res = read_from_whitelist_raw(&mut rd, USER_ID).await.unwrap();
+        
+        dbg!(&res);
+        assert_eq!(res.get(&TOKEN_ID), Some(&EXP));
+    }
+
+    #[redis_macros::test(fixtures("HSET tokens:263541a8-fa1e-4f13-9e5d-5b250a5a71e6:whitelist cd972e13-46c0-4e9f-ad29-711e1993a719 1703317304"))]
+    #[tokio::test]
+    async fn read_from_whitelist(rd: ConnectionManager) {
+        let whitelist = TokenWhitelist::new(USER_ID, TOKEN_ID);
+        let res = whitelist.read(&mut rd).await.unwrap();
+
+        assert_eq!(res, Some(EXP));
+    }
+
+    #[redis_macros::test(fixtures("HSET tokens:263541a8-fa1e-4f13-9e5d-5b250a5a71e6:whitelist cd972e13-46c0-4e9f-ad29-711e1993a719 1703317304"))]
+    #[tokio::test]
+    async fn delete_from_whitelist(rd: ConnectionManager) {
+        let whitelist = TokenWhitelist::new(USER_ID, TOKEN_ID);
+        whitelist.invalidate(&mut rd).await.unwrap();
+        
+        let res = read_from_whitelist_raw(&mut rd, USER_ID).await.unwrap();
+        
+        dbg!(&res);
+        assert_eq!(res.get(&TOKEN_ID), None);
+    }
+}
