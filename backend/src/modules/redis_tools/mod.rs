@@ -1,10 +1,13 @@
 pub mod redis_path;
 
 use std::fmt::Display;
+use std::str::FromStr;
 use axum::async_trait;
-use redis::{RedisResult, Pipeline, FromRedisValue, ToRedisArgs};
+use redis::{RedisResult, Pipeline, FromRedisValue, ToRedisArgs, RedisError};
 use redis::aio::ConnectionLike;
+use redis::ErrorKind;
 use redis::{cmd, Cmd, Value};
+use uuid::Uuid;
 
 pub async fn get_at(rd: &mut impl ConnectionLike, path: impl Display) -> RedisResult<Value> {
     cmd("GET").arg(path.to_string()).query_async(rd).await
@@ -74,4 +77,30 @@ pub async fn execute_commands(rd: &mut impl ConnectionLike, cmds: Vec<Cmd>) -> R
 
 pub async fn pipeline_commands(pipe: &mut Pipeline, cmds: impl IntoIterator<Item = Cmd>) {
     cmds.into_iter().for_each(|cmd| { pipe.add_command(cmd); });
+}
+
+#[derive(Clone, Copy, Debug, std::hash::Hash, PartialEq, Eq)]
+pub struct RedisUuid(pub Uuid);
+
+impl RedisUuid {
+    pub fn into_inner(self) -> Uuid {
+        self.0
+    }
+}
+
+impl FromRedisValue for RedisUuid {
+    fn from_redis_value(v: &Value) -> redis::RedisResult<Self> {
+        match v {
+            &Value::Data(ref data) => {
+                let uuid_from_str = std::str::from_utf8(data).ok().map(|x| Uuid::from_str(x).ok()).flatten();
+                if let Some(val) = uuid_from_str {
+                    Ok(RedisUuid(val))
+                } else {
+                    let uuid_from_bin = Uuid::from_slice(data).map_err(|_| RedisError::from((ErrorKind::ResponseError, "invalid binary data - expeceted 16 bytes")))?;
+                    Ok(RedisUuid(uuid_from_bin))
+                }
+            },
+            _ => Err(RedisError::from((ErrorKind::ResponseError, "expected string or binary data")))
+        }
+    }
 }
