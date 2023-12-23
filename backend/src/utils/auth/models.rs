@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     errors::AppError,
-    modules::{extractors::jwt::{JwtAccessSecret, JwtRefreshSecret}, redis_tools::{CacheWrite, redis_path::RedisRoot, CacheRead, CacheInvalidate, execute_commands}},
+    modules::{extractors::jwt::{JwtAccessSecret, JwtRefreshSecret}, redis_tools::{CacheWrite, redis_path::RedisRoot, CacheRead, CacheInvalidate, execute_commands, RedisUuid}},
     state::{AppState, RdPool},
 };
 use anyhow::Context;
@@ -220,7 +220,7 @@ impl CacheWrite for TokenBlacklist {
     type Stored = u64;
 
     fn write_cmd(&self, exp: Self::Stored) -> Vec<Cmd> {
-        vec![Cmd::hset(RedisRoot.tokens(self.user_id).blacklist().to_string(), self.jti.as_bytes(), exp)]
+        vec![Cmd::hset(RedisRoot.tokens(self.user_id).blacklist().to_string(), self.jti.to_string(), exp)]
     }
 }
 
@@ -228,7 +228,7 @@ impl CacheRead for TokenBlacklist {
     type Stored = u64;
 
     fn read_cmd(&self) -> Vec<Cmd> {
-        vec![Cmd::hget(RedisRoot.tokens(self.user_id).blacklist().to_string(), self.jti.as_bytes())]
+        vec![Cmd::hget(RedisRoot.tokens(self.user_id).blacklist().to_string(), self.jti.to_string())]
     }
 }
 
@@ -242,16 +242,16 @@ impl TokenWhitelist {
         Self { user_id, jti, }
     }
 
-    pub async fn read_all_tokens(&self, rd: &mut impl ConnectionLike) -> Result<HashMap<u128, u64>, RedisError> {
-        let res: HashMap<u128, u64> = Cmd::hgetall(RedisRoot.tokens(self.user_id).to_string()).query_async(rd).await?;
-        Ok(res)
+    pub async fn read_all_tokens(&self, rd: &mut impl ConnectionLike) -> Result<HashMap<Uuid, u64>, RedisError> {
+        let res: HashMap<RedisUuid, u64> = Cmd::hgetall(RedisRoot.tokens(self.user_id).to_string()).query_async(rd).await?;
+        Ok(res.into_iter().map(|(k, v)| (k.into_inner(), v)).collect())
     }
 
     pub async fn invalidate_all_tokens(&self, rd: &mut impl ConnectionLike) -> Result<(), RedisError> {
         let tokens = self.read_all_tokens(rd).await?;
         
         let mut cmds: Vec<Cmd> = tokens.into_iter().fold(vec![], |mut cmds, (jti, exp)| {
-            cmds.extend(TokenBlacklist::new(self.user_id, Uuid::from_u128(jti)).write_cmd(exp));
+            cmds.extend(TokenBlacklist::new(self.user_id, jti).write_cmd(exp));
             cmds
         });
         cmds.push(Cmd::del(RedisRoot.tokens(self.user_id).whitelist().to_string()));
@@ -260,10 +260,9 @@ impl TokenWhitelist {
         Ok(())
     }
 
-    pub async fn move_token_to_blacklist(&self, rd: &mut impl ConnectionLike, exp: u64) -> Result<(), AppError> {
-        let mut cmds = self.invalidate_cmd();
-        cmds.extend(TokenBlacklist::new(self.user_id, self.jti).write_cmd(exp));
-        let _ = execute_commands(rd, cmds).await?;
+    pub async fn move_token_to_blacklist(&self, rd: &mut (impl ConnectionLike + Send)) -> Result<(), AppError> {
+        let exp: u64 = Cmd::get_del(RedisRoot.tokens(self.user_id).whitelist().to_string()).query_async(rd).await?;
+        TokenBlacklist::new(self.user_id, self.jti).write(rd, exp).await?;
         Ok(())
     }
 }
@@ -272,21 +271,21 @@ impl CacheWrite for TokenWhitelist {
     type Stored = u64;
 
     fn write_cmd(&self, exp: Self::Stored) -> Vec<Cmd> {
-        vec![Cmd::hset(RedisRoot.tokens(self.user_id).blacklist().to_string(), self.jti.as_bytes(), exp)]
+        vec![Cmd::hset(RedisRoot.tokens(self.user_id).whitelist().to_string(), self.jti.to_string(), exp)]
     }
 }
 
 impl CacheRead for TokenWhitelist {
-    type Stored = i64;
+    type Stored = u64;
 
     fn read_cmd(&self) -> Vec<Cmd> {
-        vec![Cmd::hget(RedisRoot.tokens(self.user_id).blacklist().to_string(), self.jti.as_bytes())]
+        vec![Cmd::hget(RedisRoot.tokens(self.user_id).whitelist().to_string(), self.jti.to_string())]
     }
 }
 
 impl CacheInvalidate for TokenWhitelist {
     fn invalidate_cmd(&self) -> Vec<Cmd> {
-        vec![Cmd::hdel(RedisRoot.tokens(self.user_id).blacklist().to_string(), self.jti.as_bytes())]
+        vec![Cmd::hdel(RedisRoot.tokens(self.user_id).whitelist().to_string(), self.jti.to_string())]
     }
 }
 

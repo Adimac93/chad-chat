@@ -115,7 +115,7 @@ async fn post_user_logout(
         let verify_res = validate_refresh_token(refresh_token_cookie.value(), &token_extensions.refresh.0);
 
         if let Ok(claims) = verify_res {
-            TokenWhitelist::new(claims.user_id, claims.jti).move_token_to_blacklist(&mut pool, claims.exp).await?;
+            TokenWhitelist::new(claims.user_id, claims.jti).move_token_to_blacklist(&mut pool).await?;
         }
     };
 
