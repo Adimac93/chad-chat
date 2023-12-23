@@ -67,7 +67,6 @@ pub async fn verify_access_token(req: &mut Parts, state: &AppState) -> Result<Cl
     let cookie = jar.get("jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "No access token found"))?;
     let claims = validate_access_token(cookie, jwt_key)?;
 
-    // let token_in_blacklist = get_access_token_from_blacklist(&mut state.redis.clone(), claims.user_id, claims.jti).await?;
     let token_in_blacklist = TokenBlacklist::new(claims.user_id, claims.jti).read(&mut state.redis.clone()).await?;
 
     if token_in_blacklist.is_none() {
@@ -150,17 +149,9 @@ pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<R
         .await
         .context("Failed to fetch cookie jar")?;
 
-    let mut validation = Validation::default();
-    validation.leeway = 5;
-
     let cookie = jar.get("refresh-jwt").ok_or(AppError::exp(StatusCode::UNAUTHORIZED, "No refresh token found"))?;
-    let decoding_key = DecodingKey::from_secret(jwt_key.expose_secret().as_bytes());
 
-    let claims: RefreshClaims = decode(
-        cookie.value(),
-        &decoding_key,
-        &validation,
-    ).context("Invalid or expired token")?.claims;
+    let claims = validate_refresh_token(cookie.value(), jwt_key)?;
 
     let mut rd = state.redis.clone();
     let token_in_blacklist = TokenBlacklist::new(claims.user_id, claims.jti).read(&mut rd).await?;
@@ -173,14 +164,14 @@ pub async fn verify_refresh_token(req: &mut Parts, state: &AppState) -> Result<R
     }
 }
 
-pub fn validate_refresh_token<'a>(cookie: &Cookie<'a>, secret: &Secret<String>) -> Result<RefreshClaims, AppError> {
+pub fn validate_refresh_token<'a>(token: &str, secret: &Secret<String>) -> Result<RefreshClaims, AppError> {
     let mut validation = Validation::default();
     validation.leeway = 5;
 
     let decoding_key = DecodingKey::from_secret(secret.expose_secret().as_bytes());
 
     let claims: RefreshClaims = decode(
-        cookie.value(),
+        token,
         &decoding_key,
         &validation,
     ).context("Invalid or expired token")?.claims;

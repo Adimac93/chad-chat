@@ -112,7 +112,7 @@ async fn post_user_logout(
     };
 
     if let Some(refresh_token_cookie) = jar.get("refresh-jwt") {
-        let verify_res = validate_refresh_token(refresh_token_cookie, &token_extensions.refresh.0);
+        let verify_res = validate_refresh_token(refresh_token_cookie.value(), &token_extensions.refresh.0);
 
         if let Ok(claims) = verify_res {
             TokenWhitelist::new(claims.user_id, claims.jti).move_token_to_blacklist(&mut pool, claims.exp).await?;
