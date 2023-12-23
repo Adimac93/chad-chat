@@ -194,7 +194,7 @@ pub async fn consume_refresh_token(
     rd: &mut RdPool,
     claims: RefreshClaims,
 ) -> Result<(), AppError> {
-    TokenWhitelist::new(claims.user_id, claims.jti).move_token_to_blacklist(rd).await?;
+    WhitelistToken::new(claims.user_id, claims.jti).move_token_to_blacklist(rd).await?;
 
     Ok(())
 }

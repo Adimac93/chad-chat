@@ -107,7 +107,7 @@ async fn post_user_logout(
         let verify_res = validate_access_token(access_token_cookie, &token_extensions.access.0);
 
         if let Ok(claims) = verify_res {
-            TokenBlacklist::new(claims.user_id, claims.jti).write(&mut pool, claims.exp).await?;
+            BlacklistToken::new(claims.user_id, claims.jti).write(&mut pool, claims.exp).await?;
         }
     };
 
@@ -115,7 +115,7 @@ async fn post_user_logout(
         let verify_res = validate_refresh_token(refresh_token_cookie.value(), &token_extensions.refresh.0);
 
         if let Ok(claims) = verify_res {
-            TokenWhitelist::new(claims.user_id, claims.jti).move_token_to_blacklist(&mut pool).await?;
+            WhitelistToken::new(claims.user_id, claims.jti).move_token_to_blacklist(&mut pool).await?;
         }
     };
 
